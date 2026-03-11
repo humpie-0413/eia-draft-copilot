@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function HomePage() {
   return (
     <div className="flex flex-col items-center justify-center py-20">
@@ -21,6 +23,14 @@ export default function HomePage() {
           title="법규 검증"
           description="환경영향평가법 요건에 맞는지 체크리스트로 검증합니다."
         />
+      </div>
+      <div className="mt-10">
+        <Link
+          href="/projects"
+          className="inline-flex items-center rounded-md bg-green-700 px-6 py-3 text-sm font-medium text-white shadow hover:bg-green-800 transition-colors"
+        >
+          프로젝트 목록 보기 →
+        </Link>
       </div>
     </div>
   );
