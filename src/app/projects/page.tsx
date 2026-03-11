@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FlaskConical, GitCompareArrows } from "lucide-react";
+import { ArrowLeft, FlaskConical, GitCompareArrows, ListChecks } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "초안",
@@ -77,7 +77,7 @@ export default function ProjectsPage() {
                     {project.description}
                   </p>
                 )}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Link href={`/projects/${project.id}/evidences`} className="flex-1">
                     <Button variant="outline" size="sm" className="w-full">
                       <FlaskConical className="mr-2 h-4 w-4" />
@@ -88,6 +88,12 @@ export default function ProjectsPage() {
                     <Button variant="outline" size="sm" className="w-full">
                       <GitCompareArrows className="mr-2 h-4 w-4" />
                       유사사례
+                    </Button>
+                  </Link>
+                  <Link href={`/projects/${project.id}/sections`} className="flex-1">
+                    <Button variant="outline" size="sm" className="w-full">
+                      <ListChecks className="mr-2 h-4 w-4" />
+                      섹션 플래너
                     </Button>
                   </Link>
                 </div>
