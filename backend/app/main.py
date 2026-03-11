@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.data_sources import router as data_sources_router
 from app.api.v1.evidences import router as evidences_router
 from app.api.v1.projects import router as projects_router
+from app.api.v1.similar_cases import router as similar_cases_router
 from app.api.v1.snapshots import router as snapshots_router
 from app.config import settings
 
@@ -28,6 +29,7 @@ app.include_router(projects_router, prefix="/api/v1")
 app.include_router(data_sources_router, prefix="/api/v1")
 app.include_router(evidences_router, prefix="/api/v1")
 app.include_router(snapshots_router, prefix="/api/v1")
+app.include_router(similar_cases_router, prefix="/api/v1")
 
 
 @app.get("/health")
