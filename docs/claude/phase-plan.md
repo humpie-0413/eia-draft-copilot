@@ -41,7 +41,18 @@
 - [ ] 스트리밍 응답 처리 (Server-Sent Events)
 - [ ] 컨텍스트 관리 (참고문서 + 이전 섹션 요약)
 
-## Phase 3: Draft Editor UI
+## Phase 3: Evidence Workbench UI (증거 작업대) ✅
+- [x] shadcn/ui 설치 및 기본 설정 (테마 변수, 컴포넌트)
+- [x] TypeScript 타입 정의 (Evidence, Project, DataSource, SourceSnapshot)
+- [x] API 클라이언트 (fetch 래퍼 + 증거 API 함수)
+- [x] 프로젝트별 증거 목록 조회/필터링 화면 (/projects/[id]/evidences)
+- [x] 증거 상세 보기 (메타데이터 + raw_payload 원시 데이터 확인)
+- [x] screening_only 토글 필터 + 분야별 필터
+- [x] 증거 수동 추가/편집 폼 (다이얼로그)
+- [x] 증거 삭제 확인 다이얼로그
+- [x] 프로젝트 목록 페이지 (/projects)
+
+## Phase 3.5: Draft Editor UI
 - [ ] 섹션 네비게이션 사이드바
 - [ ] 리치 텍스트 에디터 (Tiptap 또는 Slate)
 - [ ] AI 초안 생성 패널 (생성/수정/재생성)
