@@ -9,7 +9,7 @@ from sqlalchemy import engine_from_config, pool
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.db import Base  # noqa: E402
-from app.models import Project  # noqa: E402, F401
+from app.models import Project, DataSource, SourceSnapshot, Evidence  # noqa: E402, F401
 
 config = context.config
 
