@@ -58,7 +58,16 @@
 - [ ] AI 초안 생성 패널 (생성/수정/재생성)
 - [ ] 인라인 AI 제안 및 수정 UI
 
-## Phase 4: Review & Compliance Check
+## Phase 4: 유사사례 매칭 시스템 ✅
+- [x] SimilarCase 모델 + Alembic 마이그레이션 003
+- [x] Pydantic 스키마 (CRUD + 매칭 결과 SimilarCaseMatchResult)
+- [x] CRUD 함수 (생성/조회/목록/수정/삭제)
+- [x] 유사도 계산 서비스 (사업유형/위치/규모/환경분야 가중 평균)
+- [x] API 엔드포인트: CRUD + 매칭 검색 (GET /similar-cases/match/{project_id})
+- [x] 기존 evidence/geometry 데이터 연계 (환경 분야 자동 추출, ST_Area 면적 추정)
+- [x] 프론트엔드: 매칭 결과 테이블, 상세 시트, 유사사례 페이지
+
+## Phase 4.5: Review & Compliance Check
 - [ ] 환경영향평가법 기반 체크리스트 엔진
 - [ ] 섹션 완성도 검증 (필수 항목 누락 감지)
 - [ ] 검토 코멘트 시스템
