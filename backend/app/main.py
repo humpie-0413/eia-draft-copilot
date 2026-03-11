@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.data_sources import router as data_sources_router
+from app.api.v1.evidences import router as evidences_router
 from app.api.v1.projects import router as projects_router
+from app.api.v1.snapshots import router as snapshots_router
 from app.config import settings
 
 app = FastAPI(
@@ -22,6 +25,9 @@ app.add_middleware(
 
 # API v1 라우터 등록
 app.include_router(projects_router, prefix="/api/v1")
+app.include_router(data_sources_router, prefix="/api/v1")
+app.include_router(evidences_router, prefix="/api/v1")
+app.include_router(snapshots_router, prefix="/api/v1")
 
 
 @app.get("/health")
