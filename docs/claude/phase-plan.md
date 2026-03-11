@@ -25,7 +25,17 @@
 - [ ] PDF/HWP 파일 업로드 및 텍스트 추출 API
 - [ ] 참고문서 파싱 및 청크 분할 로직
 
-## Phase 2: AI Integration (Claude API)
+## Phase 2: 공공데이터 커넥터 및 증거 수집 인프라 ✅
+- [x] 공공데이터 커넥터 스켈레톤 (BaseConnector + 레지스트리)
+- [x] data_sources 테이블 및 스키마 (소스 레지스트리)
+- [x] source_snapshots 테이블 및 스키마 (raw payload JSONB 보존)
+- [x] evidences 테이블 및 스키마 (정규화된 증거 + screening_only 분리)
+- [x] Alembic 마이그레이션 002 (3개 테이블 + 인덱스)
+- [x] CRUD 함수 (벌크 생성, 필터 조회 포함)
+- [x] REST API 엔드포인트 (data-sources, evidences, snapshots)
+- [x] 커넥터 스켈레톤: KecoAirConnector (대기질), WaterInfoConnector (수질)
+
+## Phase 2.5: AI Integration (Claude API)
 - [ ] Claude API 클라이언트 설정 (`@anthropic-ai/sdk`)
 - [ ] EIA 섹션별 프롬프트 템플릿 설계
 - [ ] 스트리밍 응답 처리 (Server-Sent Events)

@@ -38,6 +38,7 @@ src/                   # Next.js 프론트엔드
 backend/               # FastAPI 백엔드
   app/
     api/v1/            # REST API 엔드포인트
+    connectors/        # 공공데이터 커넥터 (fetch + normalize)
     crud/              # DB CRUD 함수
     models/            # SQLAlchemy 모델
     schemas/           # Pydantic 스키마
