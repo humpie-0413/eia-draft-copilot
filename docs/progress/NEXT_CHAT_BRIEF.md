@@ -1,44 +1,56 @@
 # Next Chat Brief
 
 ## 마지막 완료 Phase
-**Phase 4: 유사사례(Similar Case) 매칭 시스템** ✅
+**Phase 5: 섹션 플래너 + 초안 뼈대** ✅
 
-## 완료된 작업 (Phase 4)
+## 완료된 작업 (Phase 5)
 
 ### 백엔드
-- SimilarCase SQLAlchemy 모델 (사업 유형/위치/규모/환경분야/요약 등)
-- Pydantic 스키마 (CRUD + 매칭 결과 응답 SimilarCaseMatchResult)
-- Alembic 마이그레이션 003: similar_cases 테이블 + 사업유형/공간 인덱스
-- CRUD 함수: 생성/조회/목록/수정/삭제 + 전체 조회(매칭용)
-- 유사도 계산 서비스 (`backend/app/services/similarity.py`):
-  - 사업 유형(0.35): 동일=1.0, 같은 그룹=0.5, 다름=0.0
-  - 위치(0.25): centroid 간 haversine 거리 + 지수 감쇠 (50km→0.5)
-  - 규모(0.20): min/max 면적 비율
-  - 환경 분야(0.20): Jaccard 유사도 (증거 분야 교집합/합집합)
-- API 엔드포인트:
-  - CRUD: POST/GET/PATCH/DELETE `/api/v1/similar-cases`
-  - 매칭: GET `/api/v1/similar-cases/match/{project_id}` (top_k, min_score)
-  - 기존 evidence 데이터에서 환경 분야 자동 추출, geometry → ST_Area로 면적 추정
+- 섹션 정의 서비스 (`backend/app/services/section_planner.py`):
+  - EIA 11개 섹션 정의 (대기, 수질, 토양, 소음·진동, 생태, 토지이용, 교통, 폐기물, 경관, 문화재, 기후)
+  - 섹션별 필수 지표(required_indicators) 목록
+  - evidence 기반 충족도(coverage_ratio) 계산: empty/partial/complete 상태 판정
+  - screening_only=False인 본 평가 데이터만 대상
+- 초안 뼈대 서비스 (`backend/app/services/draft_scaffold.py`):
+  - evidence를 섹션별로 분류·배치
+  - 지표별 그룹핑 + 정형화된 근거 나열 텍스트 생성
+  - **unsupported claim 금지** — LLM 자유 작문 없이 evidence 데이터만 배치
+- Pydantic 스키마 (`backend/app/schemas/section.py`):
+  - SectionStatusRead, SectionStatusList — 섹션 상태 응답
+  - EvidenceEntryRead, ScaffoldSectionRead, DraftScaffoldRead — 초안 뼈대 응답
+- API 엔드포인트 (`backend/app/api/v1/sections.py`):
+  - GET `/projects/{id}/sections/definitions` — 섹션 정의 목록
+  - GET `/projects/{id}/sections/status` — 전체 섹션 충족 상태
+  - GET `/projects/{id}/sections/status/{key}` — 개별 섹션 상태
+  - GET `/projects/{id}/sections/scaffold` — 전체 초안 뼈대
+  - GET `/projects/{id}/sections/scaffold/{key}` — 개별 섹션 뼈대
 
 ### 프론트엔드
-- TypeScript 타입: SimilarCase, SimilarCaseMatch, SimilarCaseMatchList
-- API 클라이언트: 목록 조회 + 매칭 검색 함수
-- 매칭 결과 테이블 컴포넌트 (종합/항목별 유사도 점수 Badge 표시)
-- 상세 시트 컴포넌트 (점수 바 시각화 + 기본정보/환경분야/요약/발견사항)
-- 유사사례 페이지: `/projects/[id]/similar-cases`
-- 프로젝트 목록에 유사사례 버튼 추가
+- TypeScript 타입 (`src/types/section.ts`):
+  - SectionStatus, SectionStatusList, DraftScaffold, ScaffoldSection, EvidenceEntry
+- API 클라이언트 (`src/lib/section-api.ts`):
+  - 섹션 정의/상태/초안 뼈대 조회 함수
+- 컴포넌트:
+  - SectionStatusCard — 충족도 바 + 지표 충족 목록 카드
+  - ScaffoldSectionView — 근거 항목 테이블 + evidence 기반 요약문
+- 페이지:
+  - `/projects/[id]/sections` — 섹션 플래너 (통계 + 상태 카드 그리드)
+  - `/projects/[id]/draft` — 초안 뼈대 (좌측 네비 + 근거 배치 뷰)
+- 프로젝트 목록에 섹션 플래너 버튼 추가
 
 ## 이전 완료 Phase
 - Phase 0: 스캐폴딩 ✅
 - Phase 1: Project CRUD & Backend API ✅
 - Phase 2: 데이터 커넥터 & Evidence 인프라 ✅
 - Phase 3: Evidence Workbench UI ✅
+- Phase 4: 유사사례 매칭 시스템 ✅
 
-## 다음 작업: Phase 5 이후
-- Draft Editor UI (리치 텍스트 에디터, 섹션 네비게이션)
+## 다음 작업: Phase 6
+- QA 규칙 엔진 (필수 항목 체크, 법규 준수 검증)
+- export gate (출력 전 검증)
+- DOCX/PDF 출력
 - AI 연동 (Claude API) — 섹션별 프롬프트 + 스트리밍 응답
 - 커넥터 실제 API 호출 구현 (httpx 기반)
-- Section planner, 초안 뼈대, QA, export 등
 
 ## 주의사항
 - PostgreSQL + PostGIS 로컬 설치 필요
@@ -58,21 +70,18 @@ uvicorn app.main:app --reload    # http://localhost:8000
 ```
 
 ## 주요 파일
-### Phase 4 신규 파일
-- `backend/app/models/similar_case.py` — SimilarCase 모델
-- `backend/app/schemas/similar_case.py` — Pydantic 스키마
-- `backend/app/crud/similar_case.py` — CRUD 함수
-- `backend/app/services/similarity.py` — 유사도 계산 서비스
-- `backend/app/api/v1/similar_cases.py` — API 엔드포인트
-- `backend/alembic/versions/003_create_similar_cases_table.py` — 마이그레이션
-- `src/types/similar-case.ts` — TypeScript 타입
-- `src/lib/similar-case-api.ts` — API 클라이언트
-- `src/components/similar-case/similar-case-match-table.tsx` — 매칭 테이블
-- `src/components/similar-case/similar-case-detail-sheet.tsx` — 상세 시트
-- `src/app/projects/[id]/similar-cases/page.tsx` — 유사사례 페이지
+### Phase 5 신규 파일
+- `backend/app/services/section_planner.py` — 섹션 정의 + 상태 계산
+- `backend/app/services/draft_scaffold.py` — 초안 뼈대 생성
+- `backend/app/schemas/section.py` — Pydantic 스키마
+- `backend/app/api/v1/sections.py` — API 엔드포인트
+- `src/types/section.ts` — TypeScript 타입
+- `src/lib/section-api.ts` — API 클라이언트
+- `src/components/section/section-status-card.tsx` — 섹션 상태 카드
+- `src/components/section/scaffold-section-view.tsx` — 뼈대 섹션 뷰
+- `src/app/projects/[id]/sections/page.tsx` — 섹션 플래너 페이지
+- `src/app/projects/[id]/draft/page.tsx` — 초안 뼈대 페이지
 
 ### 기존 파일 수정
-- `backend/app/models/__init__.py` — SimilarCase import 추가
-- `backend/app/main.py` — similar_cases 라우터 등록
-- `backend/alembic/env.py` — SimilarCase import 추가
-- `src/app/projects/page.tsx` — 유사사례 버튼 추가
+- `backend/app/main.py` — sections 라우터 등록
+- `src/app/projects/page.tsx` — 섹션 플래너 버튼 추가

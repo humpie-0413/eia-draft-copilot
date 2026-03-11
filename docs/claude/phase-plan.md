@@ -73,12 +73,30 @@
 - [ ] 검토 코멘트 시스템
 - [ ] 최종 보고서 내보내기 (PDF/DOCX)
 
-## Phase 5: Deployment & Polish
+## Phase 5: 섹션 플래너 + 초안 뼈대 ✅
+- [x] 섹션 정의 서비스: EIA 11개 섹션 정의 (대기, 수질, 토양, 소음·진동, 생태 등)
+- [x] 섹션별 필수 지표 목록 + 충족도(coverage_ratio) 계산
+- [x] 섹션 상태 엔진: empty/partial/complete 판정
+- [x] 초안 뼈대 서비스: evidence 기반 근거 나열 방식 (unsupported claim 금지)
+- [x] Pydantic 스키마: 섹션 상태 + 초안 뼈대 응답 모델
+- [x] API 엔드포인트:
+  - GET /projects/{id}/sections/definitions
+  - GET /projects/{id}/sections/status
+  - GET /projects/{id}/sections/status/{key}
+  - GET /projects/{id}/sections/scaffold
+  - GET /projects/{id}/sections/scaffold/{key}
+- [x] 프론트엔드: 섹션 플래너 페이지 (/projects/[id]/sections)
+- [x] 프론트엔드: 초안 뼈대 페이지 (/projects/[id]/draft)
+- [x] 프로젝트 목록에 섹션 플래너 버튼 추가
+
+## Phase 6: Deployment & Polish
+- [ ] QA 규칙 엔진
+- [ ] export gate
+- [ ] DOCX/PDF 출력
 - [ ] Vercel 배포 설정
 - [ ] 환경변수 및 시크릿 관리
 - [ ] 사용자 인증 (NextAuth.js)
 - [ ] 성능 최적화 및 에러 핸들링
-- [ ] 사용자 피드백 수집 및 반영
 
 ---
 
