@@ -10,25 +10,47 @@
 
 ## Tech Stack
 
+### Frontend
 - **Framework**: Next.js 14+ (App Router, TypeScript)
 - **Styling**: Tailwind CSS
-- **AI**: Anthropic Claude API (`@anthropic-ai/sdk`)
 - **State**: React Context + useReducer (필요 시 Zustand 도입)
 - **Testing**: Vitest + React Testing Library
+
+### Backend
+- **Framework**: FastAPI (Python 3.12+)
+- **Database**: PostgreSQL + PostGIS
+- **ORM**: SQLAlchemy 2.0 (async) + GeoAlchemy2
+- **Migration**: Alembic
+- **Validation**: Pydantic v2 + geojson-pydantic
+- **Testing**: pytest + httpx
+
+### Shared
+- **AI**: Anthropic Claude API
 
 ## Directory Structure
 
 ```
-src/
-  app/           # Next.js App Router pages & layouts
-  components/    # Reusable UI components
-  lib/           # Utility functions, API clients, helpers
-  types/         # TypeScript type definitions
+src/                   # Next.js 프론트엔드
+  app/                 # App Router pages & layouts
+  components/          # Reusable UI components
+  lib/                 # Utility functions, API clients
+  types/               # TypeScript type definitions
+backend/               # FastAPI 백엔드
+  app/
+    api/v1/            # REST API 엔드포인트
+    crud/              # DB CRUD 함수
+    models/            # SQLAlchemy 모델
+    schemas/           # Pydantic 스키마
+    main.py            # FastAPI 앱 엔트리포인트
+    config.py          # 환경 설정
+    db.py              # DB 세션 관리
+  alembic/             # DB 마이그레이션
+  tests/               # 백엔드 테스트
 docs/
-  claude/        # Phase plans, architecture decisions
-  progress/      # Chat briefs, progress logs
-  references/    # EIA reference materials
-public/          # Static assets
+  claude/              # Phase plans, architecture decisions
+  progress/            # Chat briefs, progress logs
+  references/          # EIA reference materials
+public/                # Static assets
 ```
 
 ## Conventions
@@ -43,10 +65,18 @@ public/          # Static assets
 ## Commands
 
 ```bash
+# Frontend
 npm run dev       # 개발 서버 실행 (http://localhost:3000)
 npm run build     # 프로덕션 빌드
 npm run lint      # ESLint 검사
 npm run test      # Vitest 테스트 실행
+
+# Backend
+cd backend
+pip install -r requirements.txt
+alembic upgrade head              # DB 마이그레이션
+uvicorn app.main:app --reload     # 개발 서버 (http://localhost:8000)
+pytest tests/ -v                  # 테스트 실행
 ```
 
 ## Phase Plan

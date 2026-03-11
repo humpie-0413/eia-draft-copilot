@@ -1,6 +1,6 @@
 # EIA Draft Copilot — Phase Plan
 
-## Phase 0: Project Scaffolding & Planning ← 현재
+## Phase 0: Project Scaffolding & Planning ✅
 - [x] Git 저장소 초기화
 - [x] 디렉토리 구조 생성
 - [x] CLAUDE.md 작성
@@ -11,11 +11,19 @@
 - [x] 기본 레이아웃 및 랜딩 페이지 스캐폴딩
 - [x] ESLint + Prettier 설정
 
-## Phase 1: Core Data Models & Document Parsing
+## Phase 1: Project CRUD & Backend API ✅
+- [x] FastAPI 백엔드 스캐폴딩 (`backend/`)
+- [x] PostgreSQL + PostGIS DB 스키마 (projects 테이블)
+- [x] Alembic 마이그레이션 설정 및 초기 마이그레이션
+- [x] Project CRUD API 엔드포인트 (POST/GET/PATCH/DELETE)
+- [x] GeoJSON 지오메트리 입력 및 검증 (geojson-pydantic)
+- [x] Pydantic 스키마 기반 입력 검증 및 에러 핸들링
+- [x] 통합 테스트 (pytest + httpx)
+
+## Phase 1.5: Core Data Models & Document Parsing (이전 Phase 1)
 - [ ] EIA 문서 구조 타입 정의 (섹션, 항목, 메타데이터)
 - [ ] PDF/HWP 파일 업로드 및 텍스트 추출 API
 - [ ] 참고문서 파싱 및 청크 분할 로직
-- [ ] 로컬 스토리지 기반 프로젝트 저장/불러오기
 
 ## Phase 2: AI Integration (Claude API)
 - [ ] Claude API 클라이언트 설정 (`@anthropic-ai/sdk`)
