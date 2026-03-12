@@ -1,40 +1,39 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Post-2: 환경기준 비교 엔진** ✅
+**Post-3: 초안 텍스트 생성기 고도화** ✅
 
-## 완료된 작업 (Post-2)
+## 완료된 작업 (Post-3)
 
-### 환경기준 데이터
-- `backend/app/data/env_standards.py`:
-  - 대기환경기준: PM10, PM2.5, SO2, NO2, CO, O3 (연평균/24시간/1시간)
-  - 수질환경기준: 하천 생활환경기준 Ia~V등급 (BOD, COD, SS, DO, T-P)
-  - 소음환경기준: 주거지역 주간 55dB(A), 야간 45dB(A)
-  - 수질 등급 판정 함수 (최악 등급 적용)
+### 서술문 템플릿 엔진
+- `backend/app/services/narrative_generator.py`:
+  - 대기질: 지표별 환경기준 비교 서술 + 초과 시 저감대책 언급
+  - 수질: BOD/COD 병합 서술 + 등급 판정 + 기타 지표 서술
+  - 소음·진동: 주간/야간 판정 + 진동 + 방음대책 서술
+  - 생태: 식물상/동물상 종수 + 녹지자연도 + 법정보호종 서술
+  - 범용: 토양/교통/폐기물 등 환경기준 없는 섹션
+  - 미수집: "현장조사 및 자료 수집이 필요하다" 고정 서술문
+  - LLM 미사용 결정적 템플릿 방식
 
-### 기준 비교 서비스
-- `backend/app/services/standard_checker.py`:
-  - 통계 결과 ↔ 환경기준 비교 (pass/fail/na 판정)
-  - 수질 등급 판정 포함 (BOD/COD/DO/T-P 기반)
-  - 섹션별 기준 비교 요약 서술문 자동 생성
+### scaffold 서비스 개편
+- narrative 필드 분리 (서술문 ↔ 통계 요약 분리)
+- 상세 데이터 샘플 5건 제한 (나머지는 "별첨 참조")
+- summary_text: 측정 현황 요약 테이블 + 비수치 데이터 + 샘플
 
-### 기준 비교 API
-- `GET /api/v1/projects/{id}/standards-check` — 전체 섹션 기준 비교
-- `GET /api/v1/projects/{id}/standards-check/{section_key}` — 개별 섹션
-- 쿼리 파라미터: years_filter, aggregate_daily
+### DOCX/PDF export 4부 구조
+- 가. 현황 및 영향 분석 (서술문 본문)
+- 나. 측정 현황 요약 (통계 테이블)
+- 다. 환경기준 비교 (기준 비교 테이블)
+- 라. 측정 데이터 (대표 샘플 5건 + "별첨 참조")
 
-### scaffold 수정
-- 통계 요약 테이블에 "환경기준" + "판정" 열 추가
-- 기준 비교 서술문 섹션 추가 (적합/초과 서술 자동 생성)
-
-### QA 규칙
-- R006: 환경기준 초과 지표 존재 시 warning (초과 지표명 + 수치 포함)
-- warning이므로 export는 차단하지 않음
+### 프론트엔드 업데이트
+- 서술문 미리보기 영역 (좌측 강조 바 스타일)
+- 원시 데이터 목록 접기/펼치기(collapsible) 전환
+- SectionStatusCard 확장 상태 색상 추가
 
 ### 테스트
-- `backend/tests/test_standard_checker.py`: 27개 테스트 전부 통과
-- 기존 테스트 호환: test_statistics.py 16개, test_e2e.py 1개 모두 통과
-- 전체 44개 테스트 통과
+- `backend/tests/test_narrative_generator.py`: 28개 신규 테스트
+- 전체 136개 테스트 통과
 
 ## 이전 완료 Phase
 - Phase 0: 스캐폴딩 ✅
@@ -47,9 +46,9 @@
 - Post-0.5: 스펙 정렬 ✅
 - Post-1: 데이터 전처리 및 통계 엔진 ✅
 - Post-2: 환경기준 비교 엔진 ✅
+- Post-3: 초안 텍스트 생성기 고도화 ✅
 
-## 향후 작업 (Post-3+)
-- Post-3: 초안 텍스트 생성기 고도화 (통계+기준비교 기반 서술문 자동 생성)
+## 향후 작업 (Post-4+)
 - Post-4: 추가 커넥터 (토양, 기후)
 - Post-5: 문서 포맷 고도화
 - Post-6: LLM adapter 연동
@@ -82,12 +81,13 @@ pytest tests/ -v
 python scripts/demo_full_scenario.py
 ```
 
-## 주요 파일 (Post-2 신규/수정)
-- `backend/app/data/env_standards.py` — 환경기준 데이터 (신규)
-- `backend/app/services/standard_checker.py` — 기준 비교 서비스 (신규)
-- `backend/app/schemas/standards.py` — 기준 비교 API 스키마 (신규)
-- `backend/app/api/v1/standards.py` — 기준 비교 API 엔드포인트 (신규)
-- `backend/app/services/draft_scaffold.py` — scaffold 기준 비교 반영 (수정)
-- `backend/app/services/qa_engine.py` — R006 규칙 추가 (수정)
-- `backend/app/main.py` — standards 라우터 등록 (수정)
-- `backend/tests/test_standard_checker.py` — 테스트 27개 (신규)
+## 주요 파일 (Post-3 신규/수정)
+- `backend/app/services/narrative_generator.py` — 서술문 템플릿 엔진 (신규)
+- `backend/app/services/draft_scaffold.py` — scaffold 전면 개편 (수정)
+- `backend/app/services/export_service.py` — DOCX/PDF 4부 구조 (수정)
+- `backend/app/schemas/section.py` — narrative 필드 추가 (수정)
+- `backend/app/api/v1/sections.py` — narrative 매핑 추가 (수정)
+- `backend/tests/test_narrative_generator.py` — 테스트 28개 (신규)
+- `src/types/section.ts` — narrative 필드 추가 (수정)
+- `src/components/section/scaffold-section-view.tsx` — 서술문 UI (수정)
+- `src/components/section/section-status-card.tsx` — 상태 색상 (수정)
