@@ -242,12 +242,12 @@ class TestKecoAirConnector:
 
 
 # ──────────────────────────────────────────────────
-# 물환경정보시스템 수질 커넥터 테스트
+# 국립환경과학원 수질 DB 커넥터 테스트
 # ──────────────────────────────────────────────────
 
 
 class TestWaterInfoConnector:
-    """물환경정보시스템 수질 커넥터 단위 테스트."""
+    """국립환경과학원 수질 DB (물환경 수질측정망) 커넥터 단위 테스트."""
 
     def setup_method(self):
         self.connector = WaterInfoConnector()
@@ -255,37 +255,41 @@ class TestWaterInfoConnector:
         self.data_source_id = uuid.uuid4()
         self.snapshot_id = uuid.uuid4()
 
-    # 샘플 API 응답
+    # 샘플 API 응답 — 국립환경과학원 수질 DB 실제 구조
     SAMPLE_RESPONSE = {
-        "response": {
-            "header": {"resultCode": "00", "resultMsg": "NORMAL_CODE"},
-            "body": {
-                "totalCount": 2,
-                "items": [
-                    {
-                        "ptNo": "3008A70",
-                        "ptNm": "팔당댐",
-                        "wmyrMd": "20260301",
-                        "bod": "1.2",
-                        "cod": "3.5",
-                        "ss": "8.0",
-                        "do": "9.5",
-                        "tn": "2.1",
-                        "tp": "0.03",
-                    },
-                    {
-                        "ptNo": "3008A70",
-                        "ptNm": "팔당댐",
-                        "wmyrMd": "20260215",
-                        "bod": "1.0",
-                        "cod": "",
-                        "ss": "6.5",
-                        "do": "10.2",
-                        "tn": None,
-                        "tp": "0.02",
-                    },
-                ],
-            },
+        "getWaterMeasuringList": {
+            "header": {"code": "00", "message": "NORMAL SERVICE"},
+            "item": [
+                {
+                    "PT_NO": "3008A70",
+                    "PT_NM": "팔당댐",
+                    "WMCYMD": "2024.03.01",
+                    "WMYR": "2024",
+                    "WMOD": "03",
+                    "ITEM_BOD": "         1.2",
+                    "ITEM_COD": "         3.5",
+                    "ITEM_SS": "         8.0",
+                    "ITEM_DOC": "         9.5",
+                    "ITEM_TN": "         2.100",
+                    "ITEM_TP": "         0.030",
+                },
+                {
+                    "PT_NO": "3008A70",
+                    "PT_NM": "팔당댐",
+                    "WMCYMD": "2024.02.15",
+                    "WMYR": "2024",
+                    "WMOD": "02",
+                    "ITEM_BOD": "         1.0",
+                    "ITEM_COD": "",
+                    "ITEM_SS": "         6.5",
+                    "ITEM_DOC": "        10.2",
+                    "ITEM_TN": None,
+                    "ITEM_TP": "         0.020",
+                },
+            ],
+            "numOfRows": 100,
+            "pageNo": 1,
+            "totalCount": 2,
         }
     }
 
@@ -299,11 +303,11 @@ class TestWaterInfoConnector:
         )
 
         # 첫 번째: 6개 전부 유효
-        # 두 번째: cod="" 건너뜀, tn=None 건너뜀 → 4개
+        # 두 번째: ITEM_COD="" 건너뜀, ITEM_TN=None 건너뜀 → 4개
         assert len(evidences) == 10
 
     def test_normalize_지표_값_검증(self):
-        """지표 값과 단위가 올바르게 매핑되는지 확인."""
+        """지표 값과 단위가 올바르게 매핑되는지 확인 (공백 제거 포함)."""
         evidences = self.connector.normalize(
             raw_payload=self.SAMPLE_RESPONSE,
             project_id=self.project_id,
@@ -318,7 +322,7 @@ class TestWaterInfoConnector:
         assert bod.category == EvidenceCategory.WATER_QUALITY
 
     def test_normalize_측정일_파싱(self):
-        """YYYYMMDD 형식의 측정일이 올바르게 파싱되는지 확인."""
+        """YYYY.MM.DD 형식의 측정일이 올바르게 파싱되는지 확인."""
         evidences = self.connector.normalize(
             raw_payload=self.SAMPLE_RESPONSE,
             project_id=self.project_id,
@@ -327,7 +331,7 @@ class TestWaterInfoConnector:
         )
 
         first = evidences[0]
-        assert first.observed_at == datetime(2026, 3, 1)
+        assert first.observed_at == datetime(2024, 3, 1)
 
     def test_normalize_메타데이터_포함(self):
         """메타데이터에 측정지점 정보가 포함되는지 확인."""
@@ -356,14 +360,18 @@ class TestWaterInfoConnector:
             e
             for e in evidences
             if e.indicator == "COD"
-            and e.metadata_json.get("measure_date") == "20260215"
+            and e.metadata_json.get("measure_date") == "2024.02.15"
         ]
         assert len(second_cod) == 0
 
     def test_normalize_빈_응답(self):
-        """items가 비어있을 때 빈 리스트를 반환하는지 확인."""
+        """item이 비어있을 때 빈 리스트를 반환하는지 확인."""
         empty_payload = {
-            "response": {"body": {"items": [], "totalCount": 0}}
+            "getWaterMeasuringList": {
+                "header": {"code": "00", "message": "NORMAL SERVICE"},
+                "item": [],
+                "totalCount": 0,
+            }
         }
         evidences = self.connector.normalize(
             raw_payload=empty_payload,
@@ -381,22 +389,17 @@ class TestWaterInfoConnector:
             mock_settings.CONNECTOR_TIMEOUT = 30
 
             with pytest.raises(ValueError, match="DATA_GO_KR_API_KEY"):
-                await self.connector.fetch(
-                    {"site_id": "3008A70", "start_date": "2026-01-01", "end_date": "2026-03-12"}
-                )
+                await self.connector.fetch({"year": "2024"})
 
     @pytest.mark.asyncio
     async def test_fetch_필수_파라미터_누락(self):
-        """필수 파라미터가 없을 때 ValueError가 발생하는지 확인."""
+        """year가 없을 때 ValueError가 발생하는지 확인."""
         with patch("app.connectors.water_info.settings") as mock_settings:
             mock_settings.DATA_GO_KR_API_KEY = "test_key"
             mock_settings.CONNECTOR_TIMEOUT = 30
 
-            with pytest.raises(ValueError, match="site_id"):
+            with pytest.raises(ValueError, match="year"):
                 await self.connector.fetch({})
-
-            with pytest.raises(ValueError, match="start_date"):
-                await self.connector.fetch({"site_id": "3008A70"})
 
     @pytest.mark.asyncio
     async def test_fetch_정상_호출(self):
@@ -419,11 +422,7 @@ class TestWaterInfoConnector:
                 mock_client_cls.return_value = mock_client
 
                 result = await self.connector.fetch(
-                    {
-                        "site_id": "3008A70",
-                        "start_date": "2026-01-01",
-                        "end_date": "2026-03-12",
-                    }
+                    {"year": "2024", "pt_no": "3008A70"}
                 )
 
                 assert result == self.SAMPLE_RESPONSE

@@ -88,7 +88,7 @@ pytest tests/ -v                  # 테스트 실행
 1. [공공데이터포털](https://www.data.go.kr/) 회원가입 및 로그인
 2. 아래 API 활용 신청:
    - **에어코리아 대기오염정보**: https://www.data.go.kr/data/15073861/openapi.do
-   - **물환경정보시스템 수질측정정보**: https://www.data.go.kr/data/15009370/openapi.do
+   - **국립환경과학원 수질 DB (물환경 수질측정망 운영결과)**: https://www.data.go.kr/data/15081073/openapi.do
 3. 발급받은 인코딩 키를 `backend/.env`에 설정:
    ```
    DATA_GO_KR_API_KEY=발급받은_인코딩_키

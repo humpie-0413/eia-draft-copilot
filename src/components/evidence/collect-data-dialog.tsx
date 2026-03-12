@@ -43,22 +43,15 @@ const CONNECTOR_PARAMS: Record<
   ],
   water_info: [
     {
-      key: "site_id",
+      key: "year",
+      label: "조회 연도",
+      placeholder: "예: 2024",
+      required: true,
+    },
+    {
+      key: "pt_no",
       label: "측정지점 코드",
-      placeholder: "예: 3008A70",
-      required: true,
-    },
-    {
-      key: "start_date",
-      label: "시작일",
-      placeholder: "2026-01-01",
-      required: true,
-    },
-    {
-      key: "end_date",
-      label: "종료일",
-      placeholder: "2026-03-12",
-      required: true,
+      placeholder: "예: 2008A40 (선택)",
     },
   ],
 };
