@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import io
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -66,7 +66,7 @@ async def generate_docx(
     buffer.seek(0)
 
     # 파일명 생성 (HTTP 헤더 latin-1 호환을 위해 ASCII 안전 처리)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
     # 한글 등 비ASCII 문자를 제거하고 ASCII 안전 파일명 생성
     safe_name = "".join(
         c if c.isascii() and c.isalnum() or c in "-_" else "_"

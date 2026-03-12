@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -174,7 +174,7 @@ async def generate_draft_scaffold(
 
     return DraftScaffold(
         project_id=str(project_id),
-        generated_at=datetime.utcnow().isoformat(),
+        generated_at=datetime.now(tz=timezone.utc).isoformat(),
         sections=sections,
         total_evidence_count=total_count,
     )

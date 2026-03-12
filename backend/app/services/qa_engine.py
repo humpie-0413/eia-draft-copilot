@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -261,7 +261,7 @@ async def run_qa(
 
     return QaResult(
         project_id=str(project_id),
-        run_at=datetime.utcnow().isoformat(),
+        run_at=datetime.now(tz=timezone.utc).isoformat(),
         issues=all_issues,
         summary=summary,
         export_ready=export_ready,
