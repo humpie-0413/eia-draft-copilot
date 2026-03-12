@@ -499,8 +499,27 @@ class TestScaffoldIntegration:
 # ────────────────────────────────────────────
 
 class TestDocxStructure:
+    def _make_ctx(self, scaffold, project_name, section_data):
+        """테스트용 ExportContext를 생성하는 헬퍼."""
+        from app.services.export_service import ExportContext, ExportOptions
+        return ExportContext(
+            scaffold=scaffold,
+            project_name=project_name,
+            project_type=None,
+            centroid=None,
+            section_data=section_data,
+            similar_cases=[],
+            qa_result=None,
+            options=ExportOptions(
+                include_appendix_a=False,
+                include_appendix_b=False,
+                include_appendix_c=False,
+            ),
+            generated_at=scaffold.generated_at,
+        )
+
     def test_docx_section_structure(self):
-        """DOCX 섹션이 4부 구조(가/나/다/라)를 포함하는지 검증"""
+        """DOCX 섹션이 4부 구조(N.1/N.2/N.3/N.4)를 포함하는지 검증"""
         from app.services.draft_scaffold import DraftScaffold, EvidenceEntry, ScaffoldSection
         from app.services.export_service import _build_docx
         from app.services.statistics import IndicatorStats, SectionStats
@@ -560,16 +579,17 @@ class TestDocxStructure:
         )
 
         section_data = {"air_quality": (stats, check)}
-        doc = _build_docx(scaffold, "테스트 프로젝트", section_data)
+        ctx = self._make_ctx(scaffold, "테스트 프로젝트", section_data)
+        doc = _build_docx(ctx)
 
         # DOCX 문서에서 텍스트 추출
         all_text = "\n".join(p.text for p in doc.paragraphs)
 
-        # 4부 구조 확인
-        assert "가. 현황 및 영향 분석" in all_text
-        assert "나. 측정 현황 요약" in all_text
-        assert "다. 환경기준 비교" in all_text
-        assert "라. 측정 데이터" in all_text
+        # 4부 구조 확인 (Post-5: 번호 체계 N.1/N.2/N.3/N.4)
+        assert "1.1 현황 및 영향 분석" in all_text
+        assert "1.2 측정 현황 요약" in all_text
+        assert "1.3 환경기준 비교" in all_text
+        assert "1.4 측정 데이터" in all_text
 
         # 서술문 포함 확인
         assert "대기질 현황을 분석한 결과" in all_text
@@ -598,12 +618,13 @@ class TestDocxStructure:
         )
 
         section_data = {"soil": (None, None)}
-        doc = _build_docx(scaffold, "테스트", section_data)
+        ctx = self._make_ctx(scaffold, "테스트", section_data)
+        doc = _build_docx(ctx)
 
         all_text = "\n".join(p.text for p in doc.paragraphs)
         assert "수집되지 않았다" in all_text
         # 4부 구조는 나타나지 않아야 함 (데이터 없으므로)
-        assert "가. 현황 및 영향 분석" not in all_text
+        assert "3.1 현황 및 영향 분석" not in all_text
 
     def test_docx_sample_limit(self):
         """DOCX에서 샘플이 5건으로 제한되는지 확인"""
@@ -639,15 +660,17 @@ class TestDocxStructure:
         )
 
         section_data = {"air_quality": (None, None)}
-        doc = _build_docx(scaffold, "테스트", section_data)
+        ctx = self._make_ctx(scaffold, "테스트", section_data)
+        doc = _build_docx(ctx)
 
-        # 테이블에서 데이터 행 수 확인 (마지막 테이블이 증거 테이블)
+        # 테이블에서 데이터 행 수 확인
+        # Post-5: 목차 테이블(1개) + 증거 테이블(1개) = 최소 2개
         tables = doc.tables
-        assert len(tables) > 0
+        assert len(tables) >= 2
+        # 마지막 테이블이 증거 테이블: 헤더 1행 + 데이터 5행 = 6행
         last_table = tables[-1]
-        # 헤더 1행 + 데이터 5행 = 6행
         assert len(last_table.rows) == 6
 
-        # 별첨 참조 문구 확인
+        # 부록 참조 문구 확인
         all_text = "\n".join(p.text for p in doc.paragraphs)
-        assert "별첨 참조" in all_text
+        assert "부록 A 참조" in all_text
