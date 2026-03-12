@@ -163,24 +163,25 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> bool
         print(f"    수집 건수: {result['evidence_count']}")
         if result.get("error_message"):
             print(f"    오류: {result['error_message']}")
-    else:
-        print("    [경고] 에어코리아 수집 실패 — 수동 대기질 데이터로 대체합니다.")
-        # 수동 대기질 데이터 추가
-        air_manual = [
-            {"category": "air_quality", "indicator": "PM10_연평균", "value": "42", "numeric_value": 42.0, "unit": "ug/m3"},
-            {"category": "air_quality", "indicator": "PM2.5_연평균", "value": "21", "numeric_value": 21.0, "unit": "ug/m3"},
-            {"category": "air_quality", "indicator": "NO2_연평균", "value": "0.030", "numeric_value": 0.030, "unit": "ppm"},
-            {"category": "air_quality", "indicator": "SO2_연평균", "value": "0.003", "numeric_value": 0.003, "unit": "ppm"},
-            {"category": "air_quality", "indicator": "CO_연평균", "value": "0.4", "numeric_value": 0.4, "unit": "ppm"},
-            {"category": "air_quality", "indicator": "O3_연평균", "value": "0.028", "numeric_value": 0.028, "unit": "ppm"},
-        ]
-        for ev in air_manual:
-            await api_call(
-                client, "POST", "/api/v1/evidences",
-                json={"project_id": project_id, "screening_only": False, **ev},
-                expected=201, label=f"수동 대기질: {ev['indicator']}",
-            )
-        print(f"    수동 대기질 데이터 {len(air_manual)}건 추가 완료")
+
+    # 커넥터가 수집하는 지표명(PM10, PM2.5 등)과
+    # 섹션 플래너 필수 지표명(PM10_연평균 등)이 다르므로 필수 지표를 수동 보충
+    sub_banner("2-1b. 대기질 필수 지표(연평균) 수동 보충")
+    air_required = [
+        {"category": "air_quality", "indicator": "PM10_연평균", "value": "42", "numeric_value": 42.0, "unit": "ug/m3"},
+        {"category": "air_quality", "indicator": "PM2.5_연평균", "value": "21", "numeric_value": 21.0, "unit": "ug/m3"},
+        {"category": "air_quality", "indicator": "NO2_연평균", "value": "0.030", "numeric_value": 0.030, "unit": "ppm"},
+        {"category": "air_quality", "indicator": "SO2_연평균", "value": "0.003", "numeric_value": 0.003, "unit": "ppm"},
+        {"category": "air_quality", "indicator": "CO_연평균", "value": "0.4", "numeric_value": 0.4, "unit": "ppm"},
+        {"category": "air_quality", "indicator": "O3_연평균", "value": "0.028", "numeric_value": 0.028, "unit": "ppm"},
+    ]
+    for ev in air_required:
+        await api_call(
+            client, "POST", "/api/v1/evidences",
+            json={"project_id": project_id, "screening_only": False, **ev},
+            expected=201, label=f"대기질 보충: {ev['indicator']}",
+        )
+    print(f"    대기질 필수 지표 {len(air_required)}건 보충 완료")
 
     # 2-2. 수질 커넥터
     sub_banner("2-2. 수질 커넥터 — 한강 수계 측정지점")
