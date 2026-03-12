@@ -115,6 +115,12 @@ class ScaffoldSectionRead(BaseModel):
     summary_text: str = Field(
         ..., description="evidence 기반 자동 생성 근거 요약문 (LLM 작문 아님)"
     )
+    state: SectionStatusEnum = Field(
+        SectionStatusEnum.EMPTY, description="섹션 상태 (output-contracts.md 스펙)"
+    )
+    missing_indicators: list[str] = Field(
+        default_factory=list, description="누락된 필수 지표명 목록"
+    )
 
 
 class DraftScaffoldRead(BaseModel):

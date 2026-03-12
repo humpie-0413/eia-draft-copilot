@@ -68,6 +68,8 @@ export interface ScaffoldSection {
   order: number;
   evidence_entries: EvidenceEntry[];
   summary_text: string;
+  state: SectionStatusValue;
+  missing_indicators: string[];
 }
 
 /** 초안 뼈대 전체 */

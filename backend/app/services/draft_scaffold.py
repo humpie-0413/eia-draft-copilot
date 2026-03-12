@@ -18,6 +18,7 @@ from app.models.evidence import Evidence
 from app.services.section_planner import (
     EIA_SECTIONS,
     SectionDefinition,
+    calculate_section_status,
     get_section_definition,
 )
 
@@ -46,6 +47,8 @@ class ScaffoldSection:
     order: int
     evidence_entries: list[EvidenceEntry] = field(default_factory=list)
     summary_text: str = ""          # evidence 기반 자동 생성 요약문
+    state: str = "empty"            # 섹션 상태 (output-contracts.md 스펙)
+    missing_indicators: list[str] = field(default_factory=list)  # 누락된 필수 지표
 
 
 @dataclass
@@ -143,6 +146,11 @@ async def generate_section_scaffold(
     entries = [_evidence_to_entry(ev) for ev in evidences]
     summary = _format_evidence_summary(section_def, entries)
 
+    # 섹션 상태 조회하여 state, missing_indicators 반영
+    section_status = await calculate_section_status(db, project_id, section_key)
+    state = section_status.status if section_status else "empty"
+    missing = section_status.missing_indicators if section_status else []
+
     return ScaffoldSection(
         section_key=section_def.key,
         title=section_def.title,
@@ -150,6 +158,8 @@ async def generate_section_scaffold(
         order=section_def.order,
         evidence_entries=entries,
         summary_text=summary,
+        state=state,
+        missing_indicators=missing,
     )
 
 

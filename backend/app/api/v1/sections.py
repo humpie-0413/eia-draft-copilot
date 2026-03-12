@@ -204,6 +204,8 @@ async def get_draft_scaffold(
                     for e in sec.evidence_entries
                 ],
                 summary_text=sec.summary_text,
+                state=sec.state,
+                missing_indicators=sec.missing_indicators,
             )
             for sec in scaffold.sections
         ],
@@ -250,4 +252,6 @@ async def get_section_scaffold(
             for e in scaffold.evidence_entries
         ],
         summary_text=scaffold.summary_text,
+        state=scaffold.state,
+        missing_indicators=scaffold.missing_indicators,
     )
