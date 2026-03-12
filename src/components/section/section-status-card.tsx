@@ -14,6 +14,10 @@ const STATUS_COLORS: Record<SectionStatusValue, string> = {
   empty: "bg-gray-100 text-gray-600",
   partial: "bg-yellow-100 text-yellow-700",
   complete: "bg-green-100 text-green-700",
+  auto_filled: "bg-blue-100 text-blue-700",
+  evidence_draft: "bg-orange-100 text-orange-700",
+  expert_required: "bg-red-100 text-red-700",
+  not_applicable: "bg-gray-100 text-gray-500",
 };
 
 interface SectionStatusCardProps {

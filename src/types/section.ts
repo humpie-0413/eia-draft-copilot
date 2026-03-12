@@ -68,6 +68,7 @@ export interface ScaffoldSection {
   order: number;
   evidence_entries: EvidenceEntry[];
   summary_text: string;
+  narrative: string;
   state: SectionStatusValue;
   missing_indicators: string[];
 }
