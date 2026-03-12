@@ -19,6 +19,10 @@ from app.services.section_planner import (
     calculate_section_status,
     SectionStatus,
 )
+from app.services.standard_checker import (
+    CheckStatus,
+    check_section_standards,
+)
 
 
 class Severity(str, Enum):
@@ -207,6 +211,51 @@ def _rule_single_evidence_indicator(
     return issues
 
 
+async def _rule_standards_exceedance(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    section_def: SectionDefinition,
+) -> list[QaIssue]:
+    """R006: 환경기준 초과 지표 검출.
+
+    환경기준이 정의된 섹션에서 기준 초과 지표가 있으면 warning을 발생한다.
+    """
+    issues: list[QaIssue] = []
+
+    section_check = await check_section_standards(db, project_id, section_def.key)
+    if section_check is None or not section_check.has_exceedance:
+        return issues
+
+    fail_details: list[str] = []
+    fail_indicators: list[str] = []
+    for ind in section_check.indicators:
+        if ind.status == CheckStatus.FAIL:
+            fail_indicators.append(ind.indicator)
+            unit = ind.standard_unit or ""
+            avg_str = f"{ind.measured_avg:.4g}" if ind.measured_avg is not None else "?"
+            std_str = f"{ind.standard_value:.4g}" if ind.standard_value is not None else "?"
+            fail_details.append(
+                f"{ind.indicator}: 측정 평균 {avg_str} {unit} "
+                f"(기준 {std_str} {unit})"
+            )
+
+    if fail_details:
+        issues.append(QaIssue(
+            rule_id="R006",
+            severity=Severity.WARNING,
+            section_key=section_def.key,
+            title=f"{section_def.title} 환경기준 초과 ({len(fail_details)}건)",
+            message=(
+                f"{section_def.title} 섹션에서 환경기준을 초과하는 지표가 "
+                f"확인되었습니다: {'; '.join(fail_details)}. "
+                f"저감대책 수립이 필요합니다."
+            ),
+            indicators=fail_indicators,
+        ))
+
+    return issues
+
+
 # ────────────────────────────────────────────
 # 메인 QA 실행
 # ────────────────────────────────────────────
@@ -248,6 +297,11 @@ async def run_qa(
         # R005: 단일 근거 지표
         all_issues.extend(
             _rule_single_evidence_indicator(section_def, section_status)
+        )
+
+        # R006: 환경기준 초과
+        all_issues.extend(
+            await _rule_standards_exceedance(db, project_id, section_def)
         )
 
     # 요약 집계

@@ -5,6 +5,7 @@ evidence 데이터를 섹션별로 분류하여 초안 뼈대 구조를 생성�
 근거 나열 방식으로만 텍스트를 배치한다.
 
 Post-1 개선: 개별 측정값 나열 → 통계 요약 테이블 + 상세 데이터 부록(최대 10건)
+Post-2 개선: 환경기준 비교 결과 및 판정 서술 추가
 """
 
 from __future__ import annotations
@@ -22,6 +23,11 @@ from app.services.section_planner import (
     SectionDefinition,
     calculate_section_status,
     get_section_definition,
+)
+from app.services.standard_checker import (
+    CheckStatus,
+    IndicatorCheckResult,
+    check_section_standards,
 )
 from app.services.statistics import (
     IndicatorStats,
@@ -74,10 +80,13 @@ def _format_stats_summary(
     section_def: SectionDefinition,
     entries: list[EvidenceEntry],
     indicator_stats: list[IndicatorStats],
+    check_results: list[IndicatorCheckResult] | None = None,
+    standards_summary: str = "",
 ) -> str:
-    """통계 요약 테이블 + 상세 데이터 부록 텍스트를 생성한다.
+    """통계 요약 테이블 + 환경기준 비교 + 상세 데이터 부록 텍스트를 생성한다.
 
     수치 통계가 있으면 지표별 1행 요약 테이블로 현황을 정리하고,
+    환경기준이 있는 지표는 기준값과 판정 열을 추가로 표시한다.
     상세 데이터는 부록으로 이동하여 최대 10건만 샘플 표시한다.
     """
     if not entries:
@@ -85,13 +94,25 @@ def _format_stats_summary(
 
     lines: list[str] = []
 
-    # ── 1. 통계 요약 테이블 ──
+    # 환경기준 비교 결과를 지표명 기준 딕셔너리로 구성
+    check_map: dict[str, IndicatorCheckResult] = {}
+    if check_results:
+        for cr in check_results:
+            check_map[cr.indicator] = cr
+    has_standards = bool(check_map)
+
+    # ── 1. 통계 요약 테이블 (환경기준 열 포함) ──
     stats_with_data = [s for s in indicator_stats if s.count > 0]
     if stats_with_data:
         lines.append(f"[{section_def.title}] 현황 통계 요약 ({len(entries)}건 기준)")
         lines.append("")
-        lines.append("지표명 | 평균 | 최대 | 최소 | 건수 | 기간")
-        lines.append("--- | --- | --- | --- | --- | ---")
+
+        if has_standards:
+            lines.append("지표명 | 평균 | 최대 | 최소 | 건수 | 환경기준 | 판정 | 기간")
+            lines.append("--- | --- | --- | --- | --- | --- | --- | ---")
+        else:
+            lines.append("지표명 | 평균 | 최대 | 최소 | 건수 | 기간")
+            lines.append("--- | --- | --- | --- | --- | ---")
 
         for s in stats_with_data:
             unit_suffix = f" {s.unit}" if s.unit else ""
@@ -99,9 +120,33 @@ def _format_stats_summary(
             max_str = f"{s.max_value}{unit_suffix}" if s.max_value is not None else "-"
             min_str = f"{s.min_value}{unit_suffix}" if s.min_value is not None else "-"
             period = _format_period(s.period_start, s.period_end)
-            lines.append(
-                f"{s.indicator} | {mean_str} | {max_str} | {min_str} | {s.count} | {period}"
-            )
+
+            if has_standards:
+                cr = check_map.get(s.indicator)
+                if cr and cr.standard_value is not None:
+                    std_unit = cr.standard_unit or ""
+                    std_str = f"{cr.standard_value:.4g} {std_unit}".strip()
+                    status_str = "적합" if cr.status == CheckStatus.PASS else (
+                        "초과" if cr.status == CheckStatus.FAIL else "-"
+                    )
+                else:
+                    std_str = "-"
+                    status_str = "-"
+                lines.append(
+                    f"{s.indicator} | {mean_str} | {max_str} | {min_str} | "
+                    f"{s.count} | {std_str} | {status_str} | {period}"
+                )
+            else:
+                lines.append(
+                    f"{s.indicator} | {mean_str} | {max_str} | {min_str} | {s.count} | {period}"
+                )
+        lines.append("")
+
+    # ── 1-1. 환경기준 비교 서술문 ──
+    if standards_summary:
+        lines.append(f"[{section_def.title}] 환경기준 비교")
+        lines.append("")
+        lines.append(standards_summary)
         lines.append("")
 
     # 수치 통계가 없는 지표(비수치 데이터)는 별도 나열
@@ -205,7 +250,16 @@ async def generate_section_scaffold(
     )
     indicator_stats = section_stats.indicator_stats if section_stats else []
 
-    summary = _format_stats_summary(section_def, entries, indicator_stats)
+    # 환경기준 비교 (기본 필터 적용)
+    section_check = await check_section_standards(db, project_id, section_key)
+    check_results = section_check.indicators if section_check else None
+    standards_summary = section_check.summary if section_check else ""
+
+    summary = _format_stats_summary(
+        section_def, entries, indicator_stats,
+        check_results=check_results,
+        standards_summary=standards_summary,
+    )
 
     # 섹션 상태 조회하여 state, missing_indicators 반영
     section_status = await calculate_section_status(db, project_id, section_key)

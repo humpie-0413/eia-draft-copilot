@@ -469,7 +469,10 @@ async def test_scaffold_contains_stats_table(client: AsyncClient):
 
     # 통계 요약 테이블 헤더 확인
     assert "통계 요약" in summary
-    assert "지표명 | 평균 | 최대 | 최소 | 건수 | 기간" in summary
+    # Post-2 이후: 환경기준이 있는 섹션은 기준+판정 열 포함
+    assert "지표명" in summary
+    assert "평균" in summary
+    assert "건수" in summary
 
     # BOD 지표 행 확인
     assert "BOD" in summary

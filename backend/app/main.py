@@ -10,6 +10,7 @@ from app.api.v1.qa import router as qa_router
 from app.api.v1.sections import router as sections_router
 from app.api.v1.similar_cases import router as similar_cases_router
 from app.api.v1.snapshots import router as snapshots_router
+from app.api.v1.standards import router as standards_router
 from app.api.v1.statistics import router as statistics_router
 from app.config import settings
 
@@ -39,6 +40,7 @@ app.include_router(similar_cases_router, prefix="/api/v1")
 app.include_router(sections_router, prefix="/api/v1")
 app.include_router(qa_router, prefix="/api/v1")
 app.include_router(statistics_router, prefix="/api/v1")
+app.include_router(standards_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 
 
