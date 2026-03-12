@@ -1,34 +1,40 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Post-1: 데이터 전처리 및 통계 엔진** ✅
+**Post-2: 환경기준 비교 엔진** ✅
 
-## 완료된 작업 (Post-1)
+## 완료된 작업 (Post-2)
 
-### 통계 서비스
-- `backend/app/services/statistics.py`:
-  - 섹션별/지표별 기술 통계 계산 (평균, 최대, 최소, 표준편차, 건수, 기간)
-  - numeric_value 있는 본 평가(screening_only=False) 데이터만 대상
-  - 카테고리별 기본 연도 필터 (수질 5년, 대기 1년)
-  - 일평균 집계 옵션 (시간별 데이터 → 일평균)
-  - observed_at NULL 데이터는 시간필터에서 보존 (날짜 미상 데이터 유지)
+### 환경기준 데이터
+- `backend/app/data/env_standards.py`:
+  - 대기환경기준: PM10, PM2.5, SO2, NO2, CO, O3 (연평균/24시간/1시간)
+  - 수질환경기준: 하천 생활환경기준 Ia~V등급 (BOD, COD, SS, DO, T-P)
+  - 소음환경기준: 주거지역 주간 55dB(A), 야간 45dB(A)
+  - 수질 등급 판정 함수 (최악 등급 적용)
 
-### 통계 API
-- `GET /api/v1/projects/{id}/statistics` — 전체 섹션 통계
-- `GET /api/v1/projects/{id}/statistics/{section_key}` — 개별 섹션 통계
-- 쿼리 파라미터:
-  - `years_filter`: 0=전체 기간, N=최근 N년, 미지정=카테고리별 기본값
-  - `aggregate_daily`: true=일평균 집계, false=원본 그대로
+### 기준 비교 서비스
+- `backend/app/services/standard_checker.py`:
+  - 통계 결과 ↔ 환경기준 비교 (pass/fail/na 판정)
+  - 수질 등급 판정 포함 (BOD/COD/DO/T-P 기반)
+  - 섹션별 기준 비교 요약 서술문 자동 생성
 
-### scaffold 서비스 수정
-- 기존 개별 측정값 나열 → 지표별 1행 통계 요약 테이블로 변경
-- 비수치 데이터 별도 섹션 분리 표시
-- 상세 데이터는 부록으로 이동 (최대 10건 샘플만 표시)
+### 기준 비교 API
+- `GET /api/v1/projects/{id}/standards-check` — 전체 섹션 기준 비교
+- `GET /api/v1/projects/{id}/standards-check/{section_key}` — 개별 섹션
+- 쿼리 파라미터: years_filter, aggregate_daily
+
+### scaffold 수정
+- 통계 요약 테이블에 "환경기준" + "판정" 열 추가
+- 기준 비교 서술문 섹션 추가 (적합/초과 서술 자동 생성)
+
+### QA 규칙
+- R006: 환경기준 초과 지표 존재 시 warning (초과 지표명 + 수치 포함)
+- warning이므로 export는 차단하지 않음
 
 ### 테스트
-- `backend/tests/test_statistics.py`: 16개 테스트 전부 통과
-- 기존 E2E 테스트 (`test_e2e.py`) 호환성 유지
-- 기존 PDF 테스트 (`test_export_pdf.py`) 3건 실패는 Post-1 이전부터 존재하는 기존 문제
+- `backend/tests/test_standard_checker.py`: 27개 테스트 전부 통과
+- 기존 테스트 호환: test_statistics.py 16개, test_e2e.py 1개 모두 통과
+- 전체 44개 테스트 통과
 
 ## 이전 완료 Phase
 - Phase 0: 스캐폴딩 ✅
@@ -40,13 +46,14 @@
 - Phase 6: QA 규칙 엔진 + Export Gate + DOCX/PDF 출력 ✅ (MVP 완료)
 - Post-0.5: 스펙 정렬 ✅
 - Post-1: 데이터 전처리 및 통계 엔진 ✅
+- Post-2: 환경기준 비교 엔진 ✅
 
-## 향후 작업 (Post-2+)
-- Post-2: 환경기준 비교 서비스 (기준값 DB + 초과 여부 자동 판정)
-- Vercel 배포 설정
-- 사용자 인증 (NextAuth.js)
-- AI 연동 (Claude API) — 섹션별 프롬프트 + 스트리밍 응답
-- 성능 최적화 및 에러 핸들링
+## 향후 작업 (Post-3+)
+- Post-3: 초안 텍스트 생성기 고도화 (통계+기준비교 기반 서술문 자동 생성)
+- Post-4: 추가 커넥터 (토양, 기후)
+- Post-5: 문서 포맷 고도화
+- Post-6: LLM adapter 연동
+- Post-7: 통합 테스트 및 최종 데모
 
 ## 주의사항
 - PostgreSQL + PostGIS 로컬 설치 필요
@@ -75,10 +82,12 @@ pytest tests/ -v
 python scripts/demo_full_scenario.py
 ```
 
-## 주요 파일 (Post-1 신규/수정)
-- `backend/app/services/statistics.py` — 통계 계산 서비스 (신규)
-- `backend/app/schemas/statistics.py` — 통계 API 응답 스키마 (신규)
-- `backend/app/api/v1/statistics.py` — 통계 API 엔드포인트 (신규)
-- `backend/app/services/draft_scaffold.py` — scaffold 요약문 통계 방식 전환 (수정)
-- `backend/app/main.py` — statistics 라우터 등록 (수정)
-- `backend/tests/test_statistics.py` — 통계 테스트 16개 (신규)
+## 주요 파일 (Post-2 신규/수정)
+- `backend/app/data/env_standards.py` — 환경기준 데이터 (신규)
+- `backend/app/services/standard_checker.py` — 기준 비교 서비스 (신규)
+- `backend/app/schemas/standards.py` — 기준 비교 API 스키마 (신규)
+- `backend/app/api/v1/standards.py` — 기준 비교 API 엔드포인트 (신규)
+- `backend/app/services/draft_scaffold.py` — scaffold 기준 비교 반영 (수정)
+- `backend/app/services/qa_engine.py` — R006 규칙 추가 (수정)
+- `backend/app/main.py` — standards 라우터 등록 (수정)
+- `backend/tests/test_standard_checker.py` — 테스트 27개 (신규)

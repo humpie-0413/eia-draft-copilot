@@ -334,7 +334,48 @@
 
 ---
 
-## 전체 커밋 이력 (42건)
+## Post-2: 환경기준 비교 엔진 ✅
+
+### 완료 항목
+- 환경기준 데이터 정의 (`backend/app/data/env_standards.py`):
+  - 대기환경기준 (PM10, PM2.5, SO2, NO2, CO, O3 — 연평균/24시간/1시간)
+  - 수질환경기준 (하천 생활환경기준 Ia~V등급, BOD/COD/SS/DO/T-P)
+  - 소음환경기준 (주거지역 주간 55dB, 야간 45dB)
+  - 수질 등급 판정 함수 (BOD/COD/DO/T-P 기반 최악 등급 적용)
+- 기준 비교 서비스 (`backend/app/services/standard_checker.py`):
+  - 통계 결과 ↔ 환경기준 비교 (적합/초과/해당없음 판정)
+  - 수질 등급 판정 포함
+  - 섹션별 기준 비교 요약 서술문 자동 생성
+- 기준 비교 API:
+  - GET /projects/{id}/standards-check — 전체 섹션 기준 비교
+  - GET /projects/{id}/standards-check/{section_key} — 개별 섹션
+- scaffold 서비스 수정:
+  - 통계 요약 테이블에 "환경기준" 및 "판정" 열 추가
+  - 기준 비교 서술문 섹션 추가
+- QA 규칙 R006: 환경기준 초과 지표 warning (초과 지표명 + 수치 포함)
+- 테스트 27개 (`backend/tests/test_standard_checker.py`)
+  - 대기/수질/소음 적합·초과 판정 테스트 9개
+  - API 테스트 3개
+  - scaffold 서술문 테스트 5개
+  - R006 QA 규칙 테스트 4개
+  - 순수 함수 단위 테스트 6개
+
+### 주요 파일
+- `backend/app/data/env_standards.py` — 환경기준 데이터 (신규)
+- `backend/app/services/standard_checker.py` — 기준 비교 서비스 (신규)
+- `backend/app/schemas/standards.py` — 기준 비교 API 스키마 (신규)
+- `backend/app/api/v1/standards.py` — 기준 비교 API 엔드포인트 (신규)
+- `backend/app/services/draft_scaffold.py` — scaffold 기준 비교 반영 (수정)
+- `backend/app/services/qa_engine.py` — R006 규칙 추가 (수정)
+- `backend/app/main.py` — standards 라우터 등록 (수정)
+- `backend/tests/test_standard_checker.py` — 테스트 27개 (신규)
+
+### 커밋
+- `0f524a4` — feat: 환경기준 비교 엔진 구현 (Post-2)
+
+---
+
+## 전체 커밋 이력 (43건)
 
 | # | 해시 | 메시지 |
 |---|------|--------|
@@ -380,3 +421,4 @@
 | 40 | `2047700` | refactor: scaffold 요약문을 통계 테이블 방식으로 변경 (Post-1) |
 | 41 | `aa47d9b` | test: Post-1 통계 엔진 테스트 16개 추가 |
 | 42 | `e988232` | fix: 시간필터 적용 시 observed_at이 NULL인 데이터 보존 |
+| 43 | `0f524a4` | feat: 환경기준 비교 엔진 구현 (Post-2) |
