@@ -80,6 +80,24 @@ uvicorn app.main:app --reload     # 개발 서버 (http://localhost:8000)
 pytest tests/ -v                  # 테스트 실행
 ```
 
+## 공공데이터 API 키 설정
+
+커넥터를 통한 실제 데이터 수집에는 공공데이터포털 API 키가 필요합니다.
+
+### 발급 방법
+1. [공공데이터포털](https://www.data.go.kr/) 회원가입 및 로그인
+2. 아래 API 활용 신청:
+   - **에어코리아 대기오염정보**: https://www.data.go.kr/data/15073861/openapi.do
+   - **물환경정보시스템 수질측정정보**: https://www.data.go.kr/data/15009370/openapi.do
+3. 발급받은 인코딩 키를 `backend/.env`에 설정:
+   ```
+   DATA_GO_KR_API_KEY=발급받은_인코딩_키
+   ```
+
+### 커넥터 수집 API
+- `POST /api/v1/connectors/{connector_key}/collect` — 데이터 수집 실행
+- `GET /api/v1/connectors` — 사용 가능한 커넥터 목록
+
 ## Phase Plan
 
 전체 구현 계획은 `docs/claude/phase-plan.md` 참조.
