@@ -89,14 +89,29 @@
 - [x] 프론트엔드: 초안 뼈대 페이지 (/projects/[id]/draft)
 - [x] 프로젝트 목록에 섹션 플래너 버튼 추가
 
-## Phase 6: Deployment & Polish
-- [ ] QA 규칙 엔진
-- [ ] export gate
-- [ ] DOCX/PDF 출력
+## Phase 6: QA 규칙 엔진 + Export Gate + DOCX 출력 ✅
+- [x] 결정적 QA 규칙 엔진 (5개 규칙)
+  - R001: 섹션 증거 없음 (핵심 섹션 critical / 기타 warning)
+  - R002: 필수 지표 누락 검사
+  - R003: 충족도 50% 미만 경고
+  - R004: 근거 없는 완료 상태 (unsupported claim) 검출
+  - R005: 단일 근거 지표 정보 제공
+- [x] 심각도 등급: critical / warning / info
+- [x] QA 결과 API: GET /projects/{id}/qa, GET /projects/{id}/qa/export-ready
+- [x] Export Gate: critical 이슈 시 export 차단
+- [x] DOCX 출력 서비스 (python-docx): 표지 + 목차 + 섹션별 근거 테이블
+- [x] DOCX 다운로드 API: POST /projects/{id}/export/docx
+- [x] QA 결과 UI 페이지 (/projects/[id]/qa): 이슈 목록, 심각도 필터, export 버튼
+- [x] 초안 뼈대 페이지에 QA 요약 + Export 버튼 통합
+- [x] 프로젝트 목록에 QA / Export 버튼 추가
+
+## Phase 7 (향후): Deployment & Polish
 - [ ] Vercel 배포 설정
 - [ ] 환경변수 및 시크릿 관리
 - [ ] 사용자 인증 (NextAuth.js)
 - [ ] 성능 최적화 및 에러 핸들링
+- [ ] AI 연동 (Claude API) — 섹션별 프롬프트 + 스트리밍 응답
+- [ ] 커넥터 실제 API 호출 구현 (httpx 기반)
 
 ---
 
