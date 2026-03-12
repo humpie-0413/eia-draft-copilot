@@ -17,9 +17,10 @@ import { EvidenceFilters } from "@/components/evidence/evidence-filters";
 import { EvidenceTable } from "@/components/evidence/evidence-table";
 import { EvidenceDetailSheet } from "@/components/evidence/evidence-detail-sheet";
 import { EvidenceFormDialog } from "@/components/evidence/evidence-form-dialog";
+import { CollectDataDialog } from "@/components/evidence/collect-data-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft, Download } from "lucide-react";
 import Link from "next/link";
 
 export default function EvidenceWorkbenchPage() {
@@ -45,6 +46,9 @@ export default function EvidenceWorkbenchPage() {
 
   // 삭제 확인
   const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
+
+  // 데이터 수집 다이얼로그
+  const [collectOpen, setCollectOpen] = useState(false);
 
   // ─── 데이터 로딩 ───
   const fetchEvidences = useCallback(async () => {
@@ -143,10 +147,16 @@ export default function EvidenceWorkbenchPage() {
             </p>
           </div>
         </div>
-        <Button onClick={handleCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          증거 추가
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setCollectOpen(true)}>
+            <Download className="mr-2 h-4 w-4" />
+            데이터 수집
+          </Button>
+          <Button onClick={handleCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            증거 추가
+          </Button>
+        </div>
       </div>
 
       {/* 필터 + 통계 */}
@@ -191,6 +201,14 @@ export default function EvidenceWorkbenchPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         onSubmit={handleFormSubmit}
+      />
+
+      {/* 데이터 수집 다이얼로그 */}
+      <CollectDataDialog
+        projectId={projectId}
+        open={collectOpen}
+        onOpenChange={setCollectOpen}
+        onComplete={fetchEvidences}
       />
 
       {/* 삭제 확인 다이얼로그 */}
