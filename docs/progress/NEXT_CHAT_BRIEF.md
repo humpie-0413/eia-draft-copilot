@@ -1,39 +1,41 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Post-4: 추가 커넥터 (토양, 기후) + 수동 입력 가이드** ✅
+**Post-5: 문서 포맷 고도화** ✅
 
-## 완료된 작업 (Post-4)
+## 완료된 작업 (Post-5)
 
-### 토양측정망 커넥터
-- `backend/app/connectors/soil_info.py`:
-  - 국립환경과학원 토양측정망 정보 조회 API 연동
-  - Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 8개 지표
-  - 연도별·측정지점별 조회
-  - BaseConnector 상속, fetch → snapshot → normalize → evidence 파이프라인
+### DOCX 템플릿 전면 개편
+- 표지: "환경영향평가서 초안" + 사업명 + 사업유형(한글) + 위치(centroid 좌표) + 작성일 + "EIA Draft Copilot으로 작성"
+- 목차: 테이블 형태 — 제N장 + 제목 + 충족도 상태(완료/미비/미수집) + 증거 건수 + 부록 목차
+- 머리말: 사업명(좌) + "환경영향평가서 초안"(우) + 구분선
+- 꼬리말: 페이지 번호(중앙) + 구분선
+- 섹션 번호: "제1장 대기질" → "1.1 현황" → "1.2 측정" → "1.3 기준비교" → "1.4 데이터"
 
-### 기상청 ASOS 커넥터
-- `backend/app/connectors/kma_weather.py`:
-  - 기상청 지상(종관, ASOS) 일자료 조회서비스 API 연동
-  - 평균기온, 최고기온, 최저기온, 강수량, 평균풍속, 최대풍속, 평균습도 7개 지표
-  - 관측소 번호 + 기간(YYYYMMDD) 기반 조회
+### 테이블 디자인 개선
+- 헤더 배경 연한 파란(#D6E4F0), 교차 행 배경(#F5F5F7)
+- 환경기준 초과 시 해당 행 배경 연한 빨간(#FDE0DC)
+- 열 너비 조정 (지표명 넓게, 수치 좁게)
 
-### 수동 입력 가이드 강화
-- 10개 분야별 권장 지표 목록을 증거 추가 폼에 안내 표시
-- 클릭 시 지표명 자동 입력, 데이터 출처 힌트 제공
-- 커넥터 자동 수집 가능 분야는 별도 안내
+### 부록 3종
+- 부록 A: 상세 측정 데이터 (섹션별 최대 50건)
+- 부록 B: 유사사례 매칭 결과 (유사도 점수 + 요약)
+- 부록 C: QA 검사 결과 (이슈 목록, critical 빨간 배경)
 
-### 프론트엔드 업데이트
-- 데이터 수집 다이얼로그에 토양/기후 커넥터 파라미터 추가
-- 수동 추가 폼에 권장 지표 안내 UI (클릭 가능 배지)
+### PDF 동일 적용
+- reportlab PDF에도 동일 구조 (머리말/꼬리말, 테이블 색상, 부록)
+
+### API 변경
+- Export 옵션 쿼리 파라미터 (부록 포함 여부)
+- GET /export/preview: 문서 구조 미리보기 엔드포인트
+
+### 프론트엔드
+- ExportPreviewPanel: 문서 구조 트리 + 부록 옵션 체크박스
+- ExportButton에 옵션 전달 통합
 
 ### 테스트
-- 토양 커넥터 12개 + 기상청 커넥터 13개 = 25개 신규 테스트
-- 전체 161개 테스트 통과
-
-### 기타
-- `.env.example` 추가 (4개 커넥터 API 키 안내)
-- `scripts/test_connectors_live.py` 토양/기후 검증 추가
+- 40개 신규 테스트 (test_export_format.py)
+- 전체 201개 테스트 통과
 
 ## 이전 완료 Phase
 - Phase 0: 스캐폴딩 ✅
@@ -48,9 +50,9 @@
 - Post-2: 환경기준 비교 엔진 ✅
 - Post-3: 초안 텍스트 생성기 고도화 ✅
 - Post-4: 추가 커넥터 (토양, 기후) + 수동 입력 가이드 ✅
+- Post-5: 문서 포맷 고도화 ✅
 
-## 향후 작업 (Post-5+)
-- Post-5: 문서 포맷 고도화
+## 향후 작업 (Post-6+)
 - Post-6: LLM adapter 연동
 - Post-7: 통합 테스트 및 최종 데모
 
@@ -93,12 +95,11 @@ python scripts/test_connectors_live.py
 | `soil_info` | 국립환경과학원 토양측정망 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 |
 | `kma_weather` | 기상청 ASOS 일자료 | 평균기온, 최고/최저기온, 강수량, 풍속, 습도 |
 
-## 주요 파일 (Post-4 신규/수정)
-- `backend/app/connectors/soil_info.py` — 토양측정망 커넥터 (신규)
-- `backend/app/connectors/kma_weather.py` — 기상청 ASOS 커넥터 (신규)
-- `backend/app/connectors/registry.py` — 4개 커넥터 등록 (수정)
-- `backend/tests/test_connectors.py` — 25개 테스트 추가 (수정)
-- `scripts/test_connectors_live.py` — 토양/기후 검증 추가 (수정)
-- `src/components/evidence/evidence-form-dialog.tsx` — 권장 지표 안내 (수정)
-- `src/components/evidence/collect-data-dialog.tsx` — 커넥터 파라미터 (수정)
-- `backend/.env.example` — 환경변수 예제 (신규)
+## 주요 파일 (Post-5 신규/수정)
+- `backend/app/services/export_service.py` — DOCX/PDF 전면 개편 (수정)
+- `backend/app/api/v1/export.py` — 옵션 파라미터 + 미리보기 API (수정)
+- `backend/tests/test_export_format.py` — 40개 신규 테스트 (신규)
+- `src/types/export.ts` — ExportPreview/ExportOptions 타입 (신규)
+- `src/lib/qa-api.ts` — 미리보기 API + 옵션 지원 (수정)
+- `src/components/qa/export-preview.tsx` — 문서 구조 미리보기 (신규)
+- `src/components/qa/export-button.tsx` — 옵션 통합 (수정)

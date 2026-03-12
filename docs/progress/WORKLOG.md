@@ -480,7 +480,77 @@
 
 ---
 
-## 전체 커밋 이력 (48건)
+## Post-5: 문서 포맷 고도화 ✅
+
+### 완료 항목
+
+#### DOCX 템플릿 전면 개편
+- 표지 페이지: "환경영향평가서 초안" + 사업명 + 사업유형(한글) + 위치(geometry centroid) + 작성일 + "EIA Draft Copilot으로 작성"
+- 목차: 테이블 형태 — 섹션 번호("제N장") + 제목 + 충족도 상태(완료/미비/미수집) + 증거 건수
+- 머리말: 사업명(좌측) + "환경영향평가서 초안"(우측) + 하단 구분선
+- 꼬리말: 페이지 번호 필드(중앙) + 상단 구분선
+- 표지 섹션은 머리말/꼬리말 없음 (섹션 분리)
+- 섹션 번호 체계: "제1장 대기질" → "1.1 현황 및 영향 분석" → "1.2 측정 현황 요약" → "1.3 환경기준 비교" → "1.4 측정 데이터"
+
+#### 테이블 디자인 개선
+- 헤더 행 배경색 연한 파란(#D6E4F0), 교차 행 배경(#F5F5F7)
+- 환경기준 초과 시 해당 행 배경 연한 빨간색(#FDE0DC)
+- 열 너비 자동 조정 (지표명 넓게, 수치 좁게)
+
+#### 부록 구조 (3종)
+- 부록 A: 상세 측정 데이터 (섹션별 최대 50건, 전체 건수 초과 시 안내)
+- 부록 B: 유사사례 매칭 결과 (유사도 점수 테이블 + 개별 사례 요약)
+- 부록 C: QA 검사 결과 (요약 통계 + 이슈 목록, critical 행 빨간 배경)
+
+#### PDF 동일 적용
+- reportlab 기반 PDF에도 동일한 표지/목차/머리말꼬리말/부록 구조
+- onFirstPage / onLaterPages 콜백으로 머리말/꼬리말 렌더링
+- 초과 행 빨간 배경, 헤더 색상, 교차 행 배경 동일 적용
+
+#### API 변경
+- Export 옵션 쿼리 파라미터: `include_appendix_a`, `include_appendix_b`, `include_appendix_c`
+- GET /export/preview: 문서 구조 미리보기 엔드포인트 신규
+- `generate_docx`/`generate_pdf` 시그니처 변경: Project 모델 직접 수신 + ExportOptions
+- ExportContext 데이터 구조 도입 (scaffold + stats + check + similar + qa 통합)
+
+#### 프론트엔드 개선
+- ExportPreviewPanel: 문서 구조 트리 표시 (표지 → 목차 → 섹션들 → 부록)
+  - 섹션별 상태 아이콘/색상 (완료=초록, 미비=노랑, 미수집=빨강)
+  - 부록 A/B/C 포함 여부 체크박스 (옵션)
+- ExportButton: 선택된 옵션을 쿼리 파라미터로 전달
+- ExportOptions / ExportPreview 타입 정의
+
+### 테스트
+- `backend/tests/test_export_format.py`: 40개 신규 테스트
+  - 유틸 함수 2개 (state_label, project_type_korean)
+  - DOCX 표지 6개 (제목, 사업명, 사업유형, centroid, 날짜, 라벨)
+  - DOCX 목차 4개 (테이블, 섹션명, 상태, 부록)
+  - 머리말/꼬리말 3개 (섹션 수, 헤더 텍스트, 표지 비활성화)
+  - 섹션 번호 2개 (제N장, N.1~N.4)
+  - 테이블 디자인 2개 (헤더 배경, 초과 배경)
+  - 부록 9개 (A/B/C 포함/제외, 최대건수, 점수, QA)
+  - DOCX 카운트 2개 (테이블 수, 섹션 수)
+  - PDF 생성 5개 (유효 PDF, 부록 포함/제외 크기, 초과, 빈 섹션)
+  - API 통합 5개 (DOCX 옵션, DOCX 전체, PDF 옵션, 미리보기, 404)
+- 기존 3개 테스트 ExportContext 호환 수정
+- 전체 201개 테스트 통과
+
+### 주요 파일
+- `backend/app/services/export_service.py` — DOCX/PDF 전면 개편 (수정)
+- `backend/app/api/v1/export.py` — 옵션 파라미터 + 미리보기 API (수정)
+- `backend/tests/test_export_format.py` — 40개 신규 테스트 (신규)
+- `backend/tests/test_narrative_generator.py` — ExportContext 호환 수정 (수정)
+- `src/types/export.ts` — ExportPreview/ExportOptions 타입 (신규)
+- `src/lib/qa-api.ts` — 미리보기 API + 옵션 파라미터 지원 (수정)
+- `src/components/qa/export-preview.tsx` — 문서 구조 미리보기 패널 (신규)
+- `src/components/qa/export-button.tsx` — 옵션 통합 (수정)
+
+### 커밋
+- `97c4daa` — feat: Post-5 문서 포맷 고도화 — DOCX/PDF 템플릿 전면 개편
+
+---
+
+## 전체 커밋 이력 (50건)
 
 | # | 해시 | 메시지 |
 |---|------|--------|
@@ -532,3 +602,5 @@
 | 46 | `9c5918c` | feat: 토양측정망 + 기상청 ASOS 커넥터 구현 (Post-4) |
 | 47 | `41b835b` | feat: 수동 입력 가이드 + 커넥터 UI 업데이트 (Post-4) |
 | 48 | `2a4e488` | docs: .env.example 추가 — 4개 커넥터 API 키 안내 (Post-4) |
+| 49 | `66421e6` | docs: Post-4 완료 — 문서 업데이트 |
+| 50 | `97c4daa` | feat: Post-5 문서 포맷 고도화 — DOCX/PDF 템플릿 전면 개편 |
