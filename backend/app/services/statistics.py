@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.evidence import Evidence
@@ -120,7 +120,10 @@ async def _fetch_numeric_evidences(
 
     if years_filter is not None and years_filter > 0:
         cutoff = datetime.now(tz=timezone.utc) - timedelta(days=years_filter * 365)
-        conditions.append(Evidence.observed_at >= cutoff)
+        # observed_at가 NULL인 데이터는 시간필터에서 제외하지 않음 (날짜 미상 데이터 보존)
+        conditions.append(
+            or_(Evidence.observed_at >= cutoff, Evidence.observed_at.is_(None))
+        )
 
     result = await db.execute(
         select(Evidence)
