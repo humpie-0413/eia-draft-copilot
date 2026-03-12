@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Google API 키
     GOOGLE_API_KEY: str = ""
 
+    # LLM adapter 설정 (none | openai_paid | gemini_free)
+    LLM_ADAPTER: str = "none"
+
     # API 호출 타임아웃 (초)
     CONNECTOR_TIMEOUT: int = 30
 
