@@ -8,6 +8,7 @@ import type { QaResult } from "@/types/qa";
 import { getDraftScaffold } from "@/lib/section-api";
 import { getQaResult } from "@/lib/qa-api";
 import { ScaffoldSectionView } from "@/components/section/scaffold-section-view";
+import { LLMStatusCard } from "@/components/section/llm-status-card";
 import { QaSummaryBar } from "@/components/qa/qa-summary-bar";
 import { ExportButton } from "@/components/qa/export-button";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,10 @@ export default function DraftScaffoldPage() {
               )}
             </button>
           ))}
+          {/* LLM 상태 */}
+          <div className="mt-4">
+            <LLMStatusCard />
+          </div>
         </div>
       </aside>
 
@@ -173,7 +178,7 @@ export default function DraftScaffoldPage() {
                   sectionRefs.current[sec.section_key] = el;
                 }}
               >
-                <ScaffoldSectionView section={sec} />
+                <ScaffoldSectionView section={sec} projectId={projectId} />
               </div>
             ))}
 

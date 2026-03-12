@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { ScaffoldSection } from "@/types/section";
+import type { EnhanceResponse } from "@/types/llm";
+import { enhanceSectionNarrative } from "@/lib/llm-api";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -18,15 +20,45 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkles, RotateCcw } from "lucide-react";
 
 interface ScaffoldSectionViewProps {
   section: ScaffoldSection;
+  projectId?: string;
 }
 
-export function ScaffoldSectionView({ section }: ScaffoldSectionViewProps) {
+export function ScaffoldSectionView({ section, projectId }: ScaffoldSectionViewProps) {
   const hasEntries = section.evidence_entries.length > 0;
   const [showRawData, setShowRawData] = useState(false);
+
+  // LLM 보강 상태
+  const [enhanceResult, setEnhanceResult] = useState<EnhanceResponse | null>(null);
+  const [enhancing, setEnhancing] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
+
+  const handleEnhance = async () => {
+    if (!projectId) return;
+    setEnhancing(true);
+    try {
+      const result = await enhanceSectionNarrative(projectId, section.section_key);
+      setEnhanceResult(result);
+      setShowComparison(true);
+    } catch (err) {
+      console.error("서술문 보강 실패:", err);
+    } finally {
+      setEnhancing(false);
+    }
+  };
+
+  const handleReset = () => {
+    setEnhanceResult(null);
+    setShowComparison(false);
+  };
+
+  // 현재 표시할 서술문 결정
+  const displayNarrative = enhanceResult && !enhanceResult.is_fallback
+    ? enhanceResult.enhanced_narrative
+    : section.narrative;
 
   return (
     <Card>
@@ -38,26 +70,103 @@ export function ScaffoldSectionView({ section }: ScaffoldSectionViewProps) {
               {section.description}
             </p>
           </div>
-          <Badge variant="outline" className="text-xs">
-            근거 {section.evidence_entries.length}건
-          </Badge>
+          <div className="flex items-center gap-2">
+            {/* AI 문체 보강 버튼 */}
+            {projectId && section.narrative && hasEntries && (
+              enhanceResult && !enhanceResult.is_fallback ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={handleReset}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  원본 복원
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={handleEnhance}
+                  disabled={enhancing}
+                >
+                  <Sparkles className="h-3 w-3" />
+                  {enhancing ? "보강 중…" : "AI 문체 보강"}
+                </Button>
+              )
+            )}
+            <Badge variant="outline" className="text-xs">
+              근거 {section.evidence_entries.length}건
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* 서술문 미리보기 (Post-3 신규) */}
-        {section.narrative && (
-          <div className="rounded-md border-l-4 border-primary/30 bg-primary/5 p-4">
-            <p className="mb-1 text-xs font-medium text-primary/70">
-              현황 및 영향 분석
-            </p>
-            <div className="space-y-1.5 text-sm leading-relaxed">
-              {section.narrative.split("\n").map((line, i) =>
-                line.trim() ? (
-                  <p key={i}>{line}</p>
-                ) : null,
-              )}
+        {/* 보강 전/후 비교 모드 */}
+        {showComparison && enhanceResult && !enhanceResult.is_fallback ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-[10px]">
+                {enhanceResult.adapter_used}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-[10px] text-muted-foreground"
+                onClick={() => setShowComparison(false)}
+              >
+                비교 닫기
+              </Button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {/* 원본 */}
+              <div className="rounded-md border border-muted bg-muted/20 p-3">
+                <p className="mb-1 text-[10px] font-medium text-muted-foreground">
+                  원본 (템플릿)
+                </p>
+                <div className="space-y-1.5 text-sm leading-relaxed text-muted-foreground">
+                  {enhanceResult.original_narrative.split("\n").map((line, i) =>
+                    line.trim() ? <p key={i}>{line}</p> : null,
+                  )}
+                </div>
+              </div>
+              {/* 보강 */}
+              <div className="rounded-md border-l-4 border-primary/30 bg-primary/5 p-3">
+                <p className="mb-1 text-[10px] font-medium text-primary/70">
+                  AI 보강
+                </p>
+                <div className="space-y-1.5 text-sm leading-relaxed">
+                  {enhanceResult.enhanced_narrative.split("\n").map((line, i) =>
+                    line.trim() ? <p key={i}>{line}</p> : null,
+                  )}
+                </div>
+              </div>
             </div>
           </div>
+        ) : (
+          /* 서술문 미리보기 (기본 또는 보강 결과) */
+          displayNarrative && (
+            <div className="rounded-md border-l-4 border-primary/30 bg-primary/5 p-4">
+              <div className="mb-1 flex items-center gap-2">
+                <p className="text-xs font-medium text-primary/70">
+                  현황 및 영향 분석
+                </p>
+                {enhanceResult && !enhanceResult.is_fallback && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    AI 보강
+                  </Badge>
+                )}
+              </div>
+              <div className="space-y-1.5 text-sm leading-relaxed">
+                {displayNarrative.split("\n").map((line, i) =>
+                  line.trim() ? (
+                    <p key={i}>{line}</p>
+                  ) : null,
+                )}
+              </div>
+            </div>
+          )
         )}
 
         {/* 통계 요약 및 기준 비교 (summary_text) */}
