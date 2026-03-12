@@ -550,7 +550,84 @@
 
 ---
 
-## 전체 커밋 이력 (50건)
+## Post-6: LLM adapter 연동 ✅
+
+### 완료 항목
+
+#### LLM adapter 인터페이스 (`backend/app/llm/`)
+- `BaseLLMAdapter` 추상 클래스: `enhance_narrative(EnhanceInput) → EnhanceResult`
+- 입력: 섹션 키, 제목, 템플릿 서술문, 통계 요약, 기준비교 요약
+- 출력: 보강된 서술문, 사용 adapter, fallback 여부
+
+#### None adapter (`backend/app/llm/none_adapter.py`)
+- 기본값 (LLM_ADAPTER=none)
+- 템플릿 서술문 그대로 반환, LLM 없이 시스템 완전 작동
+
+#### OpenAI adapter (`backend/app/llm/openai_adapter.py`)
+- OPENAI_API_KEY 환경변수 사용
+- 모델: gpt-4o-mini (비용 효율)
+- 환경영향평가서 전문 작성자 시스템 프롬프트
+- API 실패 시 템플릿 서술문 그대로 반환 (fallback)
+
+#### Gemini adapter (`backend/app/llm/gemini_adapter.py`)
+- GOOGLE_API_KEY 환경변수 사용
+- 모델: gemini-2.0-flash (무료 티어)
+- 동일 시스템 프롬프트 및 fallback 로직
+- httpx 기반 REST API 직접 호출
+
+#### adapter 설정
+- 환경변수: LLM_ADAPTER=none|openai_paid|gemini_free (기본값: none)
+- factory 함수: `get_llm_adapter()` — 설정에 따라 adapter 반환
+- requirements.txt에 `openai>=1.0.0` 추가
+
+#### API 엔드포인트
+- GET /api/v1/llm/status — 현재 adapter 설정 및 API 키 상태
+- POST /api/v1/llm/projects/{id}/enhance — 섹션 서술문 AI 보강
+  - 통계 + 기준비교 데이터 자동 수집 → LLM 보강 → 원본/보강 비교 반환
+
+#### 프론트엔드
+- LLM 타입 정의 (`src/types/llm.ts`): LLMStatus, EnhanceResponse
+- LLM API 클라이언트 (`src/lib/llm-api.ts`): getLLMStatus, enhanceSectionNarrative
+- ScaffoldSectionView: "AI 문체 보강" 버튼 + 보강 전/후 병렬 비교 미리보기
+  - 보강 성공 시 좌우 분할 (원본 vs AI 보강)
+  - "원본 복원" 버튼으로 되돌리기
+  - adapter 이름 뱃지 표시
+- LLMStatusCard: 사이드바에 현재 adapter 상태 및 API 키 설정 표시
+- draft 페이지에 projectId 전달 및 LLMStatusCard 통합
+
+### 테스트
+- `backend/tests/test_llm_adapter.py`: 29개 신규 테스트
+  - None adapter 4개 (반환, 이름, 가용성, 빈 템플릿)
+  - OpenAI adapter 8개 (이름, 가용성, fallback, 성공, API 오류, 빈 응답, 프롬프트)
+  - Gemini adapter 8개 (동일 구조)
+  - Factory 함수 5개 (none, openai, gemini, 알 수 없는 값, 대소문자)
+  - 기본 인터페이스 3개 (fallback, 입력 데이터, 출력 데이터)
+- 전체 230개 테스트 통과
+
+### 주요 파일
+- `backend/app/llm/__init__.py` — adapter factory (신규)
+- `backend/app/llm/base.py` — BaseLLMAdapter 추상 클래스 (신규)
+- `backend/app/llm/none_adapter.py` — None adapter (신규)
+- `backend/app/llm/openai_adapter.py` — OpenAI adapter (신규)
+- `backend/app/llm/gemini_adapter.py` — Gemini adapter (신규)
+- `backend/app/config.py` — LLM_ADAPTER 설정 추가 (수정)
+- `backend/app/api/v1/llm.py` — LLM API 엔드포인트 (신규)
+- `backend/app/main.py` — LLM 라우터 등록 (수정)
+- `backend/requirements.txt` — openai 패키지 추가 (수정)
+- `backend/tests/test_llm_adapter.py` — 29개 테스트 (신규)
+- `src/types/llm.ts` — LLM TypeScript 타입 (신규)
+- `src/lib/llm-api.ts` — LLM API 클라이언트 (신규)
+- `src/components/section/scaffold-section-view.tsx` — AI 보강 UI (수정)
+- `src/components/section/llm-status-card.tsx` — LLM 상태 카드 (신규)
+- `src/app/projects/[id]/draft/page.tsx` — LLM 통합 (수정)
+
+### 커밋
+- `a891421` — feat: Post-6 LLM adapter 인터페이스 및 백엔드 구현
+- `2bdca7d` — feat: Post-6 프론트엔드 — AI 문체 보강 UI 및 LLM 상태 표시
+
+---
+
+## 전체 커밋 이력 (53건)
 
 | # | 해시 | 메시지 |
 |---|------|--------|
@@ -604,3 +681,6 @@
 | 48 | `2a4e488` | docs: .env.example 추가 — 4개 커넥터 API 키 안내 (Post-4) |
 | 49 | `66421e6` | docs: Post-4 완료 — 문서 업데이트 |
 | 50 | `97c4daa` | feat: Post-5 문서 포맷 고도화 — DOCX/PDF 템플릿 전면 개편 |
+| 51 | `d2a9b00` | docs: Post-5 완료 — 문서 업데이트 |
+| 52 | `a891421` | feat: Post-6 LLM adapter 인터페이스 및 백엔드 구현 |
+| 53 | `2bdca7d` | feat: Post-6 프론트엔드 — AI 문체 보강 UI 및 LLM 상태 표시 |
