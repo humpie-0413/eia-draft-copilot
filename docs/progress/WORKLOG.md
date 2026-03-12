@@ -427,7 +427,60 @@
 
 ---
 
-## 전체 커밋 이력 (45건)
+## Post-4: 추가 커넥터 (토양, 기후) + 수동 입력 가이드 ✅
+
+### 완료 항목
+
+#### 토양측정망 커넥터 (`backend/app/connectors/soil_info.py`)
+- 국립환경과학원 토양측정망 정보 조회 API 연동
+- Cd(카드뮴), Cu(구리), Pb(납), Zn(아연), Ni(니켈), Cr6+(6가크롬), pH, 유기물함량 8개 지표
+- DATA_GO_KR_API_KEY 공유 사용
+- 연도별·측정지점별 조회, 다양한 날짜 형식 지원
+
+#### 기상청 ASOS 커넥터 (`backend/app/connectors/kma_weather.py`)
+- 기상청 지상(종관, ASOS) 일자료 조회서비스 API 연동
+- 평균기온, 최고기온, 최저기온, 강수량, 평균풍속, 최대풍속, 평균습도 7개 지표
+- 관측소 번호 + 기간(YYYYMMDD) 기반 조회
+- items.item 중첩 구조 및 직접 리스트 형태 모두 처리
+
+#### 수동 입력 가이드 강화
+- 10개 분야(토지이용, 교통, 폐기물, 경관, 문화재, 토양, 기후, 소음·진동, 생태 등) 권장 지표 안내
+- 클릭 시 지표명 자동 입력, 데이터 출처 힌트 제공
+- 커넥터 자동 수집 가능 분야는 별도 안내
+
+#### 프론트엔드 업데이트
+- 데이터 수집 다이얼로그에 토양/기후 커넥터 파라미터 추가
+- 수동 추가 폼에 섹션별 권장 지표 안내 UI
+
+#### 기타
+- `.env.example` 파일 추가 (4개 커넥터 API 키 안내)
+- 실제 API 연동 검증 스크립트에 토양/기후 테스트 추가
+
+### 테스트
+- 토양측정망 커넥터 단위 테스트 12개 (normalize 8개 + fetch 4개)
+- 기상청 ASOS 커넥터 단위 테스트 13개 (normalize 8개 + fetch 5개)
+- 레지스트리 테스트 업데이트 (4개 커넥터 확인)
+- 커넥터 목록 API 테스트 업데이트
+- 전체 161개 테스트 통과
+
+### 주요 파일
+- `backend/app/connectors/soil_info.py` — 토양측정망 커넥터 (신규)
+- `backend/app/connectors/kma_weather.py` — 기상청 ASOS 커넥터 (신규)
+- `backend/app/connectors/registry.py` — 4개 커넥터 등록 (수정)
+- `backend/tests/test_connectors.py` — 25개 테스트 추가 (수정)
+- `scripts/test_connectors_live.py` — 토양/기후 검증 추가 (수정)
+- `src/components/evidence/evidence-form-dialog.tsx` — 권장 지표 안내 (수정)
+- `src/components/evidence/collect-data-dialog.tsx` — 커넥터 파라미터 (수정)
+- `backend/.env.example` — 환경변수 예제 (신규)
+
+### 커밋
+- `9c5918c` — feat: 토양측정망 + 기상청 ASOS 커넥터 구현 (Post-4)
+- `41b835b` — feat: 수동 입력 가이드 + 커넥터 UI 업데이트 (Post-4)
+- `2a4e488` — docs: .env.example 추가 — 4개 커넥터 API 키 안내 (Post-4)
+
+---
+
+## 전체 커밋 이력 (48건)
 
 | # | 해시 | 메시지 |
 |---|------|--------|
@@ -476,3 +529,6 @@
 | 43 | `0f524a4` | feat: 환경기준 비교 엔진 구현 (Post-2) |
 | 44 | `9d52473` | feat: 서술문 템플릿 엔진 및 scaffold/export 4부 구조 개편 (Post-3) |
 | 45 | `262fe9d` | feat: 프론트엔드 초안 뼈대 화면 업데이트 (Post-3) |
+| 46 | `9c5918c` | feat: 토양측정망 + 기상청 ASOS 커넥터 구현 (Post-4) |
+| 47 | `41b835b` | feat: 수동 입력 가이드 + 커넥터 UI 업데이트 (Post-4) |
+| 48 | `2a4e488` | docs: .env.example 추가 — 4개 커넥터 API 키 안내 (Post-4) |
