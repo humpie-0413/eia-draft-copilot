@@ -23,6 +23,51 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+/**
+ * 수동 입력 섹션별 권장 지표 목록.
+ * 공공데이터 커넥터가 없는 5개 분야에 대해 필수 지표를 안내한다.
+ */
+const RECOMMENDED_INDICATORS: Partial<
+  Record<EvidenceCategory, { indicators: string[]; hint: string }>
+> = {
+  land_use: {
+    indicators: ["용도지역", "토지피복", "개발면적"],
+    hint: "국토이용정보 또는 토지이용현황도에서 확인",
+  },
+  traffic: {
+    indicators: ["교통량_현황", "서비스수준"],
+    hint: "교통영향평가 보고서 또는 도로교통량 통계자료 참조",
+  },
+  waste: {
+    indicators: ["폐기물_발생량", "폐기물_종류"],
+    hint: "폐기물 관리법 기준, 사업장 폐기물 발생량 조사 자료",
+  },
+  landscape: {
+    indicators: ["주요_조망점", "경관_유형"],
+    hint: "경관영향 검토서 또는 현장조사 사진 자료",
+  },
+  cultural_heritage: {
+    indicators: ["문화재_목록", "이격거리"],
+    hint: "문화재청 문화재 검색 또는 현장 실측 자료",
+  },
+  soil: {
+    indicators: ["Cd", "Cu", "Pb", "Zn", "Ni", "Cr6+", "pH", "유기물함량"],
+    hint: "토양측정망 커넥터 자동 수집 가능. 수동 시 토양오염 조사 결과 참조",
+  },
+  climate: {
+    indicators: ["평균기온", "최고기온", "최저기온", "강수량", "평균풍속", "최대풍속", "평균습도"],
+    hint: "기상청 ASOS 커넥터 자동 수집 가능. 수동 시 기상청 기후통계 참조",
+  },
+  noise_vibration: {
+    indicators: ["소음_Leq_주간", "소음_Leq_야간", "진동_Lv_주간"],
+    hint: "소음진동 현장 측정 결과 또는 환경소음측정망 자료",
+  },
+  ecology: {
+    indicators: ["식물상_종수", "동물상_종수", "법정보호종", "비오톱_유형", "녹지자연도"],
+    hint: "현장 생태조사 결과 자료",
+  },
+};
+
 interface EvidenceFormDialogProps {
   /** null이면 생성 모드, Evidence 객체면 편집 모드 */
   evidence: Evidence | null;
@@ -141,6 +186,34 @@ export function EvidenceFormDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* 권장 지표 안내 */}
+          {!isEdit && RECOMMENDED_INDICATORS[form.category] && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-800 dark:bg-blue-950">
+              <p className="mb-1.5 font-medium text-blue-700 dark:text-blue-300">
+                권장 지표
+              </p>
+              <div className="mb-1 flex flex-wrap gap-1">
+                {RECOMMENDED_INDICATORS[form.category]!.indicators.map(
+                  (ind) => (
+                    <button
+                      key={ind}
+                      type="button"
+                      className="inline-flex items-center rounded border border-blue-300 bg-white px-1.5 py-0.5 text-xs text-blue-800 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800"
+                      onClick={() =>
+                        setForm((f) => ({ ...f, indicator: ind }))
+                      }
+                    >
+                      {ind}
+                    </button>
+                  ),
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {RECOMMENDED_INDICATORS[form.category]!.hint}
+              </p>
+            </div>
+          )}
 
           {/* 지표명 */}
           <div className="space-y-1.5">

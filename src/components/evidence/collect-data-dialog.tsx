@@ -54,6 +54,39 @@ const CONNECTOR_PARAMS: Record<
       placeholder: "예: 2008A40 (선택)",
     },
   ],
+  soil_info: [
+    {
+      key: "year",
+      label: "조회 연도",
+      placeholder: "예: 2024",
+      required: true,
+    },
+    {
+      key: "site_code",
+      label: "측정지점 코드",
+      placeholder: "예: 토양측정지점 코드 (선택)",
+    },
+  ],
+  kma_weather: [
+    {
+      key: "stn_id",
+      label: "관측소 번호",
+      placeholder: "예: 108 (서울), 159 (부산)",
+      required: true,
+    },
+    {
+      key: "start_dt",
+      label: "시작일",
+      placeholder: "YYYYMMDD, 예: 20230101",
+      required: true,
+    },
+    {
+      key: "end_dt",
+      label: "종료일",
+      placeholder: "YYYYMMDD, 예: 20231231",
+      required: true,
+    },
+  ],
 };
 
 interface CollectDataDialogProps {
