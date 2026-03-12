@@ -24,6 +24,40 @@ class EvidenceCategory(str, Enum):
     OTHER = "other"                       # 기타
 
 
+# ────────────────────────────────────────────
+# output-contracts.md medium ↔ category 매핑
+# ────────────────────────────────────────────
+# 스펙의 medium 값과 구현의 category 값 간 양방향 변환.
+# medium은 외부 스펙 인터페이스 용어, category는 내부 DB 저장 용어.
+
+_CATEGORY_TO_MEDIUM: dict[str, str] = {
+    "air_quality": "air",
+    "water_quality": "water",
+    "noise_vibration": "noise",
+    "ecology": "ecology",
+    "soil": "soil",
+    "waste": "waste",
+    "landscape": "landscape",
+    "cultural_heritage": "cultural_heritage",
+    "climate": "climate",
+    "land_use": "landuse",
+    "traffic": "traffic",
+    "other": "other",
+}
+
+_MEDIUM_TO_CATEGORY: dict[str, str] = {v: k for k, v in _CATEGORY_TO_MEDIUM.items()}
+
+
+def category_to_medium(category: str) -> str:
+    """내부 category 값을 output-contracts.md의 medium 값으로 변환한다."""
+    return _CATEGORY_TO_MEDIUM.get(category, category)
+
+
+def medium_to_category(medium: str) -> str:
+    """output-contracts.md의 medium 값을 내부 category 값으로 변환한다."""
+    return _MEDIUM_TO_CATEGORY.get(medium, medium)
+
+
 class EvidenceCreate(BaseModel):
     """증거 데이터 생성 요청."""
 
