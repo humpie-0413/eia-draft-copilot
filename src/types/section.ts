@@ -1,5 +1,12 @@
-/** 섹션 상태 */
-export type SectionStatusValue = "empty" | "partial" | "complete";
+/** 섹션 상태 (기본 3종 + 확장 4종) */
+export type SectionStatusValue =
+  | "empty"
+  | "partial"
+  | "complete"
+  | "auto_filled"
+  | "evidence_draft"
+  | "expert_required"
+  | "not_applicable";
 
 /** 개별 지표 충족 상태 */
 export interface IndicatorStatus {
@@ -30,6 +37,8 @@ export interface SectionStatus {
   required_count: number;
   coverage_ratio: number;
   status: SectionStatusValue;
+  auto_filled: boolean;
+  missing_indicators: string[];
 }
 
 /** 전체 섹션 상태 목록 */
@@ -74,4 +83,8 @@ export const SECTION_STATUS_LABELS: Record<SectionStatusValue, string> = {
   empty: "미수집",
   partial: "일부 충족",
   complete: "충족",
+  auto_filled: "자동 충족",
+  evidence_draft: "초안 대기",
+  expert_required: "전문가 필요",
+  not_applicable: "해당 없음",
 };

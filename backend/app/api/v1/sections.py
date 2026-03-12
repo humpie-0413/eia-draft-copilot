@@ -109,6 +109,8 @@ async def get_all_sections_status(
                 required_count=s.required_count,
                 coverage_ratio=s.coverage_ratio,
                 status=s.status,
+                auto_filled=s.auto_filled,
+                missing_indicators=s.missing_indicators,
             )
             for s in statuses
         ],
@@ -154,6 +156,8 @@ async def get_section_status(
         required_count=section_status.required_count,
         coverage_ratio=section_status.coverage_ratio,
         status=section_status.status,
+        auto_filled=section_status.auto_filled,
+        missing_indicators=section_status.missing_indicators,
     )
 
 

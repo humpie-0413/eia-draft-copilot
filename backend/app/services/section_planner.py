@@ -187,7 +187,11 @@ class SectionStatus:
     fulfilled_count: int = 0                # 충족된 필수 지표 수
     required_count: int = 0                 # 전체 필수 지표 수
     coverage_ratio: float = 0.0             # 충족도 (0.0 ~ 1.0)
-    status: str = "empty"                   # empty / partial / complete
+    status: str = "empty"                   # 기본: empty / partial / complete
+    # 확장 상태 (output-contracts.md 스펙 정렬)
+    auto_filled: bool = False               # 모든 evidence가 자동 수집(snapshot_id 보유)
+    all_have_snapshot: bool = False          # snapshot_id 보유 비율 확인용
+    missing_indicators: list[str] = field(default_factory=list)  # 누락된 필수 지표명 목록
 
 
 async def calculate_section_status(
@@ -198,6 +202,7 @@ async def calculate_section_status(
     """단일 섹션의 증거 충족 상태를 계산한다.
 
     screening_only=False인 본 평가 데이터만 대상으로 한다.
+    확장 상태(auto_filled 등)도 함께 판정한다.
     """
     section_def = get_section_definition(section_key)
     if section_def is None:
@@ -216,6 +221,14 @@ async def calculate_section_status(
     )
     total_count = count_result.scalar_one()
 
+    # snapshot_id가 없는(수동 입력) evidence 수
+    manual_count_result = await db.execute(
+        select(func.count()).select_from(Evidence).where(
+            base_filter & Evidence.snapshot_id.is_(None)
+        )
+    )
+    manual_count = manual_count_result.scalar_one()
+
     # 지표별 evidence 수 집계
     indicator_counts_result = await db.execute(
         select(Evidence.indicator, func.count())
@@ -227,11 +240,14 @@ async def calculate_section_status(
     # 필수 지표 충족 상태 계산
     indicator_statuses = []
     fulfilled = 0
+    missing = []
     for ind_name in section_def.required_indicators:
         count = indicator_counts.get(ind_name, 0)
         is_fulfilled = count > 0
         if is_fulfilled:
             fulfilled += 1
+        else:
+            missing.append(ind_name)
         indicator_statuses.append(IndicatorStatus(
             name=ind_name,
             fulfilled=is_fulfilled,
@@ -241,13 +257,17 @@ async def calculate_section_status(
     required_total = len(section_def.required_indicators)
     ratio = fulfilled / required_total if required_total > 0 else 0.0
 
-    # 상태 결정
+    # 기본 상태 결정
     if total_count == 0:
         status_label = "empty"
     elif fulfilled >= required_total:
         status_label = "complete"
     else:
         status_label = "partial"
+
+    # auto_filled 판정: complete이면서 모든 evidence가 snapshot_id를 가진 경우
+    all_have_snapshot = total_count > 0 and manual_count == 0
+    is_auto_filled = status_label == "complete" and all_have_snapshot
 
     return SectionStatus(
         section_key=section_def.key,
@@ -260,6 +280,9 @@ async def calculate_section_status(
         required_count=required_total,
         coverage_ratio=round(ratio, 4),
         status=status_label,
+        auto_filled=is_auto_filled,
+        all_have_snapshot=all_have_snapshot,
+        missing_indicators=missing,
     )
 
 

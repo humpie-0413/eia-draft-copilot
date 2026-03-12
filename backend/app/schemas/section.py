@@ -13,11 +13,23 @@ from pydantic import BaseModel, Field
 # ────────────────────────────────────────────
 
 class SectionStatusEnum(str, Enum):
-    """섹션 상태."""
+    """섹션 상태.
 
-    EMPTY = "empty"           # 증거 없음
-    PARTIAL = "partial"       # 일부 충족
-    COMPLETE = "complete"     # 모두 충족
+    기본 3종(empty/partial/complete)은 증거 충족도 기반으로 자동 계산된다.
+    확장 4종(auto_filled/evidence_draft/expert_required/not_applicable)은
+    output-contracts.md 스펙에 따른 의미론적 상태이다.
+    """
+
+    # 기본 충족도 기반 상태
+    EMPTY = "empty"                       # 증거 0건
+    PARTIAL = "partial"                   # 일부 지표 충족
+    COMPLETE = "complete"                 # 전체 지표 충족
+
+    # 확장 의미론적 상태 (output-contracts.md 스펙)
+    AUTO_FILLED = "auto_filled"           # complete이면서 모든 evidence가 자동 수집(snapshot_id 있음)
+    EVIDENCE_DRAFT = "evidence_draft"     # 증거는 있으나 초안 텍스트 미생성 상태
+    EXPERT_REQUIRED = "expert_required"   # 전문가 판단 필요 (향후 플래그로 표시)
+    NOT_APPLICABLE = "not_applicable"     # 해당 섹션 해당 없음 (사용자 수동 설정)
 
 
 class IndicatorStatusRead(BaseModel):
@@ -56,6 +68,13 @@ class SectionStatusRead(BaseModel):
         ..., ge=0.0, le=1.0, description="충족도 (0.0~1.0)"
     )
     status: SectionStatusEnum = Field(..., description="섹션 상태")
+    # 확장 상태 필드 (output-contracts.md 스펙 정렬)
+    auto_filled: bool = Field(
+        False, description="자동 수집 데이터만으로 충족 (complete + 모든 evidence에 snapshot_id 있음)"
+    )
+    missing_indicators: list[str] = Field(
+        default_factory=list, description="누락된 필수 지표명 목록"
+    )
 
 
 class SectionStatusList(BaseModel):
