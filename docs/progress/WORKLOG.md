@@ -300,7 +300,41 @@
 
 ---
 
-## 전체 커밋 이력 (38건)
+## Post-1: 데이터 전처리 및 통계 엔진 ✅
+
+### 완료 항목
+- 통계 서비스 (`backend/app/services/statistics.py`):
+  - 섹션별/지표별 기술 통계 계산 (평균, 최대, 최소, 표준편차, 건수, 기간)
+  - numeric_value 있는 본 평가(screening_only=False) 데이터만 대상
+  - 카테고리별 기본 연도 필터 (수질 5년, 대기 1년)
+  - 일평균 집계 옵션 (시간별 데이터 → 일평균)
+  - observed_at NULL 데이터 시간필터에서 보존
+- 통계 API 엔드포인트:
+  - GET /projects/{id}/statistics — 전체 섹션 통계
+  - GET /projects/{id}/statistics/{section_key} — 개별 섹션 통계
+  - 쿼리 파라미터: years_filter (0=전체, N=최근N년, 미지정=기본값), aggregate_daily
+- scaffold 서비스 수정:
+  - 기존 개별 측정값 나열 → 지표별 1행 통계 요약 테이블로 변경
+  - 비수치 데이터 별도 섹션 분리 표시
+  - 상세 데이터는 부록으로 이동 (최대 10건 샘플)
+- 테스트 16개 (`backend/tests/test_statistics.py`)
+
+### 주요 파일
+- `backend/app/services/statistics.py` — 통계 계산 서비스
+- `backend/app/schemas/statistics.py` — 통계 API 응답 스키마
+- `backend/app/api/v1/statistics.py` — 통계 API 엔드포인트
+- `backend/app/services/draft_scaffold.py` — scaffold 요약문 통계 방식 전환
+- `backend/tests/test_statistics.py` — 통계 테스트 16개
+
+### 커밋
+- `e57db3a` — feat: 통계 서비스 및 API 엔드포인트 추가 (Post-1)
+- `2047700` — refactor: scaffold 요약문을 통계 테이블 방식으로 변경 (Post-1)
+- `aa47d9b` — test: Post-1 통계 엔진 테스트 16개 추가
+- `e988232` — fix: 시간필터 적용 시 observed_at이 NULL인 데이터 보존
+
+---
+
+## 전체 커밋 이력 (42건)
 
 | # | 해시 | 메시지 |
 |---|------|--------|
@@ -342,3 +376,7 @@
 | 36 | `649a5fa` | feat: .env에 OPENAI_API_KEY, GOOGLE_API_KEY 설정 추가 |
 | 37 | `c071872` | feat: 수질 커넥터 API를 국립환경과학원 수질 DB로 변경 |
 | 38 | `2f27ed4` | test: 커넥터 실제 API 연동 검증 스크립트 추가 |
+| 39 | `e57db3a` | feat: 통계 서비스 및 API 엔드포인트 추가 (Post-1) |
+| 40 | `2047700` | refactor: scaffold 요약문을 통계 테이블 방식으로 변경 (Post-1) |
+| 41 | `aa47d9b` | test: Post-1 통계 엔진 테스트 16개 추가 |
+| 42 | `e988232` | fix: 시간필터 적용 시 observed_at이 NULL인 데이터 보존 |

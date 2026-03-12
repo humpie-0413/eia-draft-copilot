@@ -1,30 +1,34 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**PDF 출력 기능 + 실사용 시나리오 데모** ✅
+**Post-1: 데이터 전처리 및 통계 엔진** ✅
 
-## 완료된 작업 (PDF 출력 + 데모)
+## 완료된 작업 (Post-1)
 
-### PDF 출력 기능
-- 백엔드 PDF 생성 서비스 (`backend/app/services/export_service.py`):
-  - reportlab 기반 PDF 문서 생성 (한글 폰트 지원: 맑은 고딕/나눔고딕)
-  - 문서 구조: 표지 → 목차 → 섹션별 요약문 + 근거 데이터 테이블
-  - Export Gate 동일 적용 (critical QA 이슈 시 차단)
-- API: `GET /api/v1/projects/{id}/export/pdf`
-- 프론트엔드 (`src/components/qa/export-button.tsx`):
-  - DOCX/PDF 선택 드롭다운 메뉴 추가
-  - `downloadPdf()` API 클라이언트 함수 추가
-- 테스트 (`backend/tests/test_export_pdf.py`):
-  - PDF export 성공/차단/404/내용 검증 4개 테스트
-  - E2E 테스트에 PDF 단계 추가
-- `backend/requirements.txt`: `reportlab>=4.0.0` 추가
+### 통계 서비스
+- `backend/app/services/statistics.py`:
+  - 섹션별/지표별 기술 통계 계산 (평균, 최대, 최소, 표준편차, 건수, 기간)
+  - numeric_value 있는 본 평가(screening_only=False) 데이터만 대상
+  - 카테고리별 기본 연도 필터 (수질 5년, 대기 1년)
+  - 일평균 집계 옵션 (시간별 데이터 → 일평균)
+  - observed_at NULL 데이터는 시간필터에서 보존 (날짜 미상 데이터 유지)
 
-### 실사용 시나리오 데모 스크립트
-- `scripts/demo_full_scenario.py`:
-  - 시나리오: 강남구 태양광 발전소 환경영향평가
-  - 7단계 전체 흐름: 프로젝트 생성 → 데이터 수집 → 유사사례 매칭 → 섹션 플래너 → 초안 뼈대 → QA → DOCX/PDF Export
-  - 커넥터 실패 시 수동 데이터로 자동 대체 (폴백)
-  - 결과 파일 `output/` 디렉토리에 저장
+### 통계 API
+- `GET /api/v1/projects/{id}/statistics` — 전체 섹션 통계
+- `GET /api/v1/projects/{id}/statistics/{section_key}` — 개별 섹션 통계
+- 쿼리 파라미터:
+  - `years_filter`: 0=전체 기간, N=최근 N년, 미지정=카테고리별 기본값
+  - `aggregate_daily`: true=일평균 집계, false=원본 그대로
+
+### scaffold 서비스 수정
+- 기존 개별 측정값 나열 → 지표별 1행 통계 요약 테이블로 변경
+- 비수치 데이터 별도 섹션 분리 표시
+- 상세 데이터는 부록으로 이동 (최대 10건 샘플만 표시)
+
+### 테스트
+- `backend/tests/test_statistics.py`: 16개 테스트 전부 통과
+- 기존 E2E 테스트 (`test_e2e.py`) 호환성 유지
+- 기존 PDF 테스트 (`test_export_pdf.py`) 3건 실패는 Post-1 이전부터 존재하는 기존 문제
 
 ## 이전 완료 Phase
 - Phase 0: 스캐폴딩 ✅
@@ -34,8 +38,11 @@
 - Phase 4: 유사사례 매칭 시스템 ✅
 - Phase 5: 섹션 플래너 + 초안 뼈대 ✅
 - Phase 6: QA 규칙 엔진 + Export Gate + DOCX/PDF 출력 ✅ (MVP 완료)
+- Post-0.5: 스펙 정렬 ✅
+- Post-1: 데이터 전처리 및 통계 엔진 ✅
 
-## 향후 작업 (Phase 7+)
+## 향후 작업 (Post-2+)
+- Post-2: 환경기준 비교 서비스 (기준값 DB + 초과 여부 자동 판정)
 - Vercel 배포 설정
 - 사용자 인증 (NextAuth.js)
 - AI 연동 (Claude API) — 섹션별 프롬프트 + 스트리밍 응답
@@ -60,18 +67,18 @@ cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload    # http://localhost:8000
 
+# 테스트
+cd backend
+pytest tests/ -v
+
 # 데모 실행 (백엔드 서버 실행 후)
 python scripts/demo_full_scenario.py
 ```
 
-## 주요 파일
-### PDF 출력 신규/수정 파일
-- `backend/app/services/export_service.py` — PDF 생성 서비스 (generate_pdf 추가)
-- `backend/app/api/v1/export.py` — PDF export 엔드포인트 추가
-- `backend/requirements.txt` — reportlab 추가
-- `backend/tests/test_export_pdf.py` — PDF 테스트 4개
-- `src/components/qa/export-button.tsx` — DOCX/PDF 선택 드롭다운
-- `src/lib/qa-api.ts` — downloadPdf 함수 추가
-
-### 데모 스크립트
-- `scripts/demo_full_scenario.py` — 전체 흐름 데모 (7단계)
+## 주요 파일 (Post-1 신규/수정)
+- `backend/app/services/statistics.py` — 통계 계산 서비스 (신규)
+- `backend/app/schemas/statistics.py` — 통계 API 응답 스키마 (신규)
+- `backend/app/api/v1/statistics.py` — 통계 API 엔드포인트 (신규)
+- `backend/app/services/draft_scaffold.py` — scaffold 요약문 통계 방식 전환 (수정)
+- `backend/app/main.py` — statistics 라우터 등록 (수정)
+- `backend/tests/test_statistics.py` — 통계 테스트 16개 (신규)
