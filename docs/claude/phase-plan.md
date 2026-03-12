@@ -89,7 +89,7 @@
 - [x] 프론트엔드: 초안 뼈대 페이지 (/projects/[id]/draft)
 - [x] 프로젝트 목록에 섹션 플래너 버튼 추가
 
-## Phase 6: QA 규칙 엔진 + Export Gate + DOCX 출력 ✅
+## Phase 6: QA 규칙 엔진 + Export Gate + DOCX/PDF 출력 ✅
 - [x] 결정적 QA 규칙 엔진 (5개 규칙)
   - R001: 섹션 증거 없음 (핵심 섹션 critical / 기타 warning)
   - R002: 필수 지표 누락 검사
@@ -101,9 +101,13 @@
 - [x] Export Gate: critical 이슈 시 export 차단
 - [x] DOCX 출력 서비스 (python-docx): 표지 + 목차 + 섹션별 근거 테이블
 - [x] DOCX 다운로드 API: POST /projects/{id}/export/docx
+- [x] PDF 출력 서비스 (reportlab): 한글 폰트 지원, DOCX와 동일 구조
+- [x] PDF 다운로드 API: GET /projects/{id}/export/pdf
+- [x] 프론트엔드 DOCX/PDF 선택 드롭다운
 - [x] QA 결과 UI 페이지 (/projects/[id]/qa): 이슈 목록, 심각도 필터, export 버튼
 - [x] 초안 뼈대 페이지에 QA 요약 + Export 버튼 통합
 - [x] 프로젝트 목록에 QA / Export 버튼 추가
+- [x] 실사용 시나리오 데모 스크립트 (scripts/demo_full_scenario.py)
 
 ## Phase 7 (향후): Deployment & Polish
 - [ ] Vercel 배포 설정
