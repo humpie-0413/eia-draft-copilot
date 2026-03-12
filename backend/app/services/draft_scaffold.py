@@ -3,6 +3,8 @@
 evidence 데이터를 섹션별로 분류하여 초안 뼈대 구조를 생성한다.
 핵심 원칙: unsupported claim 금지 — LLM 자유 작문이 아닌 evidence 기반
 근거 나열 방식으로만 텍스트를 배치한다.
+
+Post-1 개선: 개별 측정값 나열 → 통계 요약 테이블 + 상세 데이터 부록(최대 10건)
 """
 
 from __future__ import annotations
@@ -21,6 +23,13 @@ from app.services.section_planner import (
     calculate_section_status,
     get_section_definition,
 )
+from app.services.statistics import (
+    IndicatorStats,
+    calculate_section_statistics,
+)
+
+# 상세 데이터 부록에 표시할 최대 샘플 건수
+MAX_DETAIL_SAMPLES = 10
 
 
 @dataclass
@@ -61,40 +70,85 @@ class DraftScaffold:
     total_evidence_count: int = 0
 
 
-def _format_evidence_summary(
+def _format_stats_summary(
     section_def: SectionDefinition,
     entries: list[EvidenceEntry],
+    indicator_stats: list[IndicatorStats],
 ) -> str:
-    """evidence 항목들을 근거 나열 방식 텍스트로 변환한다.
+    """통계 요약 테이블 + 상세 데이터 부록 텍스트를 생성한다.
 
-    LLM 자유 작문이 아닌, evidence 데이터를 정형화된 문장으로만 나열한다.
+    수치 통계가 있으면 지표별 1행 요약 테이블로 현황을 정리하고,
+    상세 데이터는 부록으로 이동하여 최대 10건만 샘플 표시한다.
     """
     if not entries:
         return f"{section_def.title} 분야에 대한 수집된 증거 데이터가 없습니다."
 
-    lines = [f"[{section_def.title}] 현황 근거 데이터 ({len(entries)}건)"]
-    lines.append("")
+    lines: list[str] = []
 
-    # 지표별 그룹핑
-    indicator_groups: dict[str, list[EvidenceEntry]] = {}
-    for entry in entries:
-        indicator_groups.setdefault(entry.indicator, []).append(entry)
+    # ── 1. 통계 요약 테이블 ──
+    stats_with_data = [s for s in indicator_stats if s.count > 0]
+    if stats_with_data:
+        lines.append(f"[{section_def.title}] 현황 통계 요약 ({len(entries)}건 기준)")
+        lines.append("")
+        lines.append("지표명 | 평균 | 최대 | 최소 | 건수 | 기간")
+        lines.append("--- | --- | --- | --- | --- | ---")
 
-    for indicator, group in indicator_groups.items():
-        lines.append(f"■ {indicator}")
-        for entry in group:
-            # 관측일 표시
-            date_part = ""
-            if entry.observed_at:
-                date_part = f" (관측: {entry.observed_at[:10]})"
-
-            # 값 + 단위 표시
-            unit_part = f" {entry.unit}" if entry.unit else ""
-            lines.append(f"  - 측정값: {entry.value}{unit_part}{date_part}")
-
+        for s in stats_with_data:
+            unit_suffix = f" {s.unit}" if s.unit else ""
+            mean_str = f"{s.mean}{unit_suffix}" if s.mean is not None else "-"
+            max_str = f"{s.max_value}{unit_suffix}" if s.max_value is not None else "-"
+            min_str = f"{s.min_value}{unit_suffix}" if s.min_value is not None else "-"
+            period = _format_period(s.period_start, s.period_end)
+            lines.append(
+                f"{s.indicator} | {mean_str} | {max_str} | {min_str} | {s.count} | {period}"
+            )
         lines.append("")
 
+    # 수치 통계가 없는 지표(비수치 데이터)는 별도 나열
+    numeric_indicators = {s.indicator for s in stats_with_data}
+    non_numeric_entries = [e for e in entries if e.indicator not in numeric_indicators]
+    if non_numeric_entries:
+        # 비수치 지표 그룹핑
+        non_numeric_groups: dict[str, list[EvidenceEntry]] = {}
+        for entry in non_numeric_entries:
+            non_numeric_groups.setdefault(entry.indicator, []).append(entry)
+
+        lines.append(f"[{section_def.title}] 비수치 데이터 ({len(non_numeric_entries)}건)")
+        lines.append("")
+        for indicator, group in non_numeric_groups.items():
+            lines.append(f"■ {indicator}")
+            for entry in group:
+                date_part = f" (관측: {entry.observed_at[:10]})" if entry.observed_at else ""
+                lines.append(f"  - {entry.value}{date_part}")
+            lines.append("")
+
+    # ── 2. 상세 데이터 부록 (최대 10건 샘플) ──
+    lines.append(f"[상세 데이터] (최근 {min(len(entries), MAX_DETAIL_SAMPLES)}건 샘플)")
+    lines.append("")
+
+    sample_entries = entries[:MAX_DETAIL_SAMPLES]
+    for entry in sample_entries:
+        date_part = f" (관측: {entry.observed_at[:10]})" if entry.observed_at else ""
+        unit_part = f" {entry.unit}" if entry.unit else ""
+        lines.append(f"  - {entry.indicator}: {entry.value}{unit_part}{date_part}")
+
+    if len(entries) > MAX_DETAIL_SAMPLES:
+        lines.append(f"  ... 외 {len(entries) - MAX_DETAIL_SAMPLES}건 생략")
+
     return "\n".join(lines)
+
+
+def _format_period(start: str | None, end: str | None) -> str:
+    """관측 기간 문자열을 생성한다."""
+    if start and end:
+        s = start[:10]
+        e = end[:10]
+        return f"{s}~{e}" if s != e else s
+    if start:
+        return start[:10]
+    if end:
+        return end[:10]
+    return "-"
 
 
 async def _fetch_section_evidences(
@@ -144,7 +198,14 @@ async def generate_section_scaffold(
     )
 
     entries = [_evidence_to_entry(ev) for ev in evidences]
-    summary = _format_evidence_summary(section_def, entries)
+
+    # 통계 계산 (기본 필터 적용)
+    section_stats = await calculate_section_statistics(
+        db, project_id, section_key
+    )
+    indicator_stats = section_stats.indicator_stats if section_stats else []
+
+    summary = _format_stats_summary(section_def, entries, indicator_stats)
 
     # 섹션 상태 조회하여 state, missing_indicators 반영
     section_status = await calculate_section_status(db, project_id, section_key)
