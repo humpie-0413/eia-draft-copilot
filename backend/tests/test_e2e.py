@@ -324,3 +324,13 @@ async def test_e2e_full_workflow(client: AsyncClient):
     assert "수질" in all_text, "수질 섹션이 DOCX에 포함되어야 함"
     assert "생태" in all_text, "생태 섹션이 DOCX에 포함되어야 함"
     assert len(doc.tables) >= 3, "근거 데이터 테이블이 최소 3개 필요 (대기, 수질, 소음)"
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 단계 11: PDF export 성공 확인
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    resp = await client.get(f"/api/v1/projects/{project_id}/export/pdf")
+    assert resp.status_code == 200, f"PDF export 실패: {resp.text}"
+    assert resp.headers["content-type"] == "application/pdf"
+    assert "attachment" in resp.headers["content-disposition"]
+    assert resp.content[:5] == b"%PDF-", "유효한 PDF 파일이어야 함"
+    assert len(resp.content) > 5000, "충분한 내용이 담긴 PDF여야 함"

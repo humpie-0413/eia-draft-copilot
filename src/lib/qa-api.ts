@@ -15,20 +15,22 @@ export async function checkExportReady(
   return api.get(`/api/v1/projects/${projectId}/qa/export-ready`);
 }
 
-/** DOCX 파일 다운로드 */
-export async function downloadDocx(projectId: string): Promise<void> {
-  const url = `${API_BASE}/api/v1/projects/${projectId}/export/docx`;
-  const res = await fetch(url, { method: "POST" });
+/** 파일 다운로드 공통 처리 */
+async function downloadFile(
+  url: string,
+  method: "GET" | "POST",
+  defaultFilename: string,
+): Promise<void> {
+  const res = await fetch(url, { method });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail ?? "DOCX 다운로드에 실패했습니다.");
+    throw new Error(body.detail ?? "다운로드에 실패했습니다.");
   }
 
-  // 파일 다운로드 처리
   const blob = await res.blob();
   const disposition = res.headers.get("Content-Disposition");
-  let filename = "EIA_report.docx";
+  let filename = defaultFilename;
   if (disposition) {
     const match = disposition.match(/filename="?([^"]+)"?/);
     if (match) filename = match[1];
@@ -41,4 +43,16 @@ export async function downloadDocx(projectId: string): Promise<void> {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(link.href);
+}
+
+/** DOCX 파일 다운로드 */
+export async function downloadDocx(projectId: string): Promise<void> {
+  const url = `${API_BASE}/api/v1/projects/${projectId}/export/docx`;
+  return downloadFile(url, "POST", "EIA_report.docx");
+}
+
+/** PDF 파일 다운로드 */
+export async function downloadPdf(projectId: string): Promise<void> {
+  const url = `${API_BASE}/api/v1/projects/${projectId}/export/pdf`;
+  return downloadFile(url, "GET", "EIA_report.pdf");
 }
