@@ -266,6 +266,220 @@ async def test_water_quality():
 
 
 # ──────────────────────────────────────────────────
+# 국립환경과학원 토양측정망 커넥터 검증
+# ──────────────────────────────────────────────────
+
+SOIL_MEASURING_URL = "http://apis.data.go.kr/1480523/SoilMeasuringService/getSoilMeasuringList"
+
+
+async def test_soil_measuring():
+    """국립환경과학원 토양측정망 API 실제 호출 검증."""
+    print()
+    print("=" * 60)
+    print("[국립환경과학원 토양측정망 커넥터 검증]")
+    print("=" * 60)
+
+    if not API_KEY:
+        print("  ERROR: DATA_GO_KR_API_KEY 환경변수가 설정되지 않았습니다.")
+        return False
+
+    params = {
+        "serviceKey": API_KEY,
+        "resultType": "json",
+        "year": "2023",
+        "pageNo": "1",
+        "numOfRows": "5",
+    }
+
+    print(f"  요청 URL: {SOIL_MEASURING_URL}")
+    print(f"  조회 연도: {params['year']}")
+    print()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(SOIL_MEASURING_URL, params=params)
+
+        print(f"  HTTP 상태코드: {response.status_code}")
+
+        if response.status_code != 200:
+            print("  ERROR: HTTP 오류 응답")
+            print(f"  응답 본문: {response.text[:500]}")
+            return False
+
+        data = response.json()
+
+        # 응답 구조 확인
+        result = data.get("getSoilMeasuringList", {})
+        header = result.get("header", {})
+        code = header.get("code")
+        message = header.get("message")
+
+        print(f"  API 결과코드: {code}")
+        print(f"  API 결과메시지: {message}")
+
+        if code != "00":
+            print("  ERROR: API 오류 응답")
+            return False
+
+        total_count = result.get("totalCount", 0)
+        items = result.get("item", [])
+
+        print(f"  총 데이터 건수: {total_count}")
+        print(f"  수신 건수: {len(items)}")
+
+        if not items:
+            print("  WARNING: 수신 데이터 없음")
+            return False
+
+        # 샘플 데이터 출력
+        print()
+        print("  [샘플 데이터 (첫 번째 항목)]")
+        sample = items[0]
+        print(f"    측정지점코드: {sample.get('PT_NO')}")
+        print(f"    측정지점명: {sample.get('PT_NM')}")
+        print(f"    측정일: {sample.get('MEASURE_DT')}")
+
+        def strip_val(v):
+            return str(v).strip() if v is not None else ""
+
+        print(f"    Cd: {strip_val(sample.get('ITEM_CD'))} mg/kg")
+        print(f"    Cu: {strip_val(sample.get('ITEM_CU'))} mg/kg")
+        print(f"    Pb: {strip_val(sample.get('ITEM_PB'))} mg/kg")
+        print(f"    Zn: {strip_val(sample.get('ITEM_ZN'))} mg/kg")
+        print(f"    Ni: {strip_val(sample.get('ITEM_NI'))} mg/kg")
+        print(f"    Cr6+: {strip_val(sample.get('ITEM_CR6'))} mg/kg")
+        print(f"    pH: {strip_val(sample.get('ITEM_PH'))}")
+        print(f"    유기물함량: {strip_val(sample.get('ITEM_OM'))} %")
+
+        # raw_payload 구조 확인
+        print()
+        print("  [raw_payload 구조]")
+        print(f"    최상위 키: {list(data.keys())}")
+        print(f"    getSoilMeasuringList.header: {header}")
+        print(f"    item 필드: {list(sample.keys())[:15]}")
+
+        print()
+        print("  SUCCESS: 토양측정망 API 연동 성공")
+        return True
+
+    except Exception as e:
+        print(f"  ERROR: 예외 발생 -- {type(e).__name__}: {e}")
+        return False
+
+
+# ──────────────────────────────────────────────────
+# 기상청 ASOS 커넥터 검증
+# ──────────────────────────────────────────────────
+
+KMA_ASOS_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
+
+
+async def test_kma_asos():
+    """기상청 ASOS API 실제 호출 검증."""
+    print()
+    print("=" * 60)
+    print("[기상청 종관기상관측(ASOS) 커넥터 검증]")
+    print("=" * 60)
+
+    if not API_KEY:
+        print("  ERROR: DATA_GO_KR_API_KEY 환경변수가 설정되지 않았습니다.")
+        return False
+
+    # 서울(108) 관측소, 2024년 1월 1일~7일
+    params = {
+        "serviceKey": API_KEY,
+        "dataType": "JSON",
+        "dataCd": "ASOS",
+        "dateCd": "DAY",
+        "startDt": "20240101",
+        "endDt": "20240107",
+        "stnIds": "108",
+        "pageNo": "1",
+        "numOfRows": "10",
+    }
+
+    print(f"  요청 URL: {KMA_ASOS_URL}")
+    print(f"  관측소: 서울(108)")
+    print(f"  조회 기간: {params['startDt']}~{params['endDt']}")
+    print()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(KMA_ASOS_URL, params=params)
+
+        print(f"  HTTP 상태코드: {response.status_code}")
+
+        if response.status_code != 200:
+            print("  ERROR: HTTP 오류 응답")
+            print(f"  응답 본문: {response.text[:500]}")
+            return False
+
+        data = response.json()
+
+        # 응답 구조 확인
+        resp = data.get("response", {})
+        header = resp.get("header", {})
+        result_code = header.get("resultCode")
+        result_msg = header.get("resultMsg")
+
+        print(f"  API 결과코드: {result_code}")
+        print(f"  API 결과메시지: {result_msg}")
+
+        if result_code != "00":
+            print("  ERROR: API 오류 응답")
+            return False
+
+        body = resp.get("body", {})
+        total_count = body.get("totalCount", 0)
+
+        # items 구조 파싱 (dict 또는 list)
+        items_wrapper = body.get("items", {})
+        if isinstance(items_wrapper, dict):
+            items = items_wrapper.get("item", [])
+        elif isinstance(items_wrapper, list):
+            items = items_wrapper
+        else:
+            items = []
+
+        print(f"  총 데이터 건수: {total_count}")
+        print(f"  수신 건수: {len(items)}")
+
+        if not items:
+            print("  WARNING: 수신 데이터 없음")
+            return False
+
+        # 샘플 데이터 출력
+        print()
+        print("  [샘플 데이터 (첫 번째 항목)]")
+        sample = items[0]
+        print(f"    관측소: {sample.get('stnNm')} (ID: {sample.get('stnId')})")
+        print(f"    관측일: {sample.get('tm')}")
+        print(f"    평균기온: {sample.get('avgTa')} C")
+        print(f"    최고기온: {sample.get('maxTa')} C")
+        print(f"    최저기온: {sample.get('minTa')} C")
+        print(f"    강수량: {sample.get('sumRn')} mm")
+        print(f"    평균풍속: {sample.get('avgWs')} m/s")
+        print(f"    최대풍속: {sample.get('maxWs')} m/s")
+        print(f"    평균습도: {sample.get('avgRhm')} %")
+
+        # raw_payload 구조 확인
+        print()
+        print("  [raw_payload 구조]")
+        print(f"    최상위 키: {list(data.keys())}")
+        print(f"    response.header: {header}")
+        print(f"    response.body 키: {list(body.keys())}")
+        print(f"    item 필드: {list(sample.keys())[:15]}")
+
+        print()
+        print("  SUCCESS: 기상청 ASOS API 연동 성공")
+        return True
+
+    except Exception as e:
+        print(f"  ERROR: 예외 발생 -- {type(e).__name__}: {e}")
+        return False
+
+
+# ──────────────────────────────────────────────────
 # 메인
 # ──────────────────────────────────────────────────
 
@@ -276,6 +490,8 @@ async def main():
 
     air_ok = await test_airkorea()
     water_ok = await test_water_quality()
+    soil_ok = await test_soil_measuring()
+    kma_ok = await test_kma_asos()
 
     print()
     print("=" * 60)
@@ -283,9 +499,12 @@ async def main():
     print("=" * 60)
     print(f"  에어코리아 대기질: {'SUCCESS' if air_ok else 'FAILED'}")
     print(f"  국립환경과학원 수질 DB: {'SUCCESS' if water_ok else 'FAILED'}")
+    print(f"  국립환경과학원 토양측정망: {'SUCCESS' if soil_ok else 'FAILED'}")
+    print(f"  기상청 ASOS: {'SUCCESS' if kma_ok else 'FAILED'}")
     print()
 
-    if air_ok and water_ok:
+    all_ok = air_ok and water_ok and soil_ok and kma_ok
+    if all_ok:
         print("  전체 검증 통과")
     else:
         print("  일부 검증 실패 -- 위 로그를 확인하세요")
