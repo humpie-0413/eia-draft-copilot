@@ -1,20 +1,23 @@
 # EIA Draft Copilot
 
-환경영향평가서(EIA) 초안 작성 및 품질검증(QA)을 지원하는 내부 도구입니다.
+환경영향평가서(EIA) 초안 작성 및 품질검증(QA)을 지원하는 내부 B2B 도구입니다.
 공공데이터 API로부터 환경 증거를 수집하고, 법정 11개 섹션에 대한 초안 뼈대를 자동 생성하며,
-결정적 QA 규칙으로 품질을 검증한 뒤 DOCX 문서로 내보냅니다.
+결정적 QA 규칙으로 품질을 검증한 뒤 DOCX/PDF 문서로 내보냅니다.
 
 ## 핵심 기능 흐름
 
 ```
 프로젝트 입력 (이름, 유형, geometry)
-  → 공공데이터 수집 (에어코리아 대기질 · 국립환경과학원 수질DB)
+  → 공공데이터 수집 (대기질 · 수질 · 토양 · 기후 4종 커넥터 + 수동 입력)
   → 증거(Evidence) 정규화 및 저장
   → 유사사례 매칭 (사업유형/위치/규모/환경분야 가중 유사도)
   → 섹션 플래너 (11개 섹션 필수 지표 충족도 계산)
-  → 초안 뼈대 생성 (evidence 기반, unsupported claim 금지)
-  → QA 검증 (5개 규칙, critical/warning/info 등급)
-  → DOCX export (critical 이슈 시 차단)
+  → 통계 엔진 (지표별 기술 통계 산출)
+  → 환경기준 비교 (대기/수질/소음 기준 적합·초과 판정)
+  → 서술문 템플릿 생성 (LLM 미사용 결정적 방식)
+  → LLM 보강 (선택: OpenAI/Gemini adapter)
+  → QA 검증 (6개 규칙, critical/warning/info 등급)
+  → DOCX/PDF export (표지 + 목차 + 본문 + 부록 3종)
 ```
 
 ### EIA 11개 섹션
@@ -33,7 +36,16 @@
 | 10 | 문화재 | 문화재 목록, 이격거리 |
 | 11 | 기후 | 기온 연평균, 강수량 연평균, 풍향·풍속 |
 
-### QA 규칙 (5개)
+### 공공데이터 커넥터 (4종)
+
+| 커넥터 | 대상 API | 수집 지표 |
+|--------|----------|-----------|
+| `keco_air` | 에어코리아 대기오염정보 | PM10, PM2.5, O3, NO2, SO2, CO |
+| `water_info` | 국립환경과학원 수질 DB | BOD, COD, SS, DO, T-N, T-P |
+| `soil_info` | 국립환경과학원 토양측정망 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 |
+| `kma_weather` | 기상청 ASOS 일자료 | 평균기온, 최고/최저기온, 강수량, 풍속, 습도 |
+
+### QA 규칙 (6개)
 
 | ID | 규칙 | 심각도 |
 |----|------|--------|
@@ -42,8 +54,19 @@
 | R003 | 충족도 50% 미만 | warning |
 | R004 | 근거 없는 완료 상태 (unsupported claim) | critical |
 | R005 | 단일 근거 지표 | info |
+| R006 | 환경기준 초과 지표 | warning |
 
 > 핵심 섹션: 대기질, 수질, 소음·진동, 생태
+
+### LLM Adapter (3종)
+
+| Adapter | 설명 | 모델 |
+|---------|------|------|
+| `none` | LLM 미사용 (기본값) | - |
+| `openai_paid` | OpenAI GPT | gpt-4o-mini |
+| `gemini_free` | Google Gemini | gemini-2.0-flash |
+
+> MVP는 LLM 없이(`LLM_ADAPTER=none`) 완전 동작합니다.
 
 ## 기술 스택
 
@@ -60,8 +83,9 @@
 - **마이그레이션**: Alembic
 - **검증**: Pydantic v2 + geojson-pydantic
 - **HTTP 클라이언트**: httpx (공공데이터 API 호출)
-- **문서 생성**: python-docx (DOCX 출력)
-- **테스트**: pytest + httpx (ASGI 테스트)
+- **문서 생성**: python-docx (DOCX), reportlab (PDF)
+- **LLM**: openai SDK + httpx (Gemini REST)
+- **테스트**: pytest + httpx (ASGI 테스트, 230개)
 
 ## 로컬 개발 환경 설정
 
@@ -96,6 +120,11 @@ DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/eia_copilot
 DEBUG=true
 DATA_GO_KR_API_KEY=발급받은_인코딩_키
 CONNECTOR_TIMEOUT=30
+
+# LLM adapter (선택, 기본값: none)
+LLM_ADAPTER=none
+# OPENAI_API_KEY=sk-...
+# GOOGLE_API_KEY=AI...
 ```
 
 **프론트엔드** (`.env.local`):
@@ -110,8 +139,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 1. 회원가입 및 로그인
 2. 아래 API 활용 신청:
    - **에어코리아 대기오염정보**: https://www.data.go.kr/data/15073861/openapi.do
-   - **국립환경과학원 수질 DB (물환경 수질측정망 운영결과)**: https://www.data.go.kr/data/15081073/openapi.do
+   - **국립환경과학원 수질 DB**: https://www.data.go.kr/data/15081073/openapi.do
+   - **국립환경과학원 토양측정망**: https://www.data.go.kr/data/15056108/openapi.do
+   - **기상청 ASOS 일자료**: https://www.data.go.kr/data/15059093/openapi.do
 3. 발급받은 **인코딩 키**를 `backend/.env`의 `DATA_GO_KR_API_KEY`에 설정
+
+> 4개 커넥터 모두 동일한 공공데이터포털 키를 사용합니다.
 
 ## 실행 방법
 
@@ -134,25 +167,40 @@ npm install
 npm run dev                   # http://localhost:3000
 ```
 
+### 통합 데모
+
+```bash
+# 백엔드 서버 실행 후
+python scripts/demo_full_scenario.py
+```
+
+전체 워크플로우를 자동 실행합니다: 프로젝트 생성 → 4종 커넥터 수집 → 유사사례 매칭 → 통계 → 기준비교 → 서술문 → LLM 보강 → QA → DOCX/PDF Export.
+
 ## 테스트
 
-### 백엔드 테스트 (pytest)
+### 백엔드 테스트 (pytest, 230개)
 
 ```bash
 cd backend
-pytest tests/ -v              # 전체 테스트 실행 (37개+)
+pytest tests/ -v
 ```
 
 주요 테스트 파일:
-- `tests/test_projects.py` — 프로젝트 CRUD + 헬스체크
-- `tests/test_connectors.py` — 커넥터 fetch/normalize + 통합 (27개)
-- `tests/test_e2e.py` — 전체 워크플로우 E2E 테스트
+- `tests/test_projects.py` — 프로젝트 CRUD + 헬스체크 (9개)
+- `tests/test_connectors.py` — 커넥터 4종 fetch/normalize + 레지스트리 (52개)
+- `tests/test_e2e.py` — 전체 워크플로우 E2E 테스트 (1개)
+- `tests/test_spec_alignment.py` — 스펙 정렬 검증 (23개)
+- `tests/test_statistics.py` — 통계 엔진 (16개)
+- `tests/test_standard_checker.py` — 환경기준 비교 (27개)
+- `tests/test_narrative_generator.py` — 서술문 생성기 (28개)
+- `tests/test_export_format.py` — DOCX/PDF 포맷 (40개)
+- `tests/test_export_pdf.py` — PDF 출력 (4개)
+- `tests/test_llm_adapter.py` — LLM adapter (29개)
 
 ### 커넥터 실제 API 검증
 
 ```bash
-cd backend
-python ../scripts/test_connectors_live.py
+python scripts/test_connectors_live.py
 ```
 
 > `DATA_GO_KR_API_KEY`가 설정되어 있어야 합니다.
@@ -176,39 +224,43 @@ eia-draft-copilot/
 │   │       └── [id]/
 │   │           ├── evidences/    # Evidence Workbench
 │   │           ├── sections/     # 섹션 플래너
-│   │           ├── draft/        # 초안 뼈대
+│   │           ├── draft/        # 초안 뼈대 + 서술문
 │   │           ├── qa/           # QA 결과
 │   │           └── similar-cases/# 유사사례 매칭
 │   ├── components/               # UI 컴포넌트
-│   │   ├── evidence/             # 증거 관련 (테이블, 폼, 필터, 수집)
-│   │   ├── qa/                   # QA (이슈 목록, 요약바, Export 버튼)
-│   │   ├── section/              # 섹션 (상태 카드, 초안 뷰)
+│   │   ├── evidence/             # 증거 (테이블, 폼, 필터, 수집, 수동 가이드)
+│   │   ├── qa/                   # QA (이슈 목록, 요약바, Export, 미리보기)
+│   │   ├── section/              # 섹션 (상태 카드, 초안 뷰, LLM 상태)
 │   │   ├── similar-case/         # 유사사례 (매칭 테이블, 상세)
 │   │   └── ui/                   # shadcn/ui 기본 컴포넌트
 │   ├── lib/                      # API 클라이언트, 유틸리티
 │   └── types/                    # TypeScript 타입 정의
 ├── backend/                      # FastAPI 백엔드
 │   ├── app/
-│   │   ├── api/v1/               # REST API 엔드포인트
-│   │   ├── connectors/           # 공공데이터 커넥터
+│   │   ├── api/v1/               # REST API 엔드포인트 (11개 라우터)
+│   │   ├── connectors/           # 공공데이터 커넥터 (4종)
 │   │   ├── crud/                 # DB CRUD 함수
+│   │   ├── data/                 # 환경기준 데이터
+│   │   ├── llm/                  # LLM adapter (3종)
 │   │   ├── models/               # SQLAlchemy 모델
 │   │   ├── schemas/              # Pydantic 스키마
-│   │   ├── services/             # 비즈니스 로직
+│   │   ├── services/             # 비즈니스 로직 (통계, 기준비교, 서술문, QA, Export)
 │   │   ├── main.py               # FastAPI 앱 엔트리포인트
 │   │   ├── config.py             # 환경 설정
 │   │   └── db.py                 # DB 세션 관리
-│   ├── alembic/                  # DB 마이그레이션
-│   ├── tests/                    # 백엔드 테스트
+│   ├── alembic/                  # DB 마이그레이션 (3개)
+│   ├── tests/                    # 백엔드 테스트 (230개)
 │   └── requirements.txt          # Python 의존성
 ├── scripts/                      # 유틸리티 스크립트
+│   ├── demo_full_scenario.py     # 통합 데모 (11단계)
+│   └── test_connectors_live.py   # 커넥터 실제 API 검증
 ├── docs/                         # 문서
 │   ├── architecture.md           # 시스템 아키텍처
 │   ├── user-guide.md             # 사용자 가이드
 │   ├── api-reference.md          # API 레퍼런스
 │   ├── development.md            # 개발자 가이드
-│   ├── claude/                   # Phase 계획
-│   └── progress/                 # 작업 이력
+│   ├── claude/                   # Phase 계획, 아키텍처 결정
+│   └── progress/                 # 작업 이력, 브리핑
 └── public/                       # 정적 에셋
 ```
 

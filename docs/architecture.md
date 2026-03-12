@@ -3,36 +3,45 @@
 ## 전체 시스템 구성도
 
 ```
-┌────────────────────────┐       ┌──────────────────────────┐
-│   프론트엔드 (Next.js)  │       │      공공데이터 API       │
-│   http://localhost:3000 │       │                          │
-│                        │       │  ┌──────────────────┐    │
-│  ┌──────────────────┐  │       │  │ 에어코리아        │    │
-│  │ 프로젝트 목록     │  │       │  │ (대기오염정보)    │    │
-│  │ Evidence 작업대   │  │       │  └──────────────────┘    │
-│  │ 섹션 플래너       │  │  REST │  ┌──────────────────┐    │
-│  │ 초안 뼈대 뷰어    │──┼──────▶│  │ 국립환경과학원    │    │
-│  │ QA 결과 / Export  │  │       │  │ (수질 DB)        │    │
-│  │ 유사사례 매칭     │  │       │  └──────────────────┘    │
-│  └──────────────────┘  │       └────────────┬─────────────┘
-└────────────┬───────────┘                    │
-             │ REST API                       │ httpx
-             ▼                                ▼
-┌──────────────────────────────────────────────────────────┐
-│                백엔드 (FastAPI)                           │
-│                http://localhost:8000                      │
-│                                                          │
-│  ┌─────────┐ ┌─────────────┐ ┌────────────────────────┐ │
-│  │ API     │ │  서비스 계층  │ │    커넥터 파이프라인     │ │
-│  │ 라우터  │─▶│ (섹션/QA/   │ │ BaseConnector          │ │
-│  │ (9개)   │ │ Export/유사) │ │ ├─ KecoAirConnector    │ │
-│  └─────────┘ └──────┬──────┘ │ └─ WaterInfoConnector  │ │
-│                      │        └────────────────────────┘ │
-│                      ▼                                   │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │             CRUD 계층 (SQLAlchemy async)            │  │
-│  └────────────────────────┬───────────────────────────┘  │
-└───────────────────────────┼──────────────────────────────┘
+┌────────────────────────┐       ┌──────────────────────────────────┐
+│   프론트엔드 (Next.js)  │       │        공공데이터 API             │
+│   http://localhost:3000 │       │                                  │
+│                        │       │  ┌──────────────────────────┐    │
+│  ┌──────────────────┐  │       │  │ 에어코리아 (대기오염정보)  │    │
+│  │ 프로젝트 목록     │  │       │  └──────────────────────────┘    │
+│  │ Evidence 작업대   │  │       │  ┌──────────────────────────┐    │
+│  │ 섹션 플래너       │  │  REST │  │ 국립환경과학원 (수질 DB)  │    │
+│  │ 초안 뼈대 + 서술문│──┼──────▶│  └──────────────────────────┘    │
+│  │ QA 결과 / Export  │  │       │  ┌──────────────────────────┐    │
+│  │ 유사사례 매칭     │  │       │  │ 국립환경과학원 (토양측정망)│    │
+│  │ LLM 상태 카드     │  │       │  └──────────────────────────┘    │
+│  └──────────────────┘  │       │  ┌──────────────────────────┐    │
+└────────────┬───────────┘       │  │ 기상청 (ASOS 일자료)     │    │
+             │ REST API          │  └──────────────────────────┘    │
+             ▼                   └────────────┬─────────────────────┘
+┌──────────────────────────────────────────────┤ httpx
+│                백엔드 (FastAPI)               │
+│                http://localhost:8000          │
+│                                              │
+│  ┌──────────┐ ┌──────────────┐ ┌─────────────────────────────┐ │
+│  │ API      │ │  서비스 계층   │ │    커넥터 파이프라인          │ │
+│  │ 라우터   │─▶│              │ │ BaseConnector               │ │
+│  │ (11개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector         │ │
+│  └──────────┘ │ ├기준비교     │ │ ├─ WaterInfoConnector       │ │
+│               │ ├서술문생성   │ │ ├─ SoilInfoConnector        │ │
+│               │ ├QA 규칙     │ │ └─ KmaWeatherConnector      │ │
+│               │ ├Export      │ └─────────────────────────────┘ │
+│               │ └유사도 계산 │                                  │
+│               └──────┬───────┘  ┌────────────────────┐         │
+│                      │          │  LLM Adapter        │         │
+│                      │          │ ├─ NoneAdapter      │         │
+│                      │          │ ├─ OpenAIAdapter    │         │
+│                      │          │ └─ GeminiAdapter    │         │
+│                      ▼          └────────────────────┘         │
+│  ┌────────────────────────────────────────────────────────┐    │
+│  │             CRUD 계층 (SQLAlchemy async)                │    │
+│  └────────────────────────┬───────────────────────────────┘    │
+└───────────────────────────┼────────────────────────────────────┘
                             │ asyncpg
                             ▼
               ┌──────────────────────────┐
@@ -62,17 +71,37 @@
 4. 증거 (Evidence)
    └─ 벌크 INSERT → evidences 테이블 (카테고리/지표/값/단위)
 
-5. 섹션 상태 (Section Status)
+5. 통계 엔진 (Post-1)
+   └─ 섹션별·지표별 기술 통계 (평균, 최대, 최소, 표준편차, 기간)
+   └─ 카테고리별 기본 연도 필터 (수질 5년, 대기 1년)
+
+6. 환경기준 비교 (Post-2)
+   └─ 대기/수질/소음 환경기준 데이터 내장
+   └─ 통계 결과 ↔ 기준 비교 → 적합/초과 판정
+   └─ 수질 등급 판정 (Ia~V)
+
+7. 섹션 상태 (Section Status)
    └─ 11개 섹션별 필수 지표 충족도 계산 (coverage_ratio)
 
-6. 초안 뼈대 (Draft Scaffold)
-   └─ 섹션별 evidence 나열 + 요약 텍스트 생성 (LLM 없이)
+8. 서술문 생성 (Post-3)
+   └─ 섹션 유형별 서술문 템플릿 (대기/수질/소음/생태/범용)
+   └─ LLM 미사용 결정적 방식
 
-7. QA (Quality Assurance)
-   └─ 5개 결정적 규칙 실행 → critical/warning/info 이슈 목록
+9. LLM 보강 (Post-6, 선택)
+   └─ NoneAdapter: 원본 반환 / OpenAIAdapter / GeminiAdapter
+   └─ 시스템 프롬프트: "한국 환경영향평가서 전문 작성자"
+   └─ API 실패 시 fallback → 원본 반환
 
-8. Export
-   └─ export_ready 확인 (critical 0건) → python-docx로 DOCX 생성
+10. 초안 뼈대 (Draft Scaffold)
+    └─ 서술문 + 통계 요약 테이블 + 환경기준 비교 + 상세 데이터 샘플
+
+11. QA (Quality Assurance)
+    └─ 6개 결정적 규칙 실행 → critical/warning/info 이슈 목록
+
+12. Export (Post-5)
+    └─ export_ready 확인 (critical 0건)
+    └─ DOCX: 표지 + 목차 + 본문 11섹션(4부 구조) + 부록 A/B/C
+    └─ PDF: 동일 구조 (reportlab)
 ```
 
 ## DB 스키마 개요
@@ -211,7 +240,7 @@ projects (프로젝트)
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/connectors` | 사용 가능한 커넥터 목록 |
+| GET | `/connectors` | 사용 가능한 커넥터 목록 (4종) |
 | POST | `/connectors/{connector_key}/collect` | 데이터 수집 실행 |
 
 ### 유사사례 (Similar Cases)
@@ -235,6 +264,20 @@ projects (프로젝트)
 | GET | `/projects/{id}/sections/scaffold` | 전체 초안 뼈대 |
 | GET | `/projects/{id}/sections/scaffold/{key}` | 단일 섹션 초안 뼈대 |
 
+### 통계 (Statistics) — Post-1
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/projects/{id}/statistics` | 전체 섹션 통계 |
+| GET | `/projects/{id}/statistics/{key}` | 개별 섹션 통계 |
+
+### 환경기준 비교 (Standards Check) — Post-2
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/projects/{id}/standards-check` | 전체 섹션 환경기준 비교 |
+| GET | `/projects/{id}/standards-check/{key}` | 개별 섹션 환경기준 비교 |
+
 ### QA
 
 | 메서드 | 경로 | 설명 |
@@ -242,11 +285,20 @@ projects (프로젝트)
 | GET | `/projects/{id}/qa` | QA 규칙 실행 결과 |
 | GET | `/projects/{id}/qa/export-ready` | Export 가능 여부 확인 |
 
-### Export
+### Export — Post-5
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| POST | `/projects/{id}/export/docx` | DOCX 파일 다운로드 |
+| GET | `/projects/{id}/export/preview` | 문서 구조 미리보기 |
+| POST | `/projects/{id}/export/docx` | DOCX 파일 다운로드 (부록 옵션) |
+| GET | `/projects/{id}/export/pdf` | PDF 파일 다운로드 (부록 옵션) |
+
+### LLM — Post-6
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/llm/status` | LLM adapter 상태 조회 |
+| POST | `/llm/projects/{id}/enhance` | 섹션 서술문 AI 보강 |
 
 ### 헬스체크
 
@@ -269,12 +321,69 @@ BaseConnector (추상 클래스)
         └── Evidence 벌크 INSERT
 ```
 
-### 구현된 커넥터
+### 구현된 커넥터 (4종)
 
 | 커넥터 키 | 이름 | API | 수집 지표 |
 |-----------|------|-----|-----------|
-| `keco_air` | 에어코리아 대기질 | 공공데이터포털 ArpltnInforInqireSvc | PM10, PM2.5, O3, NO2, SO2, CO |
-| `water_info` | 국립환경과학원 수질 DB | 공공데이터포털 WaterQualityService | BOD, COD, SS, DO, T-N, T-P |
+| `keco_air` | 에어코리아 대기질 | ArpltnInforInqireSvc | PM10, PM2.5, O3, NO2, SO2, CO |
+| `water_info` | 수질 DB | WaterQualityService | BOD, COD, SS, DO, T-N, T-P |
+| `soil_info` | 토양측정망 | 토양측정정보 조회 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 |
+| `kma_weather` | 기상청 ASOS | 지상일자료 조회 | 기온, 강수량, 풍속, 습도 |
+
+## 통계 엔진 구조 (Post-1)
+
+```
+calculate_section_statistics(db, project_id, section_key)
+│
+├── 대상: screening_only=False, numeric_value 있는 데이터
+├── 카테고리별 기본 연도 필터:
+│   ├── 수질: 최근 5년
+│   ├── 대기: 최근 1년
+│   └── 기타: 전체 기간
+├── 지표별 기술 통계 계산:
+│   ├── 평균 (mean)
+│   ├── 최대값 (max_value)
+│   ├── 최소값 (min_value)
+│   ├── 표준편차 (std_dev)
+│   ├── 건수 (count)
+│   └── 기간 (period_start, period_end)
+└── 일평균 집계 옵션 (시간별 → 일평균)
+```
+
+## 환경기준 비교 구조 (Post-2)
+
+```
+check_section_standards(db, project_id, section_key)
+│
+├── 환경기준 데이터 (backend/app/data/env_standards.py):
+│   ├── 대기: PM10(50ug/m3), PM2.5(25), SO2(0.02ppm), NO2(0.03), CO(9), O3(0.06)
+│   ├── 수질: BOD/COD/SS/DO/T-P 등급 기준 (Ia~V)
+│   └── 소음: 주간 55dB, 야간 45dB
+│
+├── 판정:
+│   ├── pass: 기준 이하 (DO는 기준 이상)
+│   ├── fail: 기준 초과
+│   └── na: 기준 없음
+│
+├── 수질 등급 판정: BOD/COD/DO/T-P 기반 최악 등급
+└── 섹션별 기준 비교 서술문 자동 생성
+```
+
+## 서술문 생성기 구조 (Post-3)
+
+```
+generate_narrative(section_def, section_stats, section_check)
+│
+├── 섹션 유형별 서술문 템플릿:
+│   ├── 대기질: 지표별 기준 비교 + 초과 시 저감대책
+│   ├── 수질: BOD/COD 병합 + 등급 판정 + 기타 지표
+│   ├── 소음·진동: 주간/야간 판정 + 방음대책
+│   ├── 생태: 종수 + 녹지자연도 + 법정보호종
+│   └── 범용: 토양/교통/폐기물 등
+│
+├── LLM 미사용: 결정적 템플릿 방식
+└── 미수집 섹션: 고정 서술문 "현장조사 및 자료 수집이 필요하다"
+```
 
 ## QA 규칙 엔진 구조
 
@@ -287,31 +396,75 @@ run_qa(db, project_id)
 │   ├── R002: 필수 지표 누락 검사
 │   ├── R003: 충족도 50% 미만 검사
 │   ├── R004: unsupported claim 검출
-│   └── R005: 단일 근거 지표 정보
+│   ├── R005: 단일 근거 지표 정보
+│   └── R006: 환경기준 초과 지표 경고 (Post-2)
 │
 ├── 이슈 집계 → QaSummary (critical/warning/info 건수)
 └── export_ready = (critical_count == 0)
 ```
 
 심각도 등급:
-- **critical**: Export 차단. 핵심 4개 섹션(대기질, 수질, 소음·진동, 생태)의 증거 부재 또는 필수 지표 누락
-- **warning**: Export 가능. 비핵심 섹션 이슈, 충족도 부족 등
+- **critical**: Export 차단. 핵심 4개 섹션의 증거 부재 또는 필수 지표 누락
+- **warning**: Export 가능. 비핵심 섹션 이슈, 충족도 부족, 환경기준 초과
 - **info**: 참고 정보. 근거 1건인 지표 안내
 
-## LLM Adapter 구조
+## LLM Adapter 구조 (Post-6)
 
-현재 MVP는 LLM 없이 결정적(deterministic)으로 동작합니다.
-향후 Phase에서 아래 adapter 구조로 LLM 연동을 계획하고 있습니다.
+```
+BaseLLMAdapter (추상 클래스)
+│
+├── enhance_narrative(EnhanceInput) → EnhanceResult
+│   └─ 입력: 섹션 키/제목, 템플릿 서술문, 통계 요약, 기준비교 요약
+│   └─ 출력: 보강된 서술문, 사용 adapter, fallback 여부
+│
+├── NoneAdapter (기본값)
+│   └─ 템플릿 서술문 그대로 반환
+│
+├── OpenAIAdapter (LLM_ADAPTER=openai_paid)
+│   ├─ 모델: gpt-4o-mini
+│   ├─ OPENAI_API_KEY 환경변수
+│   └─ API 실패 시 fallback
+│
+└── GeminiAdapter (LLM_ADAPTER=gemini_free)
+    ├─ 모델: gemini-2.0-flash
+    ├─ GOOGLE_API_KEY 환경변수
+    └─ httpx REST 직접 호출 + fallback
+```
 
-| Adapter | 설명 | 상태 |
-|---------|------|------|
-| `none` | LLM 미사용 (현재 기본값) | 활성 |
-| `manual_prompt_pack` | 수동 프롬프트 패키지 | 계획 |
-| `gemini_free` | Google Gemini (무료) | 계획 |
-| `openai_paid` | OpenAI GPT (유료) | 계획 |
-| `claude_paid` | Anthropic Claude (유료) | 계획 |
+시스템 프롬프트 규칙:
+- 데이터 외 내용 추가 금지
+- 수치 변경 금지
+- 공식적 문체 유지
+- 추측 금지
 
-환경변수 준비:
-- `OPENAI_API_KEY` — OpenAI 연동용
-- `GOOGLE_API_KEY` — Google Gemini 연동용
-- `ANTHROPIC_API_KEY` — Claude 연동용 (프론트엔드 `.env`)
+## Export 구조 (Post-5)
+
+### DOCX 구조
+```
+1. 표지 페이지
+   └─ "환경영향평가서 초안" + 사업명 + 사업유형(한글) + 위치 + 작성일
+
+2. 목차
+   └─ 테이블: 섹션 번호(제N장) + 제목 + 상태 + 증거 건수
+
+3. 본문 섹션 (11개, 4부 구조)
+   ├─ 가. 현황 및 영향 분석 (서술문)
+   ├─ 나. 측정 현황 요약 (통계 테이블)
+   ├─ 다. 환경기준 비교 (기준 비교 테이블)
+   └─ 라. 측정 데이터 (대표 샘플 5건)
+
+4. 부록
+   ├─ A: 상세 측정 데이터 (섹션별 최대 50건)
+   ├─ B: 유사사례 매칭 결과 (유사도 점수 테이블)
+   └─ C: QA 검사 결과 (요약 + 이슈 목록)
+```
+
+### 테이블 디자인
+- 헤더 배경: 연한 파란(#D6E4F0)
+- 교차 행 배경: #F5F5F7
+- 환경기준 초과 행: 연한 빨간(#FDE0DC)
+
+### PDF 동일 구조
+- reportlab 기반
+- 동일한 표지/목차/머리말꼬리말/부록 구조
+- 초과 행 빨간 배경, 헤더 색상 동일 적용

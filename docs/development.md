@@ -101,6 +101,8 @@ npm run dev  # http://localhost:3000
 - 비즈니스 로직은 `backend/app/services/`에 위치
 - API 엔드포인트는 `backend/app/api/v1/`에 위치
 - 스키마(Pydantic)는 `backend/app/schemas/`에 위치
+- 환경기준 데이터는 `backend/app/data/`에 위치
+- LLM adapter는 `backend/app/llm/`에 위치
 
 ---
 
@@ -110,10 +112,15 @@ npm run dev  # http://localhost:3000
 
 ```bash
 cd backend
-pytest tests/ -v                    # 전체 테스트
-pytest tests/test_projects.py -v    # 프로젝트 테스트만
-pytest tests/test_connectors.py -v  # 커넥터 테스트만
-pytest tests/test_e2e.py -v         # E2E 테스트만
+pytest tests/ -v                         # 전체 테스트 (230개)
+pytest tests/test_projects.py -v         # 프로젝트 테스트만
+pytest tests/test_connectors.py -v       # 커넥터 테스트만
+pytest tests/test_e2e.py -v              # E2E 테스트만
+pytest tests/test_statistics.py -v       # 통계 엔진 테스트만
+pytest tests/test_standard_checker.py -v # 환경기준 비교 테스트만
+pytest tests/test_narrative_generator.py -v  # 서술문 생성기 테스트만
+pytest tests/test_export_format.py -v    # 문서 포맷 테스트만
+pytest tests/test_llm_adapter.py -v      # LLM adapter 테스트만
 ```
 
 **테스트 DB 설정** (`conftest.py`):
@@ -144,7 +151,16 @@ async def test_something(client: AsyncClient):
 python scripts/test_connectors_live.py
 ```
 
-이 스크립트는 실제 공공데이터 API를 호출하여 커넥터의 정상 동작을 확인합니다.
+이 스크립트는 4개 커넥터(에어코리아, 수질, 토양, 기후)의 실제 공공데이터 API 호출을 검증합니다.
+
+### 통합 데모
+
+```bash
+# 백엔드 서버 실행 후
+python scripts/demo_full_scenario.py
+```
+
+11단계 전체 흐름을 자동 실행하고 결과를 `output/` 폴더에 저장합니다.
 
 ### 프론트엔드 테스트
 
@@ -169,32 +185,13 @@ npm run test  # Vitest
 ```bash
 cd backend
 
-# 현재 마이그레이션 상태 확인
-alembic current
-
-# 최신 버전으로 업그레이드
-alembic upgrade head
-
-# 한 단계 업그레이드
-alembic upgrade +1
-
-# 한 단계 다운그레이드
-alembic downgrade -1
-
-# 새 마이그레이션 생성
-alembic revision --autogenerate -m "설명"
-
-# 마이그레이션 이력 조회
-alembic history
+alembic current             # 현재 마이그레이션 상태
+alembic upgrade head        # 최신 버전으로 업그레이드
+alembic upgrade +1          # 한 단계 업그레이드
+alembic downgrade -1        # 한 단계 다운그레이드
+alembic revision --autogenerate -m "설명"  # 새 마이그레이션 생성
+alembic history             # 마이그레이션 이력 조회
 ```
-
-### 새 마이그레이션 작성 절차
-
-1. `backend/app/models/`에 새 모델 추가 또는 기존 모델 수정
-2. `alembic revision --autogenerate -m "변경 설명"` 실행
-3. 생성된 마이그레이션 파일을 검토 (PostGIS 관련 변경은 수동 확인 필요)
-4. `alembic upgrade head`로 적용
-5. 테스트 실행으로 검증
 
 ---
 
@@ -224,14 +221,7 @@ class NewConnector(BaseConnector):
             resp.raise_for_status()
             return resp.json()
 
-    def normalize(
-        self,
-        raw_payload: dict,
-        project_id,
-        data_source_id,
-        snapshot_id,
-        screening_only=False,
-    ) -> list[EvidenceCreate]:
+    def normalize(self, raw_payload, project_id, data_source_id, snapshot_id, screening_only=False):
         """원본 데이터를 EvidenceCreate 목록으로 정규화한다."""
         evidences = []
         for item in raw_payload.get("items", []):
@@ -251,31 +241,46 @@ class NewConnector(BaseConnector):
 
 ### 2. 레지스트리 등록
 
-`backend/app/connectors/registry.py`에서 자동 등록:
-
+`backend/app/connectors/registry.py`:
 ```python
 from app.connectors.new_connector import NewConnector
-
 register_connector(NewConnector())
 ```
 
 ### 3. 테스트 작성
 
-`backend/tests/test_connectors.py`에 테스트 추가:
-
-```python
-class TestNewConnector:
-    def test_normalize_basic(self):
-        connector = NewConnector()
-        raw = {"items": [{"value": 42}]}
-        evidences = connector.normalize(raw, project_id, ds_id, snap_id)
-        assert len(evidences) == 1
-        assert evidences[0].indicator == "지표명"
-```
+`backend/tests/test_connectors.py`에 테스트 추가
 
 ### 4. 프론트엔드 연동 (선택)
 
-`src/components/evidence/collect-data-dialog.tsx`에 새 커넥터의 파라미터 폼을 추가합니다.
+`src/components/evidence/collect-data-dialog.tsx`에 새 커넥터의 파라미터 폼 추가
+
+---
+
+## 새 서비스 추가 방법
+
+### 서비스 파일 구조
+
+`backend/app/services/` 디렉토리에 위치:
+
+| 파일 | 역할 |
+|------|------|
+| `section_planner.py` | 섹션 정의 + 충족도 계산 |
+| `draft_scaffold.py` | 초안 뼈대 생성 |
+| `statistics.py` | 지표별 기술 통계 (Post-1) |
+| `standard_checker.py` | 환경기준 비교 (Post-2) |
+| `narrative_generator.py` | 서술문 템플릿 생성 (Post-3) |
+| `similarity.py` | 유사사례 유사도 계산 |
+| `qa_engine.py` | QA 규칙 엔진 (6개 규칙) |
+| `export_service.py` | DOCX/PDF 생성 (Post-5) |
+
+### 새 서비스 추가 패턴
+
+1. `backend/app/services/` 에 서비스 파일 작성
+2. `backend/app/schemas/` 에 Pydantic 스키마 추가
+3. `backend/app/api/v1/` 에 API 엔드포인트 추가
+4. `backend/app/main.py` 에 라우터 등록
+5. `backend/tests/` 에 테스트 추가
 
 ---
 
@@ -283,21 +288,16 @@ class TestNewConnector:
 
 ### 1. 규칙 함수 작성
 
-`backend/app/services/qa_engine.py`에 규칙 함수 추가:
+`backend/app/services/qa_engine.py`에 추가:
 
 ```python
-def _rule_new_check(
-    section_def: SectionDefinition,
-    section_status: SectionStatus,
-) -> QaIssue | None:
-    """R006: 새 규칙 설명."""
-    # 조건 검사
+def _rule_new_check(section_def, section_status):
+    """R007: 새 규칙 설명."""
     if 정상_조건:
         return None
-
     return QaIssue(
-        rule_id="R006",
-        severity=Severity.WARNING,  # 또는 CRITICAL, INFO
+        rule_id="R007",
+        severity=Severity.WARNING,
         section_key=section_def.key,
         title=f"{section_def.title} 이슈 제목",
         message="상세 설명",
@@ -307,20 +307,47 @@ def _rule_new_check(
 
 ### 2. run_qa에 규칙 등록
 
-`run_qa()` 함수의 섹션 루프 내에 규칙 호출 추가:
-
-```python
-# R006: 새 규칙
-issue = _rule_new_check(section_def, section_status)
-if issue:
-    all_issues.append(issue)
-```
+`run_qa()` 함수의 섹션 루프 내에 규칙 호출 추가
 
 ### 3. 규칙 ID 규칙
 
-- 형식: `R{3자리 숫자}` (예: R001, R002, ..., R006)
+- 형식: `R{3자리 숫자}` (예: R001~R007)
 - 심각도: `CRITICAL` (export 차단), `WARNING` (경고), `INFO` (참고)
 - critical은 핵심 섹션(대기질, 수질, 소음·진동, 생태)에 대해서만 부여 권장
+
+---
+
+## LLM Adapter 추가 방법
+
+### 1. adapter 클래스 작성
+
+`backend/app/llm/` 에 새 파일 생성:
+
+```python
+from app.llm.base import BaseLLMAdapter, EnhanceInput, EnhanceResult
+
+class NewAdapter(BaseLLMAdapter):
+    @property
+    def name(self) -> str:
+        return "new_adapter"
+
+    def is_available(self) -> bool:
+        return bool(os.getenv("NEW_API_KEY"))
+
+    async def enhance_narrative(self, input: EnhanceInput) -> EnhanceResult:
+        if not self.is_available():
+            return self._fallback(input)
+        # LLM API 호출
+        ...
+```
+
+### 2. factory 등록
+
+`backend/app/llm/__init__.py`의 `get_llm_adapter()`에 분기 추가
+
+### 3. 설정 추가
+
+`backend/app/config.py`에 API 키 환경변수 추가
 
 ---
 
@@ -331,7 +358,7 @@ if issue:
 | 브랜치 | 용도 |
 |--------|------|
 | `main` | 안정 버전 |
-| `feat/phase{N}-{설명}` | 기능 개발 (예: `feat/phase4-similar-cases`) |
+| `feat/phase{N}-{설명}` | 기능 개발 |
 | `fix/{설명}` | 버그 수정 |
 | `docs/{설명}` | 문서 작업 |
 
@@ -345,18 +372,7 @@ feat: 에어코리아 대기질 커넥터 실제 API 연동
 fix: E2E 검증에서 발견된 3건의 버그 수정
 test: 커넥터 연동 테스트 27개 추가
 docs: Phase 6 완료 — 문서 업데이트
-chore: Phase 0 — 프로젝트 스캐폴딩 및 기획
 ```
-
-**타입 목록**:
-| 타입 | 설명 |
-|------|------|
-| feat | 새 기능 추가 |
-| fix | 버그 수정 |
-| test | 테스트 추가/수정 |
-| docs | 문서 작성/수정 |
-| chore | 설정, 빌드 등 기타 |
-| refactor | 리팩토링 (기능 변경 없음) |
 
 ### 의존성 관리
 
@@ -375,6 +391,8 @@ geojson-pydantic>=1.1.0
 python-dotenv>=1.0.1
 httpx>=0.27.0
 python-docx>=1.1.0
+reportlab>=4.0.0
+openai>=1.0.0
 ```
 
 **프론트엔드** (`package.json`):

@@ -627,7 +627,88 @@
 
 ---
 
-## 전체 커밋 이력 (53건)
+## Post-7: 통합 테스트 및 최종 데모 ✅
+
+### 완료 항목
+
+#### 통합 데모 스크립트 업데이트 (`scripts/demo_full_scenario.py`)
+- 기존 7단계 → 11단계로 확장
+  1. 프로젝트 생성
+  2. 데이터 수집 (4종 커넥터 + 수동 2종)
+     - 에어코리아 대기질, 수질, 토양측정망(Post-4), 기상청 ASOS(Post-4)
+     - 소음·진동 수동, 생태 수동 + 대기질 연평균 보충
+  3. 유사사례 등록 및 매칭
+  4. 섹션 플래너 충족도 확인
+  5. 통계 엔진 실행 (Post-1)
+  6. 환경기준 비교 실행 (Post-2)
+  7. 초안 뼈대 + 서술문 생성 확인 (Post-3)
+  8. LLM 보강 실행 (Post-6, adapter 상태에 따라)
+  9. QA 실행
+  10. DOCX + PDF export (부록 A/B/C 포함, Post-5 포맷)
+  11. 결과 요약 비교 (MVP vs Post-MVP 기능 비교 표)
+- 커넥터 실패 시 수동 fallback 데이터 자동 대체
+- 각 단계별 상세 결과 콘솔 출력
+
+#### 전체 테스트 확인
+- 230개 전체 테스트 통과 확인
+- 테스트 분포:
+  - test_connectors.py: 52개 (4종 커넥터)
+  - test_export_format.py: 40개 (DOCX/PDF 포맷)
+  - test_llm_adapter.py: 29개 (LLM adapter 3종)
+  - test_narrative_generator.py: 28개 (서술문 생성기)
+  - test_standard_checker.py: 27개 (환경기준 비교)
+  - test_spec_alignment.py: 23개 (스펙 정렬)
+  - test_statistics.py: 16개 (통계 엔진)
+  - test_projects.py: 9개 (프로젝트 CRUD)
+  - test_export_pdf.py: 4개 (PDF 출력)
+  - test_e2e.py: 1개 (E2E 통합)
+
+#### 문서 최종 업데이트
+- `README.md`: Post-1~Post-7 전체 기능 반영
+  - 4종 커넥터, 6개 QA 규칙, 3종 LLM adapter, 230개 테스트
+  - 통합 데모 실행 방법, 테스트 파일별 건수
+- `docs/architecture.md`: 전체 아키텍처 업데이트
+  - 시스템 구성도에 4종 커넥터 + LLM adapter 추가
+  - 데이터 흐름도에 통계(Post-1), 기준비교(Post-2), 서술문(Post-3), LLM(Post-6) 단계
+  - 통계 엔진, 환경기준 비교, 서술문 생성기, LLM adapter, Export 구조 섹션 추가
+  - API 엔드포인트 목록에 통계/기준비교/LLM/Export 확장 엔드포인트 추가
+- `docs/user-guide.md`: 사용자 가이드 업데이트
+  - 전체 사용 흐름 12단계로 확장
+  - 4종 커넥터 수집 방법 안내
+  - 수동 입력 가이드(Post-4), 통계/기준비교 확인 단계
+  - 서술문 유형 설명, AI 문체 보강 사용법
+  - DOCX/PDF 문서 구조(표지+목차+4부 구조+부록 3종) 설명
+  - LLM 보강 주의사항 추가
+- `docs/api-reference.md`: API 레퍼런스 업데이트
+  - 통계 API (GET /statistics, /statistics/{key}) 추가
+  - 환경기준 비교 API (GET /standards-check, /standards-check/{key}) 추가
+  - LLM API (GET /llm/status, POST /llm/projects/{id}/enhance) 추가
+  - Export API 확장 (preview, PDF, 부록 옵션)
+  - 4종 커넥터 파라미터 상세 추가
+- `docs/development.md`: 개발자 가이드 업데이트
+  - 서비스 파일 구조 테이블 (8개 서비스 파일)
+  - LLM adapter 추가 방법 가이드
+  - 테스트 명령어 10종 (파일별 실행)
+  - 통합 데모 실행 안내
+  - 의존성 목록에 reportlab, openai 추가
+- `docs/progress/WORKLOG.md`: Post-7 이력 추가
+
+### 주요 파일
+- `scripts/demo_full_scenario.py` — 통합 데모 11단계 (전면 개편)
+- `README.md` — 프로젝트 문서 최종 업데이트
+- `docs/architecture.md` — 시스템 아키텍처 최종 업데이트
+- `docs/user-guide.md` — 사용자 가이드 최종 업데이트
+- `docs/api-reference.md` — API 레퍼런스 최종 업데이트
+- `docs/development.md` — 개발자 가이드 최종 업데이트
+- `docs/progress/WORKLOG.md` — Post-7 이력 추가
+- `docs/progress/NEXT_CHAT_BRIEF.md` — 최종 브리핑 업데이트
+
+### 커밋
+- (이 세션에서 커밋 예정)
+
+---
+
+## 전체 커밋 이력 (55건+)
 
 | # | 해시 | 메시지 |
 |---|------|--------|
