@@ -77,7 +77,7 @@ async def _setup_project_with_evidences(client: AsyncClient) -> str:
         json={
             "name": "PDF 테스트 프로젝트",
             "description": "PDF 출력 테스트용",
-            "project_type": "energy",
+            "project_type": "power_plant",
             "geometry": SAMPLE_POLYGON,
         },
     )
@@ -117,7 +117,7 @@ async def test_pdf_export_blocked_by_qa(client: AsyncClient):
         json={
             "name": "QA 차단 테스트",
             "description": "증거 없음",
-            "project_type": "energy",
+            "project_type": "power_plant",
             "geometry": SAMPLE_POLYGON,
         },
     )

@@ -248,7 +248,8 @@ async def test_e2e_full_workflow(client: AsyncClient):
 
     # 생태 뼈대: 0건 (미수집)
     assert len(scaffold_map["ecology"]["evidence_entries"]) == 0
-    assert "없습니다" in scaffold_map["ecology"]["summary_text"]
+    # Post-3: 미수집 섹션의 서술문은 narrative 필드에 위치
+    assert "수집되지 않았다" in scaffold_map["ecology"]["narrative"]
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 단계 8: QA 규칙 실행 및 이슈 목록 확인
@@ -323,7 +324,8 @@ async def test_e2e_full_workflow(client: AsyncClient):
     assert "대기질" in all_text, "대기질 섹션이 DOCX에 포함되어야 함"
     assert "수질" in all_text, "수질 섹션이 DOCX에 포함되어야 함"
     assert "생태" in all_text, "생태 섹션이 DOCX에 포함되어야 함"
-    assert len(doc.tables) >= 3, "근거 데이터 테이블이 최소 3개 필요 (대기, 수질, 소음)"
+    # Post-3: 4부 구조 (통계+기준비교+증거 테이블) → 섹션당 최대 3개 테이블
+    assert len(doc.tables) >= 3, "테이블이 최소 3개 필요"
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 단계 11: PDF export 성공 확인

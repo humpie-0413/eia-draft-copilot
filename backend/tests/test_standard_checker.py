@@ -502,10 +502,11 @@ async def test_scaffold_fail_narrative(client: AsyncClient):
         f"/api/v1/projects/{project_id}/sections/scaffold/air_quality"
     )
     assert resp.status_code == 200
-    summary = resp.json()["summary_text"]
+    scaffold = resp.json()
+    narrative = scaffold["narrative"]
 
-    assert "초과" in summary
-    assert "저감대책" in summary
+    assert "초과" in narrative
+    assert "저감대책" in narrative
 
 
 @pytest.mark.asyncio
@@ -518,10 +519,11 @@ async def test_scaffold_water_grade_narrative(client: AsyncClient):
         f"/api/v1/projects/{project_id}/sections/scaffold/water_quality"
     )
     assert resp.status_code == 200
-    summary = resp.json()["summary_text"]
+    scaffold = resp.json()
+    narrative = scaffold["narrative"]
 
     # 등급 관련 서술 확인
-    assert "등급" in summary
+    assert "등급" in narrative
 
 
 @pytest.mark.asyncio
@@ -534,10 +536,11 @@ async def test_scaffold_noise_fail_narrative(client: AsyncClient):
         f"/api/v1/projects/{project_id}/sections/scaffold/noise_vibration"
     )
     assert resp.status_code == 200
-    summary = resp.json()["summary_text"]
+    scaffold = resp.json()
+    narrative = scaffold["narrative"]
 
-    assert "소음_Leq_야간" in summary or "야간" in summary
-    assert "초과" in summary
+    assert "야간" in narrative
+    assert "초과" in narrative or "방음대책" in narrative
 
 
 # ──────────────────────────────────────────────

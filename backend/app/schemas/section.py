@@ -113,7 +113,10 @@ class ScaffoldSectionRead(BaseModel):
         ..., description="배치된 근거 항목 목록"
     )
     summary_text: str = Field(
-        ..., description="evidence 기반 자동 생성 근거 요약문 (LLM 작문 아님)"
+        ..., description="통계 요약 테이블 + 상세 데이터 샘플"
+    )
+    narrative: str = Field(
+        "", description="섹션별 서술문 (템플릿 엔진 자동 생성, LLM 미사용)"
     )
     state: SectionStatusEnum = Field(
         SectionStatusEnum.EMPTY, description="섹션 상태 (output-contracts.md 스펙)"

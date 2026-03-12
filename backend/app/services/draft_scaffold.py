@@ -4,8 +4,7 @@ evidence 데이터를 섹션별로 분류하여 초안 뼈대 구조를 생성�
 핵심 원칙: unsupported claim 금지 — LLM 자유 작문이 아닌 evidence 기반
 근거 나열 방식으로만 텍스트를 배치한다.
 
-Post-1 개선: 개별 측정값 나열 → 통계 요약 테이블 + 상세 데이터 부록(최대 10건)
-Post-2 개선: 환경기준 비교 결과 및 판정 서술 추가
+Post-3 개편: 서술문 → 통계 요약 테이블 → 환경기준 비교 테이블 → 상세 데이터 샘플(최대 5건)
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.evidence import Evidence
+from app.services.narrative_generator import generate_narrative
 from app.services.section_planner import (
     EIA_SECTIONS,
     SectionDefinition,
@@ -27,15 +27,17 @@ from app.services.section_planner import (
 from app.services.standard_checker import (
     CheckStatus,
     IndicatorCheckResult,
+    SectionCheckResult,
     check_section_standards,
 )
 from app.services.statistics import (
     IndicatorStats,
+    SectionStats,
     calculate_section_statistics,
 )
 
 # 상세 데이터 부록에 표시할 최대 샘플 건수
-MAX_DETAIL_SAMPLES = 10
+MAX_DETAIL_SAMPLES = 5
 
 
 @dataclass
@@ -62,6 +64,7 @@ class ScaffoldSection:
     order: int
     evidence_entries: list[EvidenceEntry] = field(default_factory=list)
     summary_text: str = ""          # evidence 기반 자동 생성 요약문
+    narrative: str = ""             # Post-3: 서술문 템플릿 엔진 결과
     state: str = "empty"            # 섹션 상태 (output-contracts.md 스펙)
     missing_indicators: list[str] = field(default_factory=list)  # 누락된 필수 지표
 
@@ -76,21 +79,31 @@ class DraftScaffold:
     total_evidence_count: int = 0
 
 
+def _format_period(start: str | None, end: str | None) -> str:
+    """관측 기간 문자열을 생성한다."""
+    if start and end:
+        s = start[:10]
+        e = end[:10]
+        return f"{s}~{e}" if s != e else s
+    if start:
+        return start[:10]
+    if end:
+        return end[:10]
+    return "-"
+
+
 def _format_stats_summary(
     section_def: SectionDefinition,
     entries: list[EvidenceEntry],
     indicator_stats: list[IndicatorStats],
     check_results: list[IndicatorCheckResult] | None = None,
-    standards_summary: str = "",
 ) -> str:
-    """통계 요약 테이블 + 환경기준 비교 + 상세 데이터 부록 텍스트를 생성한다.
+    """통계 요약 테이블 + 환경기준 비교 테이블 + 상세 데이터 샘플 텍스트를 생성한다.
 
-    수치 통계가 있으면 지표별 1행 요약 테이블로 현황을 정리하고,
-    환경기준이 있는 지표는 기준값과 판정 열을 추가로 표시한다.
-    상세 데이터는 부록으로 이동하여 최대 10건만 샘플 표시한다.
+    Post-3 개편: 서술문 제거 (narrative 필드로 분리), 구조 정리
     """
     if not entries:
-        return f"{section_def.title} 분야에 대한 수집된 증거 데이터가 없습니다."
+        return ""
 
     lines: list[str] = []
 
@@ -101,10 +114,10 @@ def _format_stats_summary(
             check_map[cr.indicator] = cr
     has_standards = bool(check_map)
 
-    # ── 1. 통계 요약 테이블 (환경기준 열 포함) ──
+    # ── 1. 측정 현황 요약 (통계 테이블) ──
     stats_with_data = [s for s in indicator_stats if s.count > 0]
     if stats_with_data:
-        lines.append(f"[{section_def.title}] 현황 통계 요약 ({len(entries)}건 기준)")
+        lines.append(f"[측정 현황 요약] ({len(entries)}건 기준)")
         lines.append("")
 
         if has_standards:
@@ -142,23 +155,15 @@ def _format_stats_summary(
                 )
         lines.append("")
 
-    # ── 1-1. 환경기준 비교 서술문 ──
-    if standards_summary:
-        lines.append(f"[{section_def.title}] 환경기준 비교")
-        lines.append("")
-        lines.append(standards_summary)
-        lines.append("")
-
-    # 수치 통계가 없는 지표(비수치 데이터)는 별도 나열
+    # 비수치 데이터는 별도 나열
     numeric_indicators = {s.indicator for s in stats_with_data}
     non_numeric_entries = [e for e in entries if e.indicator not in numeric_indicators]
     if non_numeric_entries:
-        # 비수치 지표 그룹핑
         non_numeric_groups: dict[str, list[EvidenceEntry]] = {}
         for entry in non_numeric_entries:
             non_numeric_groups.setdefault(entry.indicator, []).append(entry)
 
-        lines.append(f"[{section_def.title}] 비수치 데이터 ({len(non_numeric_entries)}건)")
+        lines.append(f"[비수치 데이터] ({len(non_numeric_entries)}건)")
         lines.append("")
         for indicator, group in non_numeric_groups.items():
             lines.append(f"■ {indicator}")
@@ -167,8 +172,9 @@ def _format_stats_summary(
                 lines.append(f"  - {entry.value}{date_part}")
             lines.append("")
 
-    # ── 2. 상세 데이터 부록 (최대 10건 샘플) ──
-    lines.append(f"[상세 데이터] (최근 {min(len(entries), MAX_DETAIL_SAMPLES)}건 샘플)")
+    # ── 2. 상세 데이터 샘플 (최대 5건) ──
+    sample_count = min(len(entries), MAX_DETAIL_SAMPLES)
+    lines.append(f"[측정 데이터] (대표 {sample_count}건)")
     lines.append("")
 
     sample_entries = entries[:MAX_DETAIL_SAMPLES]
@@ -178,22 +184,9 @@ def _format_stats_summary(
         lines.append(f"  - {entry.indicator}: {entry.value}{unit_part}{date_part}")
 
     if len(entries) > MAX_DETAIL_SAMPLES:
-        lines.append(f"  ... 외 {len(entries) - MAX_DETAIL_SAMPLES}건 생략")
+        lines.append(f"  ... 외 {len(entries) - MAX_DETAIL_SAMPLES}건은 별첨 참조")
 
     return "\n".join(lines)
-
-
-def _format_period(start: str | None, end: str | None) -> str:
-    """관측 기간 문자열을 생성한다."""
-    if start and end:
-        s = start[:10]
-        e = end[:10]
-        return f"{s}~{e}" if s != e else s
-    if start:
-        return start[:10]
-    if end:
-        return end[:10]
-    return "-"
 
 
 async def _fetch_section_evidences(
@@ -253,12 +246,14 @@ async def generate_section_scaffold(
     # 환경기준 비교 (기본 필터 적용)
     section_check = await check_section_standards(db, project_id, section_key)
     check_results = section_check.indicators if section_check else None
-    standards_summary = section_check.summary if section_check else ""
 
+    # 서술문 생성 (Post-3 신규)
+    narrative = generate_narrative(section_def, section_stats, section_check)
+
+    # 통계 요약 테이블 + 상세 데이터 샘플
     summary = _format_stats_summary(
         section_def, entries, indicator_stats,
         check_results=check_results,
-        standards_summary=standards_summary,
     )
 
     # 섹션 상태 조회하여 state, missing_indicators 반영
@@ -273,6 +268,7 @@ async def generate_section_scaffold(
         order=section_def.order,
         evidence_entries=entries,
         summary_text=summary,
+        narrative=narrative,
         state=state,
         missing_indicators=missing,
     )

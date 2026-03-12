@@ -468,7 +468,7 @@ async def test_scaffold_contains_stats_table(client: AsyncClient):
     summary = scaffold["summary_text"]
 
     # 통계 요약 테이블 헤더 확인
-    assert "통계 요약" in summary
+    assert "측정 현황 요약" in summary
     # Post-2 이후: 환경기준이 있는 섹션은 기준+판정 열 포함
     assert "지표명" in summary
     assert "평균" in summary
@@ -477,8 +477,8 @@ async def test_scaffold_contains_stats_table(client: AsyncClient):
     # BOD 지표 행 확인
     assert "BOD" in summary
 
-    # 상세 데이터 부록 확인
-    assert "상세 데이터" in summary
+    # 상세 데이터 확인
+    assert "측정 데이터" in summary
 
 
 @pytest.mark.asyncio
@@ -506,8 +506,8 @@ async def test_scaffold_detail_sample_limit(client: AsyncClient):
     scaffold = resp.json()
 
     summary = scaffold["summary_text"]
-    # "외 5건 생략" 표시 확인
-    assert "생략" in summary
+    # "외 10건은 별첨 참조" 표시 확인
+    assert "별첨 참조" in summary
 
 
 @pytest.mark.asyncio
@@ -539,7 +539,9 @@ async def test_scaffold_empty_section(client: AsyncClient):
     )
     assert resp.status_code == 200
     scaffold = resp.json()
-    assert "없습니다" in scaffold["summary_text"]
+    # Post-3: 미수집 섹션의 서술문은 narrative 필드에 위치
+    assert scaffold["summary_text"] == ""
+    assert "수집되지 않았다" in scaffold["narrative"]
 
 
 # ── 전체 프로젝트 통계 API 테스트 ──
