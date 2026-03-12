@@ -4,11 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { DraftScaffold, ScaffoldSection } from "@/types/section";
+import type { QaResult } from "@/types/qa";
 import { getDraftScaffold } from "@/lib/section-api";
+import { getQaResult } from "@/lib/qa-api";
 import { ScaffoldSectionView } from "@/components/section/scaffold-section-view";
+import { QaSummaryBar } from "@/components/qa/qa-summary-bar";
+import { ExportButton } from "@/components/qa/export-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ListChecks } from "lucide-react";
+import { ArrowLeft, ListChecks, ShieldCheck } from "lucide-react";
 
 export default function DraftScaffoldPage() {
   const params = useParams();
@@ -17,6 +21,7 @@ export default function DraftScaffoldPage() {
   const highlightSection = searchParams.get("section");
 
   const [scaffold, setScaffold] = useState<DraftScaffold | null>(null);
+  const [qaResult, setQaResult] = useState<QaResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<string | null>(
     highlightSection,
@@ -28,8 +33,12 @@ export default function DraftScaffoldPage() {
   const fetchScaffold = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await getDraftScaffold(projectId);
-      setScaffold(result);
+      const [scaffoldRes, qaRes] = await Promise.all([
+        getDraftScaffold(projectId),
+        getQaResult(projectId),
+      ]);
+      setScaffold(scaffoldRes);
+      setQaResult(qaRes);
     } catch (err) {
       console.error("초안 뼈대 조회 실패:", err);
     } finally {
@@ -119,12 +128,20 @@ export default function DraftScaffoldPage() {
               </p>
             </div>
           </div>
-          <Link href={`/projects/${projectId}/sections`}>
-            <Button variant="outline">
-              <ListChecks className="mr-2 h-4 w-4" />
-              섹션 현황
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href={`/projects/${projectId}/qa`}>
+              <Button variant="outline">
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                QA 검사
+              </Button>
+            </Link>
+            <Link href={`/projects/${projectId}/sections`}>
+              <Button variant="outline">
+                <ListChecks className="mr-2 h-4 w-4" />
+                섹션 현황
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {loading ? (
@@ -133,6 +150,21 @@ export default function DraftScaffoldPage() {
           </p>
         ) : (
           <>
+            {/* QA 요약 + Export 버튼 */}
+            {qaResult && (
+              <div className="space-y-3">
+                <QaSummaryBar
+                  summary={qaResult.summary}
+                  exportReady={qaResult.export_ready}
+                />
+                <ExportButton
+                  projectId={projectId}
+                  exportReady={qaResult.export_ready}
+                  criticalCount={qaResult.summary.critical_count}
+                />
+              </div>
+            )}
+
             {/* 근거가 있는 섹션 */}
             {sectionsWithEvidence.map((sec) => (
               <div

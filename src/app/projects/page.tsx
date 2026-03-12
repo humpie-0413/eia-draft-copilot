@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FlaskConical, GitCompareArrows, ListChecks } from "lucide-react";
+import { ArrowLeft, FlaskConical, GitCompareArrows, ListChecks, ShieldCheck } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "초안",
@@ -94,6 +94,12 @@ export default function ProjectsPage() {
                     <Button variant="outline" size="sm" className="w-full">
                       <ListChecks className="mr-2 h-4 w-4" />
                       섹션 플래너
+                    </Button>
+                  </Link>
+                  <Link href={`/projects/${project.id}/qa`} className="flex-1">
+                    <Button variant="outline" size="sm" className="w-full">
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      QA / Export
                     </Button>
                   </Link>
                 </div>
