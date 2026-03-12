@@ -50,13 +50,16 @@ def upgrade() -> None:
         ),
     )
 
-    # 공간 인덱스
-    op.create_index(
-        "idx_projects_geometry",
-        "projects",
-        ["geometry"],
-        postgresql_using="gist",
-    )
+    # 공간 인덱스 — GeoAlchemy2가 자동 생성하므로 중복 방지
+    op.execute("""
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'idx_projects_geometry'
+            ) THEN
+                CREATE INDEX idx_projects_geometry ON projects USING gist (geometry);
+            END IF;
+        END $$;
+    """)
 
 
 def downgrade() -> None:

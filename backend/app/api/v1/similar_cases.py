@@ -155,16 +155,16 @@ async def match_similar_cases(
     # 주: EPSG:4326 단위는 도(degree)이므로 근사적으로 m² 변환
     project_area_sqm = None
     if project.geometry is not None:
-        from geoalchemy2 import func as geo_func
+        from app.models.project import Project
 
         area_result = await db.execute(
             select(
-                geo_func.ST_Area(
-                    geo_func.ST_Transform(
-                        project.geometry, 3857
+                func.ST_Area(
+                    func.ST_Transform(
+                        Project.geometry, 3857
                     )
                 )
-            )
+            ).where(Project.id == project_id)
         )
         project_area_sqm = area_result.scalar_one_or_none()
 

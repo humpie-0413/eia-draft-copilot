@@ -65,9 +65,13 @@ async def generate_docx(
     doc.save(buffer)
     buffer.seek(0)
 
-    # 파일명 생성
+    # 파일명 생성 (HTTP 헤더 latin-1 호환을 위해 ASCII 안전 처리)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    safe_name = project_name.replace(" ", "_")[:50]
+    # 한글 등 비ASCII 문자를 제거하고 ASCII 안전 파일명 생성
+    safe_name = "".join(
+        c if c.isascii() and c.isalnum() or c in "-_" else "_"
+        for c in project_name.replace(" ", "_")
+    )[:50].strip("_") or "draft"
     filename = f"EIA_{safe_name}_{timestamp}.docx"
 
     return buffer, filename

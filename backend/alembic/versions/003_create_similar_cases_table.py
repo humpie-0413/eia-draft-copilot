@@ -57,13 +57,16 @@ def upgrade() -> None:
         ["project_type"],
     )
 
-    # 공간 인덱스 — 위치 기반 유사사례 검색
-    op.create_index(
-        "idx_similar_cases_location",
-        "similar_cases",
-        ["location"],
-        postgresql_using="gist",
-    )
+    # 공간 인덱스 — GeoAlchemy2가 자동 생성하므로 중복 방지
+    op.execute("""
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'idx_similar_cases_location'
+            ) THEN
+                CREATE INDEX idx_similar_cases_location ON similar_cases USING gist (location);
+            END IF;
+        END $$;
+    """)
 
 
 def downgrade() -> None:

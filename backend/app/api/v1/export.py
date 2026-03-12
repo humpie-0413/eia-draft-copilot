@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.crud.project import get_project
 from app.db import get_db
 from app.services.export_service import generate_docx
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/projects/{project_id}/export",
@@ -37,6 +40,9 @@ async def export_docx(
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.exception("DOCX 생성 중 예외 발생")
+        raise HTTPException(status_code=500, detail=str(e))
 
     return StreamingResponse(
         buffer,
