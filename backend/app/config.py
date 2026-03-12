@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     # 공공데이터포털 API 키 (에어코리아 대기질, 물환경정보시스템 등)
     DATA_GO_KR_API_KEY: str = ""
 
+    # OpenAI API 키
+    OPENAI_API_KEY: str = ""
+
+    # Google API 키
+    GOOGLE_API_KEY: str = ""
+
     # API 호출 타임아웃 (초)
     CONNECTOR_TIMEOUT: int = 30
 
