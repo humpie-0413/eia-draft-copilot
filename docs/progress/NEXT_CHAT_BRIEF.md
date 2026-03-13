@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Reg-5: 통합 검증 + 문서화** ✅ — 법령 반영 Phase 전체 완료
+**Bugfix: 서술문 법적 근거 누락 + 유사사례 중복 재발** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -13,23 +13,19 @@
 - Reg-4: 사업유형별 평가 범위 자동 판단 ✅
 - Reg-5: 통합 검증 + 문서화 ✅
 
-## 완료된 작업 (Reg-5)
+## 완료된 작업 (Bugfix)
 
-### 데모 스크립트 업데이트
-- 단계 4.5: 법령 반영 검증 추가 (평가 범위, 법적 근거, R007/R008)
-- QA 단계에서 R007/R008 법적 근거 표시
-- 최종 요약에 법령 반영 현황 + MVP→Post-MVP→법령 비교 표
+### 문제 1: 서술문/테이블에 법적 근거 미반영
+- draft_scaffold.py: LLM 보강 서술문에 법적 근거 키워드 없으면 템플릿 서술문으로 대체
+- 검증: 대기/수질/토양/소음 서술문에 환경정책기본법/토양환경보전법 포함 확인
+- 검증: 환경기준 비교 테이블 4개에 "법적 근거" 열 + 실제 값 확인
 
-### 전체 테스트 통과
-- 365개 전체 테스트 통과 (변경 없음)
+### 문제 2: 부록 B 유사사례 중복 재발
+- similarity.py: 이름 기준 중복 제거를 top_k 슬라이싱 전으로 이동
+- 검증: 부록 B에 화성시/당진시/해남군 각 1건씩 3건만 표시
 
-### 문서 최종 업데이트
-- README.md: 법령 반영 기능, 8개 QA 규칙, 365개 테스트
-- docs/architecture.md: 법령 데이터 구조, scope_service, 8개 QA 규칙
-- docs/user-guide.md: 평가 범위, 법적 근거 표시, 필수 섹션 배지
-- docs/api-reference.md: assessment-scope API, legal_basis 필드
-- docs/development.md: 법령 데이터 수정 가이드, 9개 서비스
-- docs/progress/WORKLOG.md: Reg-0~Reg-5 전체 이력
+### 테스트
+- 5개 신규 테스트 추가 (370개 전체 통과)
 
 ## 시스템 전체 현황
 
@@ -38,7 +34,7 @@
 |--------|------|
 | section_planner.py | 11개 섹션 정의 + 필수 지표 충족도 계산 + 평가 범위 연동 |
 | scope_service.py | 사업유형별 필수/권장/선택 평가 범위 판단 |
-| draft_scaffold.py | 초안 뼈대 생성 (LLM 서술문 우선 → 템플릿 fallback) |
+| draft_scaffold.py | 초안 뼈대 생성 (법적 근거 포함 서술문 우선 → 템플릿 fallback) |
 | statistics.py | 지표별 기술 통계 (평균, 최대, 최소, 표준편차) |
 | standard_checker.py | 대기/수질/소음/토양 환경기준 비교 + 등급 판정 + 법적 근거 |
 | narrative_generator.py | 섹션별 서술문 템플릿 (대기/수질/소음/생태/범용) + 법적 근거 자동 삽입 |
@@ -75,7 +71,7 @@
 | `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
 
-### 테스트 (365개)
+### 테스트 (370개)
 - test_regulations.py (95), test_connectors.py (69), test_export_format.py (40+)
 - test_narrative_generator.py (51), test_llm_adapter.py (29), test_standard_checker.py (27)
 - test_spec_alignment.py (23), test_statistics.py (16)
@@ -106,7 +102,7 @@ uvicorn app.main:app --reload    # http://localhost:8000
 
 # 테스트
 cd backend
-pytest tests/ -v    # 365개 테스트
+pytest tests/ -v    # 370개 테스트
 
 # 통합 데모 (백엔드 서버 실행 후)
 python scripts/demo_full_scenario.py
