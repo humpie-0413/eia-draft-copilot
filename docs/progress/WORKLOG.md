@@ -750,7 +750,48 @@
 
 ---
 
-## 전체 커밋 이력 (55건+)
+## Post-9: 커넥터 2종 추가 + DOCX/LLM 수정 ✅
+
+### 완료 항목
+
+#### Task 1: DOCX/PDF 꼬리말 페이지 번호 수정
+- 꼬리말 형식: `- N -` (중앙 정렬)
+- OOXML fldChar 구조를 begin/instrText/separate/placeholder/end로 분리
+- PDF도 동일 형식 적용
+
+#### Task 2: 토양 3.3 환경기준 비교 누락 수정
+- 필터 조건을 `r.status != CheckStatus.NA`에서 `r.standard_value is not None`으로 변경
+- DOCX/PDF 모두 적용 — 환경기준이 정의된 모든 지표가 비교 테이블에 포함
+
+#### Task 3: V-world 토지이용 + 국가유산청 문화재 커넥터 추가
+- `vworld_land_use`: V-world 2D데이터 API 기반, geomFilter POINT 좌표 → 용도지역구분/지목/용도지구
+- `cultural_heritage`: 국가유산청 Open API (XML), 시도코드 추론 + Haversine 반경 1km 필터 → 문화재명/종별/이격거리
+- section_planner 필수 지표명: 토지이용(용도지역구분, 용도지구, 지목), 문화재(문화재명, 이격거리)
+- 프론트엔드 collect-data-dialog에 경도/위도 파라미터 UI 추가
+- 단위 테스트 18건 추가 (전체 69건 통과)
+- 데모 스크립트 + 라이브 테스트 스크립트 확장
+
+#### Task 4: LLM 보강 서술문 → DOCX export 반영
+- `DraftNarrative` 모델 + Alembic 마이그레이션 추가
+- LLM enhance 엔드포인트에서 보강 결과를 DB에 저장 (upsert)
+- draft_scaffold가 저장된 LLM 서술문을 우선 사용
+
+#### Task 5: 최종 검증
+- 전체 247개 테스트 통과
+- 데모 11단계 실행: 6개 커넥터(fallback 포함) + 수동 2종
+- 섹션 충족도: 8개 완료(100%) + 3개 미수집
+- DOCX 검증: 꼬리말 `- N -`, 토양 3.3 환경기준 비교, 토지이용/문화재 데이터, 11개 섹션
+- PDF: 유효 생성 (103.8 KB)
+
+### 커밋
+- `e63ce88` — fix: DOCX/PDF 꼬리말 페이지 번호 + 토양 3.3 환경기준 비교
+- `0beae0e` — feat: V-world 토지이용 + 국가유산청 문화재 커넥터 2종 추가
+- `a3f74f7` — fix: LLM 보강 서술문이 DOCX export에 반영되도록 수정
+- `5804894` — fix: 국가유산청 API URL을 https로 수정
+
+---
+
+## 전체 커밋 이력 (59건+)
 
 | # | 해시 | 메시지 |
 |---|------|--------|
@@ -807,3 +848,7 @@
 | 51 | `d2a9b00` | docs: Post-5 완료 — 문서 업데이트 |
 | 52 | `a891421` | feat: Post-6 LLM adapter 인터페이스 및 백엔드 구현 |
 | 53 | `2bdca7d` | feat: Post-6 프론트엔드 — AI 문체 보강 UI 및 LLM 상태 표시 |
+| 54 | `e63ce88` | fix: DOCX/PDF 꼬리말 페이지 번호 + 토양 3.3 환경기준 비교 |
+| 55 | `0beae0e` | feat: V-world 토지이용 + 국가유산청 문화재 커넥터 2종 추가 |
+| 56 | `a3f74f7` | fix: LLM 보강 서술문이 DOCX export에 반영되도록 수정 |
+| 57 | `5804894` | fix: 국가유산청 API URL을 https로 수정 |
