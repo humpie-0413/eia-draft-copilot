@@ -1,22 +1,25 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Post-7: 통합 테스트 및 최종 데모** ✅ (Post-MVP 마지막 단계)
+**Post-8: 데이터 파이프라인 정합성 수정** ✅
 
-## 완료된 작업 (Post-7)
+## 완료된 작업 (Post-8)
 
-### 통합 데모 스크립트 (11단계)
-- 프로젝트 생성 → 4종 커넥터 수집 → 유사사례 매칭 → 통계 → 기준비교 → 서술문 → LLM 보강 → QA → Export
-- 커넥터 실패 시 수동 fallback 자동 대체
-- MVP vs Post-MVP 기능 비교 요약 출력
+### 지표명 정합성 수정
+- 토양 섹션: required_indicators를 커넥터 출력(Pb, Cd, pH, 유기물함량)과 일치
+- 기후 섹션: required_indicators를 커넥터 출력(평균기온, 강수량, 평균풍속)과 일치
+- 토양 환경기준 추가: 토양환경보전법 시행규칙 별표 3 기준 6개 지표
 
-### 전체 테스트 확인
+### 데모 스크립트 fallback 로직 수정
+- 커넥터 status=error 시 수동 fallback 정상 작동 (기존: HTTP 실패 시에만)
+- 수질 필수 지표 수동 보충 단계(2-b2) 추가
+  - API가 과거 데이터(1992~2000) 반환 시 통계 엔진 5년 필터 통과 보장
+- 토양/기후 fallback 지표명을 커넥터 출력과 일치
+
+### 검증 결과
 - 230개 전체 테스트 통과
-- 커넥터 52 + Export포맷 40 + LLM 29 + 서술문 28 + 기준비교 27 + 스펙정렬 23 + 통계 16 + 프로젝트 9 + PDF 4 + E2E 1
-
-### 문서 최종 업데이트
-- README.md, architecture.md, user-guide.md, api-reference.md, development.md 전체 개편
-- Post-1~Post-7 기능 반영, 4종 커넥터, 6개 QA 규칙, 3종 LLM adapter, 230개 테스트
+- 데모 11단계 정상 실행: 수질/토양/기후 모두 서술문+통계 생성 확인
+- DOCX/PDF 출력: 표지+목차+11섹션+부록 A/B/C 정상
 
 ## 전체 Phase 완료 현황
 - Phase 0: 스캐폴딩 ✅
@@ -34,6 +37,7 @@
 - Post-5: 문서 포맷 고도화 ✅
 - Post-6: LLM adapter 연동 ✅
 - Post-7: 통합 테스트 및 최종 데모 ✅
+- Post-8: 데이터 파이프라인 정합성 수정 ✅
 
 ## 시스템 전체 현황
 
@@ -43,7 +47,7 @@
 | section_planner.py | 11개 섹션 정의 + 필수 지표 충족도 계산 |
 | draft_scaffold.py | 초안 뼈대 생성 (통계 요약 + 기준비교 + 샘플) |
 | statistics.py | 지표별 기술 통계 (평균, 최대, 최소, 표준편차) |
-| standard_checker.py | 대기/수질/소음 환경기준 비교 + 등급 판정 |
+| standard_checker.py | 대기/수질/소음/토양 환경기준 비교 + 등급 판정 |
 | narrative_generator.py | 섹션별 서술문 템플릿 (대기/수질/소음/생태/범용) |
 | similarity.py | 유사사례 가중 유사도 계산 |
 | qa_engine.py | 6개 QA 규칙 (R001~R006) |

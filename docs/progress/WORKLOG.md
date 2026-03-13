@@ -704,7 +704,49 @@
 - `docs/progress/NEXT_CHAT_BRIEF.md` — 최종 브리핑 업데이트
 
 ### 커밋
-- (이 세션에서 커밋 예정)
+- `9f969d9` — feat: Post-7 통합 데모 스크립트 11단계 확장
+- `902940b` — docs: Post-7 완료 — 문서 최종 업데이트
+
+---
+
+## Post-8: 데이터 파이프라인 정합성 수정 ✅
+
+### 완료 항목
+
+#### 지표명 정합성 수정
+- 토양 섹션 `required_indicators`: `중금속_납`→`Pb`, `중금속_카드뮴`→`Cd`, `유류오염_TPH`→`유기물함량`
+- 기후 섹션 `required_indicators`: `기온_연평균`→`평균기온`, `강수량_연평균`→`강수량`, `풍향_풍속`→`평균풍속`
+- 원인: 커넥터 출력 지표명과 섹션 플래너 필수 지표명이 불일치하여 충족도 0% 표시
+
+#### 토양 환경기준 추가
+- `backend/app/data/env_standards.py`에 `SOIL_STANDARDS` 추가
+- 토양환경보전법 시행규칙 별표 3 (1지역 우려기준): Cd, Cu, Pb, Zn, Ni, Cr6+ 6개 지표
+- `STANDARDS_BY_CATEGORY`에 `"soil": SOIL_STANDARDS` 등록
+
+#### 데모 스크립트 fallback 로직 수정
+- 커넥터 `status != "success"` 또는 `evidence_count == 0` 시 수동 fallback 작동
+  - 기존: HTTP 응답 자체가 실패해야 fallback. API가 200으로 에러 반환 시 미작동
+- 수질 필수 지표 수동 보충 단계(2-b2) 추가
+  - 커넥터 API가 과거 데이터(1992~2000) 반환 시 통계 엔진 5년 필터를 통과하는 최신 데이터 보장
+- 토양/기후 fallback 지표명을 커넥터 출력과 일치시킴
+
+### 테스트
+- 230개 전체 테스트 통과
+- 데모 11단계 정상 실행 확인:
+  - 수질: BOD/COD/SS/T-N/T-P/DO 통계 + 등급 판정(Ib) + 서술문 생성
+  - 토양: Cd/Pb/pH/유기물함량 통계 + 환경기준 비교 + 서술문 생성
+  - 기후: 평균기온/강수량/평균풍속 통계 + 서술문 생성
+  - DOCX/PDF: 표지+목차+11섹션(6개 데이터 포함)+부록 A/B/C 정상
+
+### 주요 파일
+- `backend/app/services/section_planner.py` — 토양/기후 지표명 수정
+- `backend/app/data/env_standards.py` — 토양 환경기준 추가
+- `backend/tests/test_narrative_generator.py` — 변경된 지표명 반영
+- `scripts/demo_full_scenario.py` — fallback 로직 + 수질 보충 + 지표명 정합성
+
+### 커밋
+- `14425c0` — fix: 토양/기후 섹션 지표명 정합성 수정 및 토양 환경기준 추가
+- `77f3957` — fix: 데모 스크립트 커넥터 fallback 로직 및 수질 보충 데이터 개선
 
 ---
 
