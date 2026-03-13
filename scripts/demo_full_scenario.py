@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""실사용 시나리오 전체 흐름 데모 (Post-7 최종판).
+"""실사용 시나리오 전체 흐름 데모 (Post-9 최종판).
 
 시나리오: "서울특별시 강남구 태양광 발전소 건설 프로젝트"
 
@@ -10,8 +10,10 @@
      b. 수질 커넥터
      c. 토양측정망 커넥터 (Post-4)
      d. 기상청 ASOS 기후 커넥터 (Post-4)
-     e. 소음·진동 수동 데이터
-     f. 생태 수동 데이터
+     e. V-world 토지이용 커넥터 (Post-9)
+     f. 국가유산청 문화재 커넥터 (Post-9)
+     g. 소음·진동 수동 데이터
+     h. 생태 수동 데이터
   3. 유사사례 등록 및 매칭
   4. 섹션 플래너 충족도 확인
   5. 통계 엔진 실행 (Post-1)
@@ -149,8 +151,8 @@ async def step1_create_project(client: httpx.AsyncClient) -> str | None:
 # ═══════════════════════════════════════════════════════════════
 
 async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict:
-    """6개 경로로 데이터 수집: 커넥터 4종 + 수동 2종."""
-    banner("단계 2: 데이터 수집 (커넥터 4종 + 수동 2종)")
+    """8개 경로로 데이터 수집: 커넥터 6종 + 수동 2종."""
+    banner("단계 2: 데이터 수집 (커넥터 6종 + 수동 2종)")
 
     stats = {"connectors": {}, "manual": {}}
 
@@ -302,8 +304,77 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         stats["connectors"]["kma_weather"] = len(climate_manual)
         print(f"    수동 기후 데이터 {len(climate_manual)}건 추가 완료")
 
-    # 2-e. 수동 증거 — 소음·진동 3건
-    sub_banner("2-e. 수동 증거 — 소음·진동 3건")
+    # 2-e. V-world 토지이용 커넥터 (Post-9)
+    sub_banner("2-e. V-world 토지이용 커넥터 — 강남구 중심점")
+    result = await api_call(
+        client, "POST", "/api/v1/connectors/vworld_land_use/collect",
+        json={
+            "project_id": project_id,
+            "params": {"lng": "127.0455", "lat": "37.5075"},
+            "screening_only": False,
+        },
+        expected=200, label="V-world 토지이용 수집",
+    )
+    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
+        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
+        stats["connectors"]["vworld_land_use"] = result["evidence_count"]
+    else:
+        if result:
+            msg = result.get("error_message", "")
+            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
+            if msg:
+                print(f"    오류: {msg}")
+        print("    [경고] 토지이용 커넥터 실패 — 수동 토지이용 데이터로 대체합니다.")
+        land_use_manual = [
+            {"category": "land_use", "indicator": "용도지역구분", "value": "제2종일반주거지역, 일반상업지역"},
+            {"category": "land_use", "indicator": "용도지구", "value": "미관지구"},
+            {"category": "land_use", "indicator": "지목", "value": "대"},
+        ]
+        for ev in land_use_manual:
+            await api_call(
+                client, "POST", "/api/v1/evidences",
+                json={"project_id": project_id, "screening_only": False, **ev},
+                expected=201, label=f"수동 토지이용: {ev['indicator']}",
+            )
+        stats["connectors"]["vworld_land_use"] = len(land_use_manual)
+        print(f"    수동 토지이용 데이터 {len(land_use_manual)}건 추가 완료")
+
+    # 2-f. 국가유산청 문화재 커넥터 (Post-9)
+    sub_banner("2-f. 국가유산청 문화재 커넥터 — 강남구 중심점 반경 1km")
+    result = await api_call(
+        client, "POST", "/api/v1/connectors/cultural_heritage/collect",
+        json={
+            "project_id": project_id,
+            "params": {"lng": "127.0455", "lat": "37.5075"},
+            "screening_only": False,
+        },
+        expected=200, label="국가유산청 문화재 수집",
+    )
+    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
+        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
+        stats["connectors"]["cultural_heritage"] = result["evidence_count"]
+    else:
+        if result:
+            msg = result.get("error_message", "")
+            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
+            if msg:
+                print(f"    오류: {msg}")
+        print("    [경고] 문화재 커넥터 실패 — 수동 문화재 데이터로 대체합니다.")
+        heritage_manual = [
+            {"category": "cultural_heritage", "indicator": "문화재명", "value": "봉은사"},
+            {"category": "cultural_heritage", "indicator": "이격거리", "value": "850", "numeric_value": 850.0, "unit": "m"},
+        ]
+        for ev in heritage_manual:
+            await api_call(
+                client, "POST", "/api/v1/evidences",
+                json={"project_id": project_id, "screening_only": False, **ev},
+                expected=201, label=f"수동 문화재: {ev['indicator']}",
+            )
+        stats["connectors"]["cultural_heritage"] = len(heritage_manual)
+        print(f"    수동 문화재 데이터 {len(heritage_manual)}건 추가 완료")
+
+    # 2-g. 수동 증거 — 소음·진동 3건
+    sub_banner("2-g. 수동 증거 — 소음·진동 3건")
     noise_evidences = [
         {"category": "noise_vibration", "indicator": "소음_Leq_주간", "value": "62.5", "numeric_value": 62.5, "unit": "dB(A)", "observed_at": "2025-11-15T10:00:00"},
         {"category": "noise_vibration", "indicator": "소음_Leq_야간", "value": "48.3", "numeric_value": 48.3, "unit": "dB(A)", "observed_at": "2025-11-15T22:00:00"},
@@ -319,8 +390,8 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
             print(f"    {ev['indicator']}: {ev['value']} {ev['unit']} — 등록 완료")
     stats["manual"]["noise_vibration"] = len(noise_evidences)
 
-    # 2-f. 수동 증거 — 생태 5건
-    sub_banner("2-f. 수동 증거 — 생태 조사 데이터 5건")
+    # 2-h. 수동 증거 — 생태 5건
+    sub_banner("2-h. 수동 증거 — 생태 조사 데이터 5건")
     ecology_evidences = [
         {"category": "ecology", "indicator": "식물상_종수", "value": "187", "numeric_value": 187.0, "unit": "종", "observed_at": "2025-10-01T00:00:00"},
         {"category": "ecology", "indicator": "동물상_종수", "value": "42", "numeric_value": 42.0, "unit": "종", "observed_at": "2025-10-01T00:00:00"},
@@ -852,7 +923,7 @@ def step11_summary(
     connector_total = sum(collect_stats.get("connectors", {}).values())
     manual_total = sum(collect_stats.get("manual", {}).values())
     print(f"  │ 총 증거 건수: {total_evidence}")
-    print(f"  │ 커넥터 수집: {connector_total}건 (4개 커넥터)")
+    print(f"  │ 커넥터 수집: {connector_total}건 (6개 커넥터)")
     print(f"  │ 수동 입력: {manual_total}건 + 연평균 보충 6건")
     print(f"  │ 커넥터: {', '.join(collect_stats.get('connectors', {}).keys())}")
     print()
@@ -922,7 +993,7 @@ def step11_summary(
     print("  │")
     print("  │  기능                 │ MVP (Phase 6)  │ Post-MVP      ")
     print("  │  ─────────────────────┼────────────────┼───────────────")
-    print("  │  커넥터 수             │ 2개            │ 4개           ")
+    print("  │  커넥터 수             │ 2개            │ 6개           ")
     print("  │  통계 엔진             │ 미구현         │ 지표별 기술통계")
     print("  │  환경기준 비교         │ 미구현         │ 대기/수질/소음 ")
     print("  │  서술문 생성           │ 미구현         │ 템플릿 기반    ")
@@ -941,9 +1012,9 @@ def step11_summary(
 
 async def main():
     print("╔══════════════════════════════════════════════════════════════════╗")
-    print("║  EIA Draft Copilot — Post-MVP 통합 데모 (Post-7)                ║")
+    print("║  EIA Draft Copilot — Post-MVP 통합 데모 (Post-9)                ║")
     print("║  시나리오: 서울특별시 강남구 태양광 발전소 건설 프로젝트            ║")
-    print("║  범위: Phase 0~6 + Post-1~Post-7 전체 기능                      ║")
+    print("║  범위: Phase 0~6 + Post-1~Post-9 전체 기능                      ║")
     print("╚══════════════════════════════════════════════════════════════════╝")
     print()
     print(f"  백엔드 URL: {BASE_URL}")

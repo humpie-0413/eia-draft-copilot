@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Google API 키
     GOOGLE_API_KEY: str = ""
 
+    # V-world API 키 (토지이용계획 조회)
+    VWORLD_API_KEY: str = ""
+
     # LLM adapter 설정 (none | openai_paid | gemini_free)
     LLM_ADAPTER: str = "none"
 

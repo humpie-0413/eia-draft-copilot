@@ -91,7 +91,7 @@ EIA_SECTIONS: list[SectionDefinition] = [
         description="토지이용 현황 및 변화 분석",
         evidence_category="land_use",
         required_indicators=[
-            "용도지역", "토지피복", "개발면적",
+            "용도지역구분", "용도지구", "지목",
         ],
         order=6,
     ),
@@ -131,7 +131,7 @@ EIA_SECTIONS: list[SectionDefinition] = [
         description="문화재 현황 및 영향 분석",
         evidence_category="cultural_heritage",
         required_indicators=[
-            "문화재_목록", "이격거리",
+            "문화재명", "이격거리",
         ],
         order=10,
     ),

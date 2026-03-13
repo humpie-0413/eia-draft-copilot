@@ -12,6 +12,7 @@ import pytest
 import pytest_asyncio
 from httpx import Request, Response
 
+from app.config import settings
 from app.connectors.keco_air import KecoAirConnector
 from app.connectors.kma_weather import KmaWeatherConnector
 from app.connectors.soil_info import SoilInfoConnector
@@ -954,6 +955,263 @@ class TestKmaWeatherConnector:
 
 
 # ──────────────────────────────────────────────────
+# V-world 토지이용계획 커넥터 테스트
+# ──────────────────────────────────────────────────
+
+
+class TestLandUseConnector:
+    """V-world 토지이용계획 커넥터 단위 테스트."""
+
+    def setup_method(self):
+        from app.connectors.land_use import LandUseConnector
+        self.connector = LandUseConnector()
+        self.project_id = uuid.uuid4()
+        self.data_source_id = uuid.uuid4()
+        self.snapshot_id = uuid.uuid4()
+
+    SAMPLE_RESPONSE = {
+        "response": {
+            "status": "OK",
+            "record": {"total": "2"},
+            "result": {
+                "featureCollection": {
+                    "features": [
+                        {
+                            "properties": {
+                                "PRPOS_AREA_NM": "제1종일반주거지역",
+                                "JIMOK": "대",
+                            }
+                        },
+                        {
+                            "properties": {
+                                "PRPOS_AREA_NM": "자연녹지지역",
+                                "JIMOK": "전",
+                            }
+                        },
+                    ]
+                }
+            },
+        }
+    }
+
+    def test_normalize_정상_응답(self):
+        """정상 응답에서 올바른 수의 증거가 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        # 용도지역구분 1건 + 지목 1건 + 용도지구 1건 = 3건
+        assert len(evidences) == 3
+
+    def test_normalize_용도지역(self):
+        """용도지역구분 지표가 올바르게 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        zone = next(e for e in evidences if e.indicator == "용도지역구분")
+        assert "제1종일반주거지역" in zone.value
+        assert "자연녹지지역" in zone.value
+        assert zone.category == EvidenceCategory.LAND_USE
+
+    def test_normalize_지목(self):
+        """지목 지표가 올바르게 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        jimok = next(e for e in evidences if e.indicator == "지목")
+        assert "대" in jimok.value
+        assert "전" in jimok.value
+
+    def test_normalize_빈_응답(self):
+        """빈 응답 시 빈 리스트를 반환하는지 확인."""
+        empty_payload = {
+            "response": {
+                "status": "OK",
+                "record": {"total": "0"},
+                "result": {"featureCollection": {"features": []}},
+            }
+        }
+        evidences = self.connector.normalize(
+            raw_payload=empty_payload,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        assert len(evidences) == 0
+
+    def test_커넥터_메타데이터(self):
+        """커넥터 키와 표시명이 올바른지 확인."""
+        assert self.connector.connector_key == "vworld_land_use"
+        assert "토지이용" in self.connector.display_name
+
+    @pytest.mark.asyncio
+    async def test_fetch_키_미설정(self):
+        """VWORLD_API_KEY 미설정 시 ValueError를 발생시키는지 확인."""
+        with patch.object(settings, "VWORLD_API_KEY", ""):
+            with pytest.raises(ValueError, match="VWORLD_API_KEY"):
+                await self.connector.fetch({"lng": 127.0, "lat": 37.5})
+
+    @pytest.mark.asyncio
+    async def test_fetch_파라미터_누락(self):
+        """필수 파라미터 누락 시 ValueError를 발생시키는지 확인."""
+        with patch.object(settings, "VWORLD_API_KEY", "test_key"):
+            with pytest.raises(ValueError, match="lng"):
+                await self.connector.fetch({})
+
+
+# ──────────────────────────────────────────────────
+# 국가유산청 문화재 커넥터 테스트
+# ──────────────────────────────────────────────────
+
+
+class TestCulturalHeritageConnector:
+    """국가유산청 문화재 커넥터 단위 테스트."""
+
+    def setup_method(self):
+        from app.connectors.cultural_heritage import CulturalHeritageConnector
+        self.connector = CulturalHeritageConnector()
+        self.project_id = uuid.uuid4()
+        self.data_source_id = uuid.uuid4()
+        self.snapshot_id = uuid.uuid4()
+
+    SAMPLE_RESPONSE = {
+        "total_count": 50,
+        "filtered_count": 2,
+        "center_lat": 37.5075,
+        "center_lng": 127.0455,
+        "sido_code": "11",
+        "radius_m": 1000,
+        "items": [
+            {
+                "ccbaMnm1": "봉은사",
+                "ccbaKdcd": "13",
+                "ccbaLcad": "서울특별시 강남구 봉은사로 531",
+                "ccbaAsno": "001234",
+                "ccbaCtcdNm": "서울특별시",
+                "distance_m": 450,
+                "latitude": "37.5145",
+                "longitude": "127.0575",
+            },
+            {
+                "ccbaMnm1": "삼성동 고분",
+                "ccbaKdcd": "13",
+                "ccbaLcad": "서울특별시 강남구 삼성동",
+                "ccbaAsno": "005678",
+                "ccbaCtcdNm": "서울특별시",
+                "distance_m": 820,
+                "latitude": "37.5100",
+                "longitude": "127.0500",
+            },
+        ],
+    }
+
+    def test_normalize_정상_응답(self):
+        """정상 응답에서 올바른 수의 증거가 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        # 문화재 2건 x (문화재명 + 종별 + 이격거리 + 소재지) = 8건
+        assert len(evidences) == 8
+
+    def test_normalize_문화재명(self):
+        """문화재명 지표가 올바르게 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        names = [e for e in evidences if e.indicator == "문화재명"]
+        assert len(names) == 2
+        assert names[0].value == "봉은사"
+        assert names[0].category == EvidenceCategory.CULTURAL_HERITAGE
+
+    def test_normalize_이격거리(self):
+        """이격거리 지표가 수치값과 함께 올바르게 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        distances = [e for e in evidences if e.indicator == "이격거리"]
+        assert len(distances) == 2
+        assert distances[0].numeric_value == 450.0
+        assert distances[0].unit == "m"
+
+    def test_normalize_종별(self):
+        """종별 코드가 한글명으로 변환되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        kinds = [e for e in evidences if e.indicator == "종별"]
+        assert len(kinds) == 2
+        assert kinds[0].value == "사적"
+
+    def test_normalize_빈_응답(self):
+        """빈 응답 시 빈 리스트를 반환하는지 확인."""
+        empty_payload = {
+            "total_count": 0, "filtered_count": 0,
+            "center_lat": 37.5, "center_lng": 127.0,
+            "sido_code": "11", "radius_m": 1000,
+            "items": [],
+        }
+        evidences = self.connector.normalize(
+            raw_payload=empty_payload,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        assert len(evidences) == 0
+
+    def test_커넥터_메타데이터(self):
+        """커넥터 키와 표시명이 올바른지 확인."""
+        assert self.connector.connector_key == "cultural_heritage"
+        assert "문화재" in self.connector.display_name
+
+    def test_haversine_거리계산(self):
+        """Haversine 거리 계산이 올바른지 확인."""
+        from app.connectors.cultural_heritage import _haversine_distance
+        # 서울역 (37.5547, 126.9707) → 강남역 (37.4979, 127.0276)
+        dist = _haversine_distance(37.5547, 126.9707, 37.4979, 127.0276)
+        assert 7000 < dist < 9000  # 약 7.5~8km
+
+    def test_좌표_시도코드_변환(self):
+        """좌표에서 시도코드가 올바르게 추론되는지 확인."""
+        from app.connectors.cultural_heritage import _coord_to_sido
+        assert _coord_to_sido(37.5, 127.0) == "11"  # 서울
+        assert _coord_to_sido(35.1, 129.0) == "21"  # 부산
+
+    @pytest.mark.asyncio
+    async def test_fetch_파라미터_누락(self):
+        """필수 파라미터 누락 시 ValueError를 발생시키는지 확인."""
+        with pytest.raises(ValueError, match="lat"):
+            await self.connector.fetch({})
+
+    def test_종류코드_변환(self):
+        """문화재 종류 코드가 올바르게 한글명으로 변환되는지 확인."""
+        from app.connectors.cultural_heritage import CulturalHeritageConnector
+        assert CulturalHeritageConnector._kind_code_to_name("11") == "국보"
+        assert CulturalHeritageConnector._kind_code_to_name("12") == "보물"
+        assert CulturalHeritageConnector._kind_code_to_name("13") == "사적"
+        assert CulturalHeritageConnector._kind_code_to_name("99") == "99"
+
+
+# ──────────────────────────────────────────────────
 # 커넥터 레지스트리 테스트
 # ──────────────────────────────────────────────────
 
@@ -967,9 +1225,14 @@ class TestConnectorRegistry:
         assert "water_info" in connector_registry
         assert "soil_info" in connector_registry
         assert "kma_weather" in connector_registry
+        assert "vworld_land_use" in connector_registry
+        assert "cultural_heritage" in connector_registry
 
     def test_커넥터_조회(self):
         """get_connector로 커넥터를 올바르게 조회할 수 있는지 확인."""
+        from app.connectors.cultural_heritage import CulturalHeritageConnector
+        from app.connectors.land_use import LandUseConnector
+
         air = get_connector("keco_air")
         assert air is not None
         assert isinstance(air, KecoAirConnector)
@@ -985,6 +1248,14 @@ class TestConnectorRegistry:
         weather = get_connector("kma_weather")
         assert weather is not None
         assert isinstance(weather, KmaWeatherConnector)
+
+        land_use = get_connector("vworld_land_use")
+        assert land_use is not None
+        assert isinstance(land_use, LandUseConnector)
+
+        heritage = get_connector("cultural_heritage")
+        assert heritage is not None
+        assert isinstance(heritage, CulturalHeritageConnector)
 
     def test_없는_커넥터_조회(self):
         """존재하지 않는 커넥터 키로 조회 시 None을 반환하는지 확인."""
@@ -1007,6 +1278,14 @@ class TestConnectorRegistry:
         weather = get_connector("kma_weather")
         assert weather.connector_key == "kma_weather"
         assert "기상청" in weather.display_name
+
+        land_use = get_connector("vworld_land_use")
+        assert land_use.connector_key == "vworld_land_use"
+        assert "토지이용" in land_use.display_name
+
+        heritage = get_connector("cultural_heritage")
+        assert heritage.connector_key == "cultural_heritage"
+        assert "문화재" in heritage.display_name
 
 
 # ──────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """커넥터 실제 API 연동 검증 스크립트.
 
-에어코리아 대기질 + 국립환경과학원 수질 DB 커넥터를 실제 API로 호출하여
+에어코리아 대기질 + 수질 DB + 토양측정망 + 기상청 ASOS +
+V-world 토지이용 + 국가유산청 문화재 커넥터를 실제 API로 호출하여
 데이터가 정상 수신되는지 확인한다.
 
 사용법:
@@ -480,6 +481,145 @@ async def test_kma_asos():
 
 
 # ──────────────────────────────────────────────────
+# V-world 토지이용 커넥터 검증
+# ──────────────────────────────────────────────────
+
+VWORLD_API_KEY = os.getenv("VWORLD_API_KEY", "")
+VWORLD_URL = "https://api.vworld.kr/req/data"
+
+
+async def test_vworld_land_use():
+    """V-world 토지이용 API 실제 호출 검증."""
+    print()
+    print("=" * 60)
+    print("[V-world 토지이용 커넥터 검증]")
+    print("=" * 60)
+
+    if not VWORLD_API_KEY:
+        print("  ERROR: VWORLD_API_KEY 환경변수가 설정되지 않았습니다.")
+        return False
+
+    # 강남구 중심점 좌표
+    lng, lat = 127.0455, 37.5075
+    params = {
+        "service": "data",
+        "request": "GetFeature",
+        "data": "LP_PA_CBND_BONBUN",
+        "key": VWORLD_API_KEY,
+        "geomFilter": f"POINT({lng} {lat})",
+        "crs": "EPSG:4326",
+        "format": "json",
+        "size": "10",
+    }
+
+    print(f"  요청 URL: {VWORLD_URL}")
+    print(f"  좌표: ({lng}, {lat})")
+    print()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(VWORLD_URL, params=params)
+
+        print(f"  HTTP 상태코드: {response.status_code}")
+
+        if response.status_code != 200:
+            print("  ERROR: HTTP 오류 응답")
+            print(f"  응답 본문: {response.text[:500]}")
+            return False
+
+        data = response.json()
+        status = data.get("response", {}).get("status", "")
+        print(f"  API 상태: {status}")
+
+        if status != "OK":
+            error = data.get("response", {}).get("error", {})
+            print(f"  ERROR: {error}")
+            return False
+
+        result = data.get("response", {}).get("result", {})
+        features = result.get("featureCollection", {}).get("features", [])
+        print(f"  수신 건수: {len(features)}")
+
+        if features:
+            print()
+            print("  [샘플 데이터 (첫 번째 피처)]")
+            props = features[0].get("properties", {})
+            for k, v in list(props.items())[:8]:
+                print(f"    {k}: {v}")
+
+        print()
+        print("  SUCCESS: V-world 토지이용 API 연동 성공")
+        return True
+
+    except Exception as e:
+        print(f"  ERROR: 예외 발생 -- {type(e).__name__}: {e}")
+        return False
+
+
+# ──────────────────────────────────────────────────
+# 국가유산청 문화재 커넥터 검증
+# ──────────────────────────────────────────────────
+
+HERITAGE_URL = "https://www.khs.go.kr/cha/SearchKindOpenapiList.do"
+
+
+async def test_cultural_heritage():
+    """국가유산청 문화재 API 실제 호출 검증."""
+    print()
+    print("=" * 60)
+    print("[국가유산청 문화재 커넥터 검증]")
+    print("=" * 60)
+
+    # API 키 불필요
+    params = {
+        "ccbaCtcd": "11",  # 서울
+        "pageUnit": "5",
+        "pageIndex": "1",
+    }
+
+    print(f"  요청 URL: {HERITAGE_URL}")
+    print(f"  시도코드: {params['ccbaCtcd']} (서울)")
+    print()
+
+    try:
+        import xml.etree.ElementTree as ET
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(HERITAGE_URL, params=params)
+
+        print(f"  HTTP 상태코드: {response.status_code}")
+
+        if response.status_code != 200:
+            print("  ERROR: HTTP 오류 응답")
+            print(f"  응답 본문: {response.text[:500]}")
+            return False
+
+        root = ET.fromstring(response.text)
+        items = root.findall(".//item")
+        total = root.findtext("totalCnt", "0")
+
+        print(f"  총 건수: {total}")
+        print(f"  수신 건수: {len(items)}")
+
+        if items:
+            print()
+            print("  [샘플 데이터 (첫 번째 항목)]")
+            item = items[0]
+            fields = ["ccbaMnm1", "ccbaKdcd", "ccbaCtcdNm", "ccbaLcad", "longitude", "latitude"]
+            for f in fields:
+                val = item.findtext(f, "")
+                print(f"    {f}: {val}")
+
+        print()
+        print("  SUCCESS: 국가유산청 문화재 API 연동 성공")
+        return True
+
+    except Exception as e:
+        print(f"  ERROR: 예외 발생 -- {type(e).__name__}: {e}")
+        return False
+
+
+# ──────────────────────────────────────────────────
 # 메인
 # ──────────────────────────────────────────────────
 
@@ -492,6 +632,8 @@ async def main():
     water_ok = await test_water_quality()
     soil_ok = await test_soil_measuring()
     kma_ok = await test_kma_asos()
+    vworld_ok = await test_vworld_land_use()
+    heritage_ok = await test_cultural_heritage()
 
     print()
     print("=" * 60)
@@ -501,9 +643,11 @@ async def main():
     print(f"  국립환경과학원 수질 DB: {'SUCCESS' if water_ok else 'FAILED'}")
     print(f"  국립환경과학원 토양측정망: {'SUCCESS' if soil_ok else 'FAILED'}")
     print(f"  기상청 ASOS: {'SUCCESS' if kma_ok else 'FAILED'}")
+    print(f"  V-world 토지이용: {'SUCCESS' if vworld_ok else 'FAILED'}")
+    print(f"  국가유산청 문화재: {'SUCCESS' if heritage_ok else 'FAILED'}")
     print()
 
-    all_ok = air_ok and water_ok and soil_ok and kma_ok
+    all_ok = air_ok and water_ok and soil_ok and kma_ok and vworld_ok and heritage_ok
     if all_ok:
         print("  전체 검증 통과")
     else:

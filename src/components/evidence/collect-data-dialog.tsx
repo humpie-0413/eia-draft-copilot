@@ -87,6 +87,34 @@ const CONNECTOR_PARAMS: Record<
       required: true,
     },
   ],
+  vworld_land_use: [
+    {
+      key: "lng",
+      label: "경도",
+      placeholder: "예: 127.0455 (프로젝트 중심점)",
+      required: true,
+    },
+    {
+      key: "lat",
+      label: "위도",
+      placeholder: "예: 37.5075",
+      required: true,
+    },
+  ],
+  cultural_heritage: [
+    {
+      key: "lng",
+      label: "경도",
+      placeholder: "예: 127.0455 (프로젝트 중심점)",
+      required: true,
+    },
+    {
+      key: "lat",
+      label: "위도",
+      placeholder: "예: 37.5075",
+      required: true,
+    },
+  ],
 };
 
 interface CollectDataDialogProps {

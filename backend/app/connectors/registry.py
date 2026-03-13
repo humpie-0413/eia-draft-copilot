@@ -22,8 +22,10 @@ def get_connector(connector_key: str) -> BaseConnector | None:
 
 def _register_all() -> None:
     """모든 커넥터를 레지스트리에 등록한다. 앱 시작 시 호출."""
+    from app.connectors.cultural_heritage import CulturalHeritageConnector
     from app.connectors.keco_air import KecoAirConnector
     from app.connectors.kma_weather import KmaWeatherConnector
+    from app.connectors.land_use import LandUseConnector
     from app.connectors.soil_info import SoilInfoConnector
     from app.connectors.water_info import WaterInfoConnector
 
@@ -31,6 +33,8 @@ def _register_all() -> None:
     register_connector(WaterInfoConnector())
     register_connector(SoilInfoConnector())
     register_connector(KmaWeatherConnector())
+    register_connector(LandUseConnector())
+    register_connector(CulturalHeritageConnector())
 
 
 # 모듈 로드 시 자동 등록
