@@ -1,20 +1,20 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Post-10: 전체 문서 최신화 + 프론트엔드 지표명 정합성** ✅
+**Post-11: 비수치형 서술문 + 유사사례 중복 수정** ✅
 
-## 완료된 작업 (Post-10)
+## 완료된 작업 (Post-11)
 
-### 전체 문서 Post-9 기준 최신화
-- README, architecture, api-reference, development, user-guide 5개 문서 갱신
-- 커넥터 4→6종, 테스트 230→247개, Alembic 3→4개, 필수 지표명 정합성 반영
+### 이슈 1: 토지이용 서술문 불일치 수정
+- statistics.py: `TextIndicatorInfo` 추가, 비수치형 데이터 집계 기능
+- narrative_generator.py: 토지이용 전용 서술문 (지목/용도지역/용도지구)
+- narrative_generator.py: 문화재 전용 서술문 (문화재명+이격거리)
+- 범용 서술문도 비수치형 데이터 인식하도록 개선
+- 테스트 9개 추가 (256개 전체 통과)
 
-### 프론트엔드 수동 입력 지표명 정합성
-- evidence-form-dialog: 토지이용(용도지역구분, 용도지구, 지목), 문화재(문화재명) 수정
-- 커넥터 자동 수집 가능 안내 힌트 추가
-
-### 개선 계획 문서 최신화
-- post-mvp-improvement-plan.md: Post-1~Post-9 전체 완료 체크 반영
+### 이슈 2: 부록 B 유사사례 중복 수정
+- export_service.py: 유사사례 이름 기준 중복 제거 (점수 높은 것 우선)
+- preview 유사사례 수 산출에도 중복 제거 적용
 
 ## 전체 Phase 완료 현황
 - Phase 0: 스캐폴딩 ✅
@@ -35,6 +35,7 @@
 - Post-8: 데이터 파이프라인 정합성 수정 ✅
 - Post-9: 커넥터 2종 추가 + DOCX/LLM 수정 ✅
 - Post-10: 전체 문서 최신화 + 프론트엔드 지표명 정합성 ✅
+- Post-11: 비수치형 서술문 + 유사사례 중복 수정 ✅
 
 ## 시스템 전체 현황
 
@@ -67,9 +68,9 @@
 | openai_paid | gpt-4o-mini | OpenAI GPT |
 | gemini_free | gemini-2.0-flash | Google Gemini (무료 티어) |
 
-### 테스트 (247개)
-- test_connectors.py (69), test_export_format.py (40+), test_llm_adapter.py (29)
-- test_narrative_generator.py (28), test_standard_checker.py (27)
+### 테스트 (256개)
+- test_connectors.py (69), test_export_format.py (40+), test_narrative_generator.py (37)
+- test_llm_adapter.py (29), test_standard_checker.py (27)
 - test_spec_alignment.py (23), test_statistics.py (16)
 - test_projects.py (9), test_export_pdf.py (4), test_e2e.py (1)
 
@@ -100,7 +101,7 @@ uvicorn app.main:app --reload    # http://localhost:8000
 
 # 테스트
 cd backend
-pytest tests/ -v    # 247개 테스트
+pytest tests/ -v    # 256개 테스트
 
 # 통합 데모 (백엔드 서버 실행 후)
 python scripts/demo_full_scenario.py

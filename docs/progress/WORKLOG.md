@@ -883,3 +883,22 @@
 | 58 | `a4077db` | docs: Post-9 완료 — 문서 최종 업데이트 |
 | 59 | `defc325` | docs: 전체 문서 Post-9 기준 최신화 |
 | 60 | `5a8ec71` | fix: 프론트엔드 수동 입력 지표명 정합성 + 개선 계획 문서 최신화 |
+| 61 | `41760d1` | docs: Post-10 완료 — 문서 최신화 작업 기록 |
+
+---
+
+## Post-11: 비수치형 서술문 + 유사사례 중복 수정
+
+### 완료 항목
+- 이슈 1: 토지이용/문화재 등 비수치형 데이터가 있는 섹션에서 "수집되지 않았다" 서술문이 출력되는 문제 수정
+  - `statistics.py`: `TextIndicatorInfo` 데이터클래스 추가, `SectionStats`에 `total_text_count`/`text_indicators` 필드 추가
+  - `statistics.py`: `_fetch_text_evidences()` 함수 추가, `calculate_section_statistics()`에서 비수치형 데이터도 집계
+  - `narrative_generator.py`: `generate_land_use_narrative()` — 토지이용 전용 서술문 (지목, 용도지역, 용도지구)
+  - `narrative_generator.py`: `generate_cultural_heritage_narrative()` — 문화재 전용 서술문 (문화재명+이격거리)
+  - `narrative_generator.py`: `_has_any_data()` / `_text_indicator_map()` 공통 헬퍼 추가
+  - `narrative_generator.py`: `generate_generic_narrative()` / `generate_narrative()` — 비수치형 데이터도 인식
+- 이슈 2: 부록 B 유사사례 중복 표시 문제 수정
+  - `export_service.py`: 유사사례 목록 생성 시 이름 기준 중복 제거 (점수 높은 것 우선)
+  - `export_service.py`: preview 유사사례 수 산출에도 중복 제거 적용
+- 테스트 9개 추가 (256개 전체 통과)
+  - 토지이용 서술문 4개, 문화재 서술문 4개, 범용 비수치 1개

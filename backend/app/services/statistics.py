@@ -46,13 +46,23 @@ class IndicatorStats:
 
 
 @dataclass
+class TextIndicatorInfo:
+    """비수치형 지표 정보 (토지이용, 문화재 등 텍스트 값)."""
+
+    indicator: str
+    values: list[str] = field(default_factory=list)
+
+
+@dataclass
 class SectionStats:
     """섹션별 통계 요약."""
 
     section_key: str
     title: str
     total_numeric_count: int = 0       # 수치 데이터 총 건수
+    total_text_count: int = 0          # 비수치 데이터 총 건수
     indicator_stats: list[IndicatorStats] = field(default_factory=list)
+    text_indicators: list[TextIndicatorInfo] = field(default_factory=list)
     years_filter_applied: int | None = None  # 적용된 연도 필터
 
 
@@ -211,6 +221,27 @@ def _resolve_years_filter(
     return _DEFAULT_YEARS_FILTER.get(category)
 
 
+async def _fetch_text_evidences(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    category: str,
+) -> list[Evidence]:
+    """비수치형(numeric_value가 NULL인) 본 평가 evidence를 조회한다."""
+    conditions = [
+        Evidence.project_id == project_id,
+        Evidence.category == category,
+        Evidence.screening_only.is_(False),
+        Evidence.numeric_value.is_(None),
+    ]
+
+    result = await db.execute(
+        select(Evidence)
+        .where(and_(*conditions))
+        .order_by(Evidence.indicator, Evidence.observed_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 async def calculate_section_statistics(
     db: AsyncSession,
     project_id: uuid.UUID,
@@ -244,11 +275,27 @@ async def calculate_section_statistics(
     # 정렬: 건수 많은 순 → 지표명 순
     indicator_stats_list.sort(key=lambda s: (-s.count, s.indicator))
 
+    # 비수치형 데이터 집계 (토지이용, 문화재 등 텍스트 값)
+    text_evidences = await _fetch_text_evidences(
+        db, project_id, section_def.evidence_category
+    )
+    text_groups: dict[str, list[str]] = {}
+    for ev in text_evidences:
+        text_groups.setdefault(ev.indicator, []).append(ev.value or "")
+    text_indicators = [
+        TextIndicatorInfo(indicator=ind, values=vals)
+        for ind, vals in text_groups.items()
+    ]
+    text_indicators.sort(key=lambda t: t.indicator)
+    total_text = len(text_evidences)
+
     return SectionStats(
         section_key=section_def.key,
         title=section_def.title,
         total_numeric_count=total_count,
+        total_text_count=total_text,
         indicator_stats=indicator_stats_list,
+        text_indicators=text_indicators,
         years_filter_applied=resolved_years,
     )
 

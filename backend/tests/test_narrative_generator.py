@@ -8,8 +8,10 @@ import pytest
 from app.services.narrative_generator import (
     _no_data_narrative,
     generate_air_quality_narrative,
+    generate_cultural_heritage_narrative,
     generate_ecology_narrative,
     generate_generic_narrative,
+    generate_land_use_narrative,
     generate_narrative,
     generate_noise_vibration_narrative,
     generate_water_quality_narrative,
@@ -20,7 +22,7 @@ from app.services.standard_checker import (
     IndicatorCheckResult,
     SectionCheckResult,
 )
-from app.services.statistics import IndicatorStats, SectionStats
+from app.services.statistics import IndicatorStats, SectionStats, TextIndicatorInfo
 
 
 # ────────────────────────────────────────────
@@ -53,13 +55,18 @@ def _make_section_stats(
     section_key: str,
     title: str,
     indicators: list[IndicatorStats],
+    text_indicators: list[TextIndicatorInfo] | None = None,
 ) -> SectionStats:
     total = sum(s.count for s in indicators)
+    text_inds = text_indicators or []
+    text_count = sum(len(t.values) for t in text_inds)
     return SectionStats(
         section_key=section_key,
         title=title,
         total_numeric_count=total,
+        total_text_count=text_count,
         indicator_stats=indicators,
+        text_indicators=text_inds,
     )
 
 
@@ -352,6 +359,130 @@ class TestEcologyNarrative:
         result = generate_ecology_narrative(stats, None)
 
         assert "수집되지 않았다" in result
+
+
+# ────────────────────────────────────────────
+# 토지이용 서술문 테스트
+# ────────────────────────────────────────────
+
+class TestLandUseNarrative:
+    def test_basic_text_only_narrative(self):
+        """비수치형 데이터만 있는 토지이용 서술문"""
+        stats = _make_section_stats("land_use", "토지이용", [], text_indicators=[
+            TextIndicatorInfo(indicator="지목", values=["대"]),
+            TextIndicatorInfo(indicator="용도지역구분", values=["제2종일반주거지역"]),
+            TextIndicatorInfo(indicator="용도지구", values=["미관지구"]),
+        ])
+
+        result = generate_land_use_narrative(stats, None)
+
+        assert "토지이용 현황" in result
+        assert "지목은 대" in result
+        assert "용도지역은 제2종일반주거지역" in result
+        assert "용도지구는 미관지구" in result
+
+    def test_no_data(self):
+        """데이터 없는 토지이용 섹션"""
+        stats = _make_section_stats("land_use", "토지이용", [])
+
+        result = generate_land_use_narrative(stats, None)
+
+        assert "수집되지 않았다" in result
+
+    def test_partial_text_data(self):
+        """지목만 있는 경우"""
+        stats = _make_section_stats("land_use", "토지이용", [], text_indicators=[
+            TextIndicatorInfo(indicator="지목", values=["전"]),
+        ])
+
+        result = generate_land_use_narrative(stats, None)
+
+        assert "지목은 전" in result
+
+    def test_dispatches_land_use(self):
+        """land_use → 전용 생성 함수 호출"""
+        section_def = get_section_definition("land_use")
+        stats = _make_section_stats("land_use", "토지이용", [], text_indicators=[
+            TextIndicatorInfo(indicator="지목", values=["대"]),
+            TextIndicatorInfo(indicator="용도지역구분", values=["일반상업지역"]),
+        ])
+
+        result = generate_narrative(section_def, stats, None)
+
+        assert "토지이용 현황" in result
+        assert "수집되지 않았다" not in result
+
+
+# ────────────────────────────────────────────
+# 문화재 서술문 테스트
+# ────────────────────────────────────────────
+
+class TestCulturalHeritageNarrative:
+    def test_basic_narrative(self):
+        """문화재명(텍스트) + 이격거리(수치) 혼합 서술문"""
+        stats = _make_section_stats("cultural_heritage", "문화재", [
+            _make_indicator_stats("이격거리", 850.0, unit="m", count=1),
+        ], text_indicators=[
+            TextIndicatorInfo(indicator="문화재명", values=["봉은사"]),
+        ])
+
+        result = generate_cultural_heritage_narrative(stats, None)
+
+        assert "문화재 현황" in result
+        assert "봉은사" in result
+        assert "이격거리" in result
+        assert "850" in result
+
+    def test_text_only(self):
+        """문화재명만 있는 경우"""
+        stats = _make_section_stats("cultural_heritage", "문화재", [], text_indicators=[
+            TextIndicatorInfo(indicator="문화재명", values=["숭례문"]),
+        ])
+
+        result = generate_cultural_heritage_narrative(stats, None)
+
+        assert "숭례문" in result
+        assert "수집되지 않았다" not in result
+
+    def test_no_data(self):
+        """데이터 없는 문화재 섹션"""
+        stats = _make_section_stats("cultural_heritage", "문화재", [])
+
+        result = generate_cultural_heritage_narrative(stats, None)
+
+        assert "수집되지 않았다" in result
+
+    def test_dispatches_cultural_heritage(self):
+        """cultural_heritage → 전용 생성 함수 호출"""
+        section_def = get_section_definition("cultural_heritage")
+        stats = _make_section_stats("cultural_heritage", "문화재", [], text_indicators=[
+            TextIndicatorInfo(indicator="문화재명", values=["봉은사"]),
+        ])
+
+        result = generate_narrative(section_def, stats, None)
+
+        assert "봉은사" in result
+        assert "수집되지 않았다" not in result
+
+
+# ────────────────────────────────────────────
+# 범용 서술문 테스트 (비수치 포함)
+# ────────────────────────────────────────────
+
+class TestGenericNarrativeTextData:
+    def test_text_only_generic(self):
+        """비수치형 데이터만 있는 범용 섹션 서술문"""
+        section_def = get_section_definition("waste")
+        stats = _make_section_stats("waste", "폐기물", [], text_indicators=[
+            TextIndicatorInfo(indicator="폐기물_종류", values=["건설폐기물", "생활폐기물"]),
+        ])
+
+        result = generate_generic_narrative(section_def, stats, None)
+
+        assert "폐기물 현황" in result
+        assert "폐기물_종류" in result
+        assert "건설폐기물" in result
+        assert "수집되지 않았다" not in result
 
 
 # ────────────────────────────────────────────

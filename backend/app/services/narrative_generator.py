@@ -13,7 +13,7 @@ from app.services.standard_checker import (
     IndicatorCheckResult,
     SectionCheckResult,
 )
-from app.services.statistics import IndicatorStats, SectionStats
+from app.services.statistics import IndicatorStats, SectionStats, TextIndicatorInfo
 
 
 def _fmt(value: float | None, precision: int = 2) -> str:
@@ -317,7 +317,117 @@ def generate_ecology_narrative(
 
 
 # ────────────────────────────────────────────
-# 범용 서술문 (토양, 토지이용, 교통 등)
+# 토지이용 서술문
+# ────────────────────────────────────────────
+
+def generate_land_use_narrative(
+    section_stats: SectionStats,
+    section_check: SectionCheckResult | None,
+) -> str:
+    """토지이용 섹션 서술문을 생성한다.
+
+    토지이용은 비수치형 데이터(지목, 용도지역구분, 용도지구)가 주를 이루므로
+    텍스트 기반 서술문을 생성한다.
+    """
+    if not _has_any_data(section_stats):
+        return _no_data_narrative()
+
+    text_map = _text_indicator_map(section_stats)
+    lines: list[str] = []
+
+    # 지목, 용도지역구분을 기반으로 도입부 구성
+    jmok = text_map.get("지목")
+    yongdo = text_map.get("용도지역구분")
+    yongdo_jigu = text_map.get("용도지구")
+
+    intro_parts: list[str] = []
+    if jmok:
+        intro_parts.append(f"지목은 {jmok}이며")
+    if yongdo:
+        intro_parts.append(f"용도지역은 {yongdo}으로 지정되어 있다")
+
+    if intro_parts:
+        lines.append(
+            "본 사업지역의 토지이용 현황을 조사한 결과, "
+            + ", ".join(intro_parts) + "."
+        )
+    else:
+        lines.append("본 사업지역의 토지이용 현황을 조사하였다.")
+
+    if yongdo_jigu:
+        lines.append(f"용도지구는 {yongdo_jigu}이다.")
+
+    # 수치형 지표가 있으면 추가 서술
+    for stat in section_stats.indicator_stats:
+        if stat.count == 0:
+            continue
+        unit = f" {stat.unit}" if stat.unit else ""
+        avg = _fmt(stat.mean)
+        lines.append(f"{stat.indicator} 평균 {avg}{unit}로 조사되었다.")
+
+    # text_map에 포함되지 않은 기타 텍스트 지표 서술
+    known_text = {"지목", "용도지역구분", "용도지구"}
+    for ti in section_stats.text_indicators:
+        if ti.indicator not in known_text:
+            values_str = ", ".join(ti.values[:5])
+            lines.append(f"{ti.indicator}: {values_str}")
+
+    return "\n".join(lines)
+
+
+# ────────────────────────────────────────────
+# 문화재 서술문
+# ────────────────────────────────────────────
+
+def generate_cultural_heritage_narrative(
+    section_stats: SectionStats,
+    section_check: SectionCheckResult | None,
+) -> str:
+    """문화재 섹션 서술문을 생성한다.
+
+    문화재명은 비수치형, 이격거리는 수치형으로 혼합된 데이터를 처리한다.
+    """
+    if not _has_any_data(section_stats):
+        return _no_data_narrative()
+
+    text_map = _text_indicator_map(section_stats)
+    lines: list[str] = []
+
+    heritage_name = text_map.get("문화재명")
+    stats_map = {s.indicator: s for s in section_stats.indicator_stats}
+    distance_stat = stats_map.get("이격거리")
+
+    if heritage_name:
+        intro = f"본 사업지역 인근의 문화재 현황을 조사한 결과, {heritage_name}이(가) 확인되었다."
+        lines.append(intro)
+    else:
+        lines.append("본 사업지역 인근의 문화재 현황을 조사하였다.")
+
+    if distance_stat and distance_stat.count > 0:
+        unit = distance_stat.unit or "m"
+        avg = _fmt(distance_stat.mean, 0)
+        lines.append(f"사업지역과의 이격거리는 약 {avg} {unit}이다.")
+
+    # 기타 텍스트 지표 (종별, 소재지 등)
+    known_text = {"문화재명"}
+    for ti in section_stats.text_indicators:
+        if ti.indicator not in known_text and ti.values:
+            values_str = ", ".join(ti.values[:5])
+            lines.append(f"{ti.indicator}: {values_str}")
+
+    # 기타 수치 지표
+    for stat in section_stats.indicator_stats:
+        if stat.indicator == "이격거리" or stat.count == 0:
+            continue
+        unit = f" {stat.unit}" if stat.unit else ""
+        avg = _fmt(stat.mean)
+        lines.append(f"{stat.indicator} 평균 {avg}{unit}로 조사되었다.")
+
+    return "\n".join(lines)
+
+
+# ────────────────────────────────────────────
+# 범용 서술문 (토양, 교통 등)
 # ────────────────────────────────────────────
 
 def generate_generic_narrative(
@@ -326,27 +436,39 @@ def generate_generic_narrative(
     section_check: SectionCheckResult | None,
 ) -> str:
     """환경기준 비교 대상이 아닌 범용 섹션의 서술문을 생성한다."""
-    if section_stats.total_numeric_count == 0:
+    if not _has_any_data(section_stats):
         return _no_data_narrative()
-
-    period = _period_str(section_stats)
-    total = section_stats.total_numeric_count
 
     lines: list[str] = []
 
     # 도입부
-    lines.append(
-        f"본 사업지역의 {section_def.title} 현황을 조사한 결과, "
-        f"{period} 동안 총 {total}건의 데이터를 수집하였다."
-    )
+    total = section_stats.total_numeric_count + section_stats.total_text_count
+    if section_stats.total_numeric_count > 0:
+        period = _period_str(section_stats)
+        lines.append(
+            f"본 사업지역의 {section_def.title} 현황을 조사한 결과, "
+            f"{period} 동안 총 {total}건의 데이터를 수집하였다."
+        )
+    else:
+        lines.append(
+            f"본 사업지역의 {section_def.title} 현황을 조사한 결과, "
+            f"총 {total}건의 데이터를 수집하였다."
+        )
 
-    # 지표별 서술
+    # 수치형 지표별 서술
     for stat in section_stats.indicator_stats:
         if stat.count == 0:
             continue
         unit = f" {stat.unit}" if stat.unit else ""
         avg = _fmt(stat.mean)
         lines.append(f"{stat.indicator} 평균 {avg}{unit}로 조사되었다.")
+
+    # 비수치형 지표 서술 (값 목록 형태)
+    for ti in section_stats.text_indicators:
+        if ti.values:
+            values_str = ", ".join(ti.values[:5])
+            suffix = f" 외 {len(ti.values) - 5}건" if len(ti.values) > 5 else ""
+            lines.append(f"{ti.indicator}: {values_str}{suffix}")
 
     # 환경기준 비교 결과 (있는 경우)
     if section_check and section_check.has_exceedance:
@@ -364,12 +486,30 @@ def generate_generic_narrative(
 
 
 # ────────────────────────────────────────────
-# 미수집 서술문
+# 미수집 서술문 및 공통 헬퍼
 # ────────────────────────────────────────────
 
 def _no_data_narrative() -> str:
     """데이터가 수집되지 않은 섹션의 서술문을 반환한다."""
     return "본 분야에 대한 현황 데이터가 수집되지 않았다. 현장조사 및 자료 수집이 필요하다."
+
+
+def _has_any_data(section_stats: SectionStats) -> bool:
+    """수치형 또는 비수치형 데이터가 하나라도 있는지 확인한다."""
+    return (section_stats.total_numeric_count > 0
+            or section_stats.total_text_count > 0)
+
+
+def _text_indicator_map(section_stats: SectionStats) -> dict[str, str]:
+    """비수치형 지표를 {지표명: 첫 번째 값} 딕셔너리로 변환한다.
+
+    여러 값이 있으면 쉼표로 연결한다.
+    """
+    result: dict[str, str] = {}
+    for ti in section_stats.text_indicators:
+        if ti.values:
+            result[ti.indicator] = ", ".join(ti.values[:5])
+    return result
 
 
 # ────────────────────────────────────────────
@@ -382,6 +522,8 @@ _SECTION_GENERATORS: dict[str, callable] = {
     "water_quality": generate_water_quality_narrative,
     "noise_vibration": generate_noise_vibration_narrative,
     "ecology": generate_ecology_narrative,
+    "land_use": generate_land_use_narrative,
+    "cultural_heritage": generate_cultural_heritage_narrative,
 }
 
 
@@ -393,11 +535,11 @@ def generate_narrative(
     """섹션별 서술문을 생성하는 메인 진입점.
 
     각 섹션에 대해:
-    1. 통계 데이터가 없으면 미수집 서술문 반환
+    1. 통계 데이터가 없으면(수치+비수치 모두 0건) 미수집 서술문 반환
     2. 전용 생성 함수가 있으면 해당 함수 호출
     3. 없으면 범용 서술문 생성
     """
-    if section_stats is None or section_stats.total_numeric_count == 0:
+    if section_stats is None or not _has_any_data(section_stats):
         return _no_data_narrative()
 
     generator = _SECTION_GENERATORS.get(section_def.key)

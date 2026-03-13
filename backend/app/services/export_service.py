@@ -199,7 +199,12 @@ async def _build_export_context(
                 evidence_categories=categories,
                 top_k=10,
             )
+            # 유사사례 중복 제거 (이름 기준, 점수 높은 것 우선)
+            seen_names: set[str] = set()
             for m in match_result.matches:
+                if m.similar_case.name in seen_names:
+                    continue
+                seen_names.add(m.similar_case.name)
                 similar_cases.append(SimilarCaseInfo(
                     name=m.similar_case.name,
                     project_type=m.similar_case.project_type,
@@ -1746,7 +1751,7 @@ async def generate_export_preview(
             has_standards=has_standards,
         ))
 
-    # 유사사례 수
+    # 유사사례 수 (중복 제거)
     similar_count = 0
     try:
         from app.services.similarity import find_similar_cases
@@ -1758,7 +1763,8 @@ async def generate_export_preview(
             evidence_categories=categories,
             top_k=10,
         )
-        similar_count = match_result.total
+        unique_names = {m.similar_case.name for m in match_result.matches}
+        similar_count = len(unique_names)
     except Exception:
         pass
 
