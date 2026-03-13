@@ -5,11 +5,13 @@ Post-1 통계 + Post-2 기준비교 결과를 입력으로 받아
 LLM을 사용하지 않으며, 모든 서술은 수집된 증거 데이터에 기반한다.
 
 Reg-2: 환경기준 비교 서술 시 법적 근거를 자동 삽입한다.
+Pred-3: 예측 모델 결과를 기반으로 영향 예측 서술문을 생성한다.
 """
 
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from app.data.env_standards import WATER_GRADES
 from app.services.section_planner import SectionDefinition
@@ -19,6 +21,9 @@ from app.services.standard_checker import (
     SectionCheckResult,
 )
 from app.services.statistics import IndicatorStats, SectionStats, TextIndicatorInfo
+
+if TYPE_CHECKING:
+    from app.services.prediction.base import PredictionItem, PredictionResult
 
 # ────────────────────────────────────────────
 # 섹션별 법적 근거 서술문 접두어
@@ -584,6 +589,187 @@ def _text_indicator_map(section_stats: SectionStats) -> dict[str, str]:
         if ti.values:
             result[ti.indicator] = ", ".join(ti.values[:5])
     return result
+
+
+# ────────────────────────────────────────────
+# Pred-3: 영향 예측 서술문
+# ────────────────────────────────────────────
+
+def _generate_air_prediction_narrative(prediction_result: "PredictionResult") -> str:
+    """대기질 영향 예측 서술문을 생성한다.
+
+    가우시안 플룸 모델 결과를 기반으로 오염물질별 100m 지점 기여농도,
+    현황 농도, 합산 농도, 환경기준 초과 여부를 서술한다.
+    """
+    lines: list[str] = []
+    lines.append(
+        "가우시안 플룸 모델을 적용하여 대기오염물질 확산을 예측한 결과는 다음과 같다."
+    )
+
+    # 오염물질별 100m 지점 결과 추출
+    target_pollutants = ["PM10", "PM2.5", "NO2", "SO2"]
+    exceeded_items: list[str] = []
+
+    for pollutant in target_pollutants:
+        # 100m 지점 우선; 없으면 첫 번째 예측값 사용
+        items_100m = [
+            p for p in prediction_result.predictions
+            if p.pollutant == pollutant and p.distance_m == 100.0
+        ]
+        items_all = [
+            p for p in prediction_result.predictions
+            if p.pollutant == pollutant
+        ]
+        if not items_all:
+            continue
+
+        item = items_100m[0] if items_100m else items_all[0]
+        label = "사업지 경계(100m 지점)" if item.distance_m == 100.0 else f"{item.label} 지점"
+
+        if item.standard_value is not None:
+            judgment = "초과이다" if item.exceeds_standard else "이내이다"
+            lines.append(
+                f"{pollutant}: {label}에서 기여농도 {item.predicted_concentration:.2f} {item.unit}으로 "
+                f"현황 농도({item.background_concentration:.2f} {item.unit})와 합산 시 "
+                f"{item.total_concentration:.2f} {item.unit}으로 "
+                f"환경정책기본법 시행령 별표 제1호에 따른 대기환경기준"
+                f"({item.standard_value:.4g} {item.unit}) {judgment}."
+            )
+        else:
+            lines.append(
+                f"{pollutant}: {label}에서 기여농도 {item.predicted_concentration:.2f} {item.unit}, "
+                f"합산 {item.total_concentration:.2f} {item.unit}으로 예측되었다."
+            )
+
+        if item.exceeds_standard:
+            exceeded_items.append(pollutant)
+
+    if exceeded_items:
+        names = ", ".join(exceeded_items)
+        lines.append(
+            f"{names}의 경우 환경기준을 초과하므로 저감대책 검토 필요하다."
+        )
+
+    return "\n".join(lines)
+
+
+def _generate_noise_prediction_narrative(prediction_result: "PredictionResult") -> str:
+    """소음 영향 예측 서술문을 생성한다.
+
+    점음원 거리감쇠 모델 결과를 기반으로 주간/야간 소음도를 서술한다.
+    """
+    lines: list[str] = []
+    lines.append(
+        "점음원 거리감쇠 모델을 적용하여 소음 전파를 예측한 결과는 다음과 같다."
+    )
+
+    for period_key, period_label, legal_label in [
+        ("소음_Leq_주간", "주간", "주간"),
+        ("소음_Leq_야간", "야간", "야간"),
+    ]:
+        items = [
+            p for p in prediction_result.predictions
+            if p.pollutant == period_key
+        ]
+        if not items:
+            continue
+
+        # 가장 가까운 수음점 (최대 소음 지점)
+        nearest = min(items, key=lambda x: x.distance_m if x.distance_m > 0 else float("inf"))
+
+        if nearest.standard_value is not None:
+            if nearest.exceeds_standard:
+                judgment = "초과하므로 방음대책 검토가 필요하다"
+            else:
+                judgment = "환경기준 이내이다"
+            lines.append(
+                f"{period_label}: 가장 가까운 수음점({nearest.label})에서 예측 소음도는 "
+                f"{nearest.predicted_concentration:.1f} dB(A)이다. "
+                f"현황 소음({nearest.background_concentration:.1f} dB(A))과 에너지 합산 시 "
+                f"{nearest.total_concentration:.1f} dB(A)로 {judgment}."
+            )
+        else:
+            lines.append(
+                f"{period_label}: 가장 가까운 수음점({nearest.label})에서 "
+                f"합산 소음도 {nearest.total_concentration:.1f} dB(A)로 예측되었다."
+            )
+
+    return "\n".join(lines)
+
+
+def _generate_water_prediction_narrative(prediction_result: "PredictionResult") -> str:
+    """수질 영향 예측 서술문을 생성한다.
+
+    완전혼합 희석 모델 결과를 기반으로 BOD, COD 등 혼합 후 농도를 서술한다.
+    """
+    lines: list[str] = []
+    lines.append(
+        "완전혼합 희석 모델을 적용하여 방류수 혼합 후 수질을 예측한 결과는 다음과 같다."
+    )
+
+    # BOD, COD 병합 서술
+    bod_item = next(
+        (p for p in prediction_result.predictions if p.pollutant == "BOD"), None
+    )
+    cod_item = next(
+        (p for p in prediction_result.predictions if p.pollutant == "COD"), None
+    )
+
+    if bod_item and cod_item:
+        lines.append(
+            f"BOD {bod_item.total_concentration:.2f} {bod_item.unit}, "
+            f"COD {cod_item.total_concentration:.2f} {cod_item.unit}로 하천 생활환경기준 수준이다."
+        )
+    elif bod_item:
+        lines.append(
+            f"BOD {bod_item.total_concentration:.2f} {bod_item.unit}으로 예측되었다."
+        )
+
+    # 기타 항목 서술
+    other_pollutants = ["SS", "T-N", "T-P"]
+    other_parts: list[str] = []
+    for pollutant in other_pollutants:
+        item = next(
+            (p for p in prediction_result.predictions if p.pollutant == pollutant), None
+        )
+        if item:
+            other_parts.append(
+                f"{pollutant} {item.total_concentration:.2f} {item.unit}"
+            )
+    if other_parts:
+        lines.append(", ".join(other_parts) + "로 예측되었다.")
+
+    # 초과 항목 서술
+    exceeded = [
+        p for p in prediction_result.predictions
+        if p.exceeds_standard
+    ]
+    if exceeded:
+        names = ", ".join(p.pollutant for p in exceeded)
+        lines.append(
+            f"{names}의 경우 환경기준을 초과하므로 추가 처리 대책 검토가 필요하다."
+        )
+
+    return "\n".join(lines)
+
+
+def generate_prediction_narrative(
+    section_key: str,
+    prediction_result: "PredictionResult",
+) -> str:
+    """예측 모델 결과를 기반으로 영향 예측 서술문을 생성한다.
+
+    섹션 키에 따라 대기질/소음/수질 전용 서술문을 생성하며,
+    해당 없는 섹션은 전문 분석 필요 안내 문구를 반환한다.
+    """
+    if section_key == "air_quality":
+        return _generate_air_prediction_narrative(prediction_result)
+    elif section_key == "noise_vibration":
+        return _generate_noise_prediction_narrative(prediction_result)
+    elif section_key == "water_quality":
+        return _generate_water_prediction_narrative(prediction_result)
+    else:
+        return "본 분야에 대한 영향 예측은 별도 전문 분석이 필요하다."
 
 
 # ────────────────────────────────────────────

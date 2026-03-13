@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import project as project_crud
 from app.db import get_db
+from app.schemas.prediction import PredictionItemRead, PredictionResultRead
 from app.schemas.section import (
     DraftScaffoldRead,
     EvidenceEntryRead,
@@ -33,6 +34,34 @@ router = APIRouter(
     prefix="/projects/{project_id}/sections",
     tags=["sections"],
 )
+
+
+def _prediction_result_to_read(pr) -> PredictionResultRead | None:
+    """PredictionResult 데이터클래스를 PredictionResultRead 스키마로 변환한다."""
+    if pr is None:
+        return None
+    return PredictionResultRead(
+        section_key=pr.section_key,
+        model_name=pr.model_name,
+        input_parameters=pr.input_parameters,
+        predictions=[
+            PredictionItemRead(
+                label=item.label,
+                distance_m=item.distance_m,
+                pollutant=item.pollutant,
+                predicted_concentration=item.predicted_concentration,
+                background_concentration=item.background_concentration,
+                total_concentration=item.total_concentration,
+                unit=item.unit,
+                standard_value=item.standard_value,
+                exceeds_standard=item.exceeds_standard,
+            )
+            for item in pr.predictions
+        ],
+        summary=pr.summary,
+        assumptions=pr.assumptions,
+        limitations=pr.limitations,
+    )
 
 
 async def _verify_project(db: AsyncSession, project_id: uuid.UUID):
@@ -214,6 +243,8 @@ async def get_draft_scaffold(
                 narrative=sec.narrative,
                 state=sec.state,
                 missing_indicators=sec.missing_indicators,
+                prediction_result=_prediction_result_to_read(sec.prediction_result),
+                prediction_narrative=sec.prediction_narrative,
             )
             for sec in scaffold.sections
         ],
@@ -263,4 +294,6 @@ async def get_section_scaffold(
         narrative=scaffold.narrative,
         state=scaffold.state,
         missing_indicators=scaffold.missing_indicators,
+        prediction_result=_prediction_result_to_read(scaffold.prediction_result),
+        prediction_narrative=scaffold.prediction_narrative,
     )

@@ -55,6 +55,7 @@ from app.services.draft_scaffold import (
     generate_draft_scaffold,
     MAX_DETAIL_SAMPLES,
 )
+from app.services.prediction.base import PredictionItem, PredictionResult
 from app.services.qa_engine import QaResult, run_qa
 from app.services.standard_checker import (
     CheckStatus,
@@ -671,8 +672,69 @@ def _docx_add_section(
             doc.add_heading(f"{chapter}.3 환경기준 비교", level=2)
             _docx_add_standards_table(doc, with_standards)
 
-    # N.4 측정 데이터 (대표 샘플)
-    doc.add_heading(f"{chapter}.4 측정 데이터", level=2)
+    # N.4 영향 예측 (prediction_result가 있는 경우에만 삽입)
+    if section.prediction_result is not None:
+        pr = section.prediction_result
+        model_info_obj = None
+        try:
+            from app.services.prediction.registry import get_model
+            m = get_model(pr.model_name)
+            if m:
+                model_info_obj = m.get_model_info()
+        except Exception:
+            pass
+
+        display_name = model_info_obj.display_name if model_info_obj else pr.model_name
+
+        doc.add_heading(f"{chapter}.4 영향 예측", level=2)
+
+        # 적용 모델 정보
+        model_para = doc.add_paragraph(f"적용 모델: {display_name}")
+        if model_para.runs:
+            model_para.runs[0].font.size = Pt(10)
+
+        # 예측 서술문
+        if section.prediction_narrative:
+            for line in section.prediction_narrative.split("\n"):
+                if line.strip():
+                    doc.add_paragraph(line)
+
+        # 예측 결과 테이블
+        if pr.predictions:
+            _docx_add_prediction_table(doc, pr)
+
+        # 전제 조건
+        if pr.assumptions:
+            assume_para = doc.add_paragraph("※ 전제 조건")
+            if assume_para.runs:
+                assume_para.runs[0].bold = True
+                assume_para.runs[0].font.size = Pt(9)
+            for assumption in pr.assumptions:
+                item_para = doc.add_paragraph(f"  · {assumption}")
+                if item_para.runs:
+                    item_para.runs[0].font.size = Pt(9)
+
+        # 모델 한계
+        if pr.limitations:
+            limit_para = doc.add_paragraph("※ 참고: 모델 한계")
+            if limit_para.runs:
+                limit_para.runs[0].bold = True
+                limit_para.runs[0].font.size = Pt(9)
+                limit_para.runs[0].font.color.rgb = RGBColor(120, 120, 120)
+            for limitation in pr.limitations:
+                lim_item = doc.add_paragraph(f"  · {limitation}")
+                if lim_item.runs:
+                    lim_item.runs[0].font.size = Pt(9)
+                    lim_item.runs[0].font.color.rgb = RGBColor(120, 120, 120)
+
+        # N.5 측정 데이터 (prediction_result 있을 때)
+        measurement_chapter_num = 5
+    else:
+        # prediction_result 없을 때: N.4 측정 데이터 (기존 번호 유지)
+        measurement_chapter_num = 4
+
+    # N.4 또는 N.5 측정 데이터 (대표 샘플)
+    doc.add_heading(f"{chapter}.{measurement_chapter_num} 측정 데이터", level=2)
     sample_entries = section.evidence_entries[:MAX_DETAIL_SAMPLES]
     _docx_add_evidence_table(doc, sample_entries)
     if len(section.evidence_entries) > MAX_DETAIL_SAMPLES:
@@ -884,6 +946,98 @@ def _docx_add_evidence_table(doc: Document, entries: list[EvidenceEntry]) -> Non
     for row in table.rows:
         for i, width in enumerate(widths):
             row.cells[i].width = width
+
+
+def _docx_add_prediction_table(doc: Document, pr: "PredictionResult") -> None:
+    """예측 결과 테이블을 DOCX에 추가한다.
+
+    대기질/소음: 지점/거리 | 오염물질 | 기여농도 | 현황 | 합산 | 기준 | 판정
+    수질: 항목 | 방류수 | 하천현황 | 혼합후 | 기준 | 판정
+    초과 행은 빨간 배경으로 표시한다.
+    """
+    if not pr.predictions:
+        return
+
+    # 수질 모델은 거리 개념이 없으므로 별도 처리
+    is_water = pr.model_name == "water_mixing"
+
+    if is_water:
+        headers = ["항목", "방류수 농도", "하천 현황", "혼합 후", "환경기준", "판정"]
+        col_count = 6
+        table = doc.add_table(rows=1, cols=col_count)
+        table.style = "Table Grid"
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = True
+
+        for i, h_text in enumerate(headers):
+            table.rows[0].cells[i].text = h_text
+        _docx_style_header_row(table, col_count)
+
+        for idx, item in enumerate(pr.predictions):
+            row = table.add_row()
+            row.cells[0].text = item.pollutant
+            row.cells[1].text = f"{item.predicted_concentration:.2f} {item.unit}"
+            row.cells[2].text = f"{item.background_concentration:.2f} {item.unit}"
+            row.cells[3].text = f"{item.total_concentration:.2f} {item.unit}"
+            row.cells[4].text = (
+                f"{item.standard_value:.4g} {item.unit}"
+                if item.standard_value is not None else "-"
+            )
+            judgment = "초과" if item.exceeds_standard else ("적합" if item.standard_value is not None else "-")
+            row.cells[5].text = judgment
+            _docx_style_data_row(row)
+
+            if item.exceeds_standard:
+                for cell in row.cells:
+                    _docx_set_cell_shading(cell, _EXCEED_BG)
+            elif idx % 2 == 1:
+                for cell in row.cells:
+                    _docx_set_cell_shading(cell, _ALT_ROW_BG)
+
+        widths = [Cm(2.5), Cm(3), Cm(3), Cm(3), Cm(2.5), Cm(2)]
+        for row in table.rows:
+            for i, width in enumerate(widths):
+                row.cells[i].width = width
+
+    else:
+        # 대기질/소음: 지점(거리) | 오염물질 | 기여농도 | 현황 | 합산 | 기준 | 판정
+        headers = ["지점/거리", "오염물질", "기여농도", "현황", "합산", "기준", "판정"]
+        col_count = 7
+        table = doc.add_table(rows=1, cols=col_count)
+        table.style = "Table Grid"
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = True
+
+        for i, h_text in enumerate(headers):
+            table.rows[0].cells[i].text = h_text
+        _docx_style_header_row(table, col_count)
+
+        for idx, item in enumerate(pr.predictions):
+            row = table.add_row()
+            row.cells[0].text = item.label
+            row.cells[1].text = item.pollutant
+            row.cells[2].text = f"{item.predicted_concentration:.2f} {item.unit}"
+            row.cells[3].text = f"{item.background_concentration:.2f} {item.unit}"
+            row.cells[4].text = f"{item.total_concentration:.2f} {item.unit}"
+            row.cells[5].text = (
+                f"{item.standard_value:.4g} {item.unit}"
+                if item.standard_value is not None else "-"
+            )
+            judgment = "초과" if item.exceeds_standard else ("적합" if item.standard_value is not None else "-")
+            row.cells[6].text = judgment
+            _docx_style_data_row(row)
+
+            if item.exceeds_standard:
+                for cell in row.cells:
+                    _docx_set_cell_shading(cell, _EXCEED_BG)
+            elif idx % 2 == 1:
+                for cell in row.cells:
+                    _docx_set_cell_shading(cell, _ALT_ROW_BG)
+
+        widths = [Cm(2), Cm(2.5), Cm(2.5), Cm(2.5), Cm(2.5), Cm(2.5), Cm(1.5)]
+        for row in table.rows:
+            for i, width in enumerate(widths):
+                row.cells[i].width = width
 
 
 # ── DOCX 부록 ──
@@ -1456,8 +1610,51 @@ def _pdf_add_section(story, styles, font_name, section, stats, check, *, ctx=Non
             story.append(Paragraph(f"{chapter}.3 환경기준 비교", styles["heading2"]))
             _pdf_add_standards_table(story, font_name, with_standards)
 
-    # N.4 측정 데이터
-    story.append(Paragraph(f"{chapter}.4 측정 데이터", styles["heading2"]))
+    # N.4 영향 예측 (prediction_result가 있는 경우에만 삽입)
+    if section.prediction_result is not None:
+        pr = section.prediction_result
+        model_info_obj = None
+        try:
+            from app.services.prediction.registry import get_model
+            m = get_model(pr.model_name)
+            if m:
+                model_info_obj = m.get_model_info()
+        except Exception:
+            pass
+
+        display_name = model_info_obj.display_name if model_info_obj else pr.model_name
+
+        story.append(Paragraph(f"{chapter}.4 영향 예측", styles["heading2"]))
+        story.append(Paragraph(f"적용 모델: {display_name}", styles["body"]))
+
+        # 예측 서술문
+        if section.prediction_narrative:
+            for line in section.prediction_narrative.split("\n"):
+                if line.strip():
+                    story.append(Paragraph(line, styles["body"]))
+
+        # 예측 결과 테이블
+        if pr.predictions:
+            _pdf_add_prediction_table(story, font_name, pr)
+
+        # 전제 조건
+        if pr.assumptions:
+            story.append(Paragraph("<b>※ 전제 조건</b>", styles["note"]))
+            for assumption in pr.assumptions:
+                story.append(Paragraph(f"· {assumption}", styles["note"]))
+
+        # 모델 한계
+        if pr.limitations:
+            story.append(Paragraph("<b>※ 참고: 모델 한계</b>", styles["note"]))
+            for limitation in pr.limitations:
+                story.append(Paragraph(f"· {limitation}", styles["note"]))
+
+        measurement_chapter_num = 5
+    else:
+        measurement_chapter_num = 4
+
+    # N.4 또는 N.5 측정 데이터
+    story.append(Paragraph(f"{chapter}.{measurement_chapter_num} 측정 데이터", styles["heading2"]))
     sample_entries = section.evidence_entries[:MAX_DETAIL_SAMPLES]
     _pdf_add_evidence_table(story, font_name, sample_entries)
     if len(section.evidence_entries) > MAX_DETAIL_SAMPLES:
@@ -1627,6 +1824,94 @@ def _pdf_add_evidence_table(story, font_name, entries):
     col_widths = [5 * cm, 5 * cm, 3.5 * cm, 3.5 * cm]
     table = Table(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(_PDF_TABLE_STYLE)
+    story.append(table)
+
+
+def _pdf_add_prediction_table(story, font_name, pr: "PredictionResult") -> None:
+    """예측 결과 테이블을 PDF에 추가한다.
+
+    대기질/소음: 지점/거리 | 오염물질 | 기여농도 | 현황 | 합산 | 기준 | 판정
+    수질: 항목 | 방류수 | 하천현황 | 혼합후 | 기준 | 판정
+    초과 행은 빨간 배경으로 표시한다.
+    """
+    if not pr.predictions:
+        return
+
+    header_s = _make_header_style(font_name)
+    cell_s = _make_cell_style(font_name)
+
+    is_water = pr.model_name == "water_mixing"
+    exceed_rows: list[int] = []
+
+    if is_water:
+        data = [[
+            Paragraph("항목", header_s),
+            Paragraph("방류수 농도", header_s),
+            Paragraph("하천 현황", header_s),
+            Paragraph("혼합 후", header_s),
+            Paragraph("환경기준", header_s),
+            Paragraph("판정", header_s),
+        ]]
+        for row_idx, item in enumerate(pr.predictions):
+            std_str = (
+                f"{item.standard_value:.4g} {item.unit}"
+                if item.standard_value is not None else "-"
+            )
+            judgment = "초과" if item.exceeds_standard else (
+                "적합" if item.standard_value is not None else "-"
+            )
+            data.append([
+                Paragraph(item.pollutant, cell_s),
+                Paragraph(f"{item.predicted_concentration:.2f} {item.unit}", cell_s),
+                Paragraph(f"{item.background_concentration:.2f} {item.unit}", cell_s),
+                Paragraph(f"{item.total_concentration:.2f} {item.unit}", cell_s),
+                Paragraph(std_str, cell_s),
+                Paragraph(judgment, cell_s),
+            ])
+            if item.exceeds_standard:
+                exceed_rows.append(row_idx + 1)
+
+        col_widths = [2.5 * cm, 3 * cm, 3 * cm, 3 * cm, 2.5 * cm, 2 * cm]
+
+    else:
+        data = [[
+            Paragraph("지점/거리", header_s),
+            Paragraph("오염물질", header_s),
+            Paragraph("기여농도", header_s),
+            Paragraph("현황", header_s),
+            Paragraph("합산", header_s),
+            Paragraph("기준", header_s),
+            Paragraph("판정", header_s),
+        ]]
+        for row_idx, item in enumerate(pr.predictions):
+            std_str = (
+                f"{item.standard_value:.4g} {item.unit}"
+                if item.standard_value is not None else "-"
+            )
+            judgment = "초과" if item.exceeds_standard else (
+                "적합" if item.standard_value is not None else "-"
+            )
+            data.append([
+                Paragraph(item.label, cell_s),
+                Paragraph(item.pollutant, cell_s),
+                Paragraph(f"{item.predicted_concentration:.2f} {item.unit}", cell_s),
+                Paragraph(f"{item.background_concentration:.2f} {item.unit}", cell_s),
+                Paragraph(f"{item.total_concentration:.2f} {item.unit}", cell_s),
+                Paragraph(std_str, cell_s),
+                Paragraph(judgment, cell_s),
+            ])
+            if item.exceeds_standard:
+                exceed_rows.append(row_idx + 1)
+
+        col_widths = [2 * cm, 2.5 * cm, 2.5 * cm, 2.5 * cm, 2.5 * cm, 2.5 * cm, 1.5 * cm]
+
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    style_commands = list(_PDF_TABLE_STYLE.getCommands())
+    for r in exceed_rows:
+        style_commands.append(
+            ("BACKGROUND", (0, r), (-1, r), _PDF_EXCEED_BG)
+        )
+    table.setStyle(TableStyle(style_commands))
     story.append(table)
 
 

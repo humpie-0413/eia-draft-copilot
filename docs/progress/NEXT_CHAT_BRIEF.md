@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Pred-2: 소음 전파 + 수질 혼합 모델** ✅
+**Pred-3: 예측 결과 통합** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -9,32 +9,26 @@
 - Reg-0~Reg-5: 법령 반영 완료 ✅
 - Pred-1: 예측 모듈 + 대기 확산 모델 ✅
 - Pred-2: 소음 전파 + 수질 혼합 모델 ✅
+- Pred-3: 예측 결과 통합 — ScaffoldSection + Export + API 스키마 ✅
 
-## 완료된 작업 (Pred-2)
+## 완료된 작업 (Pred-3)
 
-### 소음 전파 모델
-- `prediction/noise_propagation.py`: 점음원/선음원 거리감쇠 + Maekawa 차음벽 회절
-- 점음원: L(r) = Lw - 20·log10(r) - 11 (+지면반사, -대기흡수)
-- 선음원: L(r) = Lw/m - 10·log10(r) - 8 (+지면반사, -대기흡수)
-- 에너지 합산: L_total = 10·log10(10^(L1/10) + 10^(L2/10))
-- 6지점(10m~500m) × 주간/야간 예측
-- 환경기준: 주간 55dB(A), 야간 45dB(A)
-- 사업유형별: power_plant=95dB, road=75dB/m(선음원), housing=90dB, industrial=100dB
+### 핵심 변경 사항
+1. `ScaffoldSection` 데이터클래스에 `prediction_result`, `prediction_narrative` 필드 추가
+2. `generate_section_scaffold()`: evidence에서 배경 농도 추출 → 예측 모델 자동 실행 → prediction_result/narrative 저장
+3. `generate_draft_scaffold()`: Project 조회 → project_type을 각 섹션에 전달
+4. `generate_prediction_narrative()`: 대기질/소음/수질 예측 서술문 생성 (결정적)
+5. Export (DOCX/PDF): N.4 영향 예측 소챕터 삽입 (적용 모델 + 서술문 + 결과 테이블 + 전제 조건 + 모델 한계)
+6. `ScaffoldSectionRead` 스키마 + sections.py API 엔드포인트에 prediction 필드 포함
 
-### 수질 혼합 모델
-- `prediction/water_mixing.py`: 완전혼합 희석 모델
-- C_mix = (Q_river·C_river + Q_discharge·C_discharge) / (Q_river + Q_discharge)
-- BOD, COD, SS, T-N, T-P 예측
-- 방류수 수질기준(물환경보전법): BOD 30, COD 40, SS 30, T-N 60, T-P 8 (mg/L)
-- 하천 환경기준(III등급): BOD 5, COD 7, SS 25, T-P 0.2 (mg/L)
-- 사업유형별 방류량: power_plant=0.01, industrial=0.1, housing=0.05 (m³/s)
-
-### API 확장
-- 기존 예측 API 재사용 (POST /predict/{section_key}, GET /prediction-models)
-- 배경 데이터 자동 추출: 소음(주간/야간 Leq), 수질(BOD, COD, SS, T-N, T-P)
+### 프론트엔드
+- `/projects/[id]/predictions` 페이지 신규
+- 섹션별 카드: 모델 선택, 파라미터 입력 폼, 기본값 자동 채움
+- 예측 실행 → 결과 테이블 + 판정 Badge
+- 초안 뼈대 페이지에 "영향 예측" 링크 추가
 
 ### 테스트
-- 82개 신규 테스트 (526개 전체 통과)
+- 53개 신규 테스트 (579개 전체 통과)
 
 ## 시스템 전체 현황
 
@@ -88,7 +82,8 @@
 | `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
 
-### 테스트 (526개)
+### 테스트 (579개)
+- test_pred3_integration.py (27), test_prediction_narrative.py (26)
 - test_prediction_noise_water.py (82), test_prediction.py (74), test_regulations.py (95)
 - test_connectors.py (69), test_export_format.py (40+), test_narrative_generator.py (51)
 - test_llm_adapter.py (29), test_standard_checker.py (27), test_spec_alignment.py (23)
@@ -119,7 +114,7 @@ uvicorn app.main:app --reload    # http://localhost:8000
 
 # 테스트
 cd backend
-pytest tests/ -v    # 526개 테스트
+pytest tests/ -v    # 579개 테스트
 
 # 통합 데모 (백엔드 서버 실행 후)
 python scripts/demo_full_scenario.py

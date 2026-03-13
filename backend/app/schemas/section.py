@@ -7,6 +7,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.schemas.prediction import PredictionResultRead
+
 
 # ────────────────────────────────────────────
 # 섹션 상태 스키마
@@ -127,6 +129,13 @@ class ScaffoldSectionRead(BaseModel):
     )
     missing_indicators: list[str] = Field(
         default_factory=list, description="누락된 필수 지표명 목록"
+    )
+    # Pred-3: 예측 모델 결과 및 서술문
+    prediction_result: PredictionResultRead | None = Field(
+        None, description="영향 예측 모델 결과 (예측 가능한 섹션만)"
+    )
+    prediction_narrative: str = Field(
+        "", description="영향 예측 서술문 (예측 결과 기반 자동 생성)"
     )
 
 

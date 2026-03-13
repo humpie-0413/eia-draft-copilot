@@ -1275,6 +1275,72 @@
 - `backend/app/services/prediction/__init__.py` (수정)
 - `backend/app/api/v1/predictions.py` (수정 — 소음/수질 배경 데이터 함수)
 - `backend/tests/test_prediction.py` (수정 — ecology 섹션으로 변경)
+
+---
+
+## Pred-3: 예측 결과 통합 ✅
+
+### 완료 항목
+
+#### 1. Scaffold 서비스 확장 (draft_scaffold.py)
+- `ScaffoldSection`에 `prediction_result: PredictionResult | None` 필드 추가
+- `ScaffoldSection`에 `prediction_narrative: str` 필드 추가
+- `generate_section_scaffold()`에 `project_type` 파라미터 추가
+- `_extract_background_data()` 헬퍼 신규: evidence entries에서 배경 농도 자동 추출
+  - 대기질: PM10_연평균→PM10, PM2.5_연평균→PM2.5, NO2_연평균→NO2, SO2_연평균→SO2
+  - 소음: 소음_Leq_주간, 소음_Leq_야간
+  - 수질: BOD, COD, SS, T-N, T-P
+- 예측 가능 섹션(air_quality, noise_vibration, water_quality)에서 자동 예측 실행
+- `generate_draft_scaffold()`에서 Project 조회하여 project_type 전달
+
+#### 2. 서술문 생성 확장 (narrative_generator.py)
+- `generate_prediction_narrative(section_key, prediction_result)` 함수 신규
+- 대기질: "가우시안 플룸 모델을 적용하여... 기여농도... 합산... 환경기준 이내/초과"
+- 소음: "점음원/선음원 거리감쇠 모델을 적용하여... 예측 소음도... 에너지 합산... 판정"
+- 수질: "완전혼합 희석 모델을 적용하여... BOD, COD... 하천 생활환경기준 수준"
+- 미지원 섹션: "본 분야에 대한 영향 예측은 별도 전문 분석이 필요하다."
+
+#### 3. DOCX/PDF Export 수정 (export_service.py)
+- 섹션 구조 변경: N.1 현황 → N.2 통계 → N.3 기준비교 → **N.4 영향 예측** → N.5 측정데이터
+- `_docx_add_prediction_table()` 신규: 예측 결과 테이블 (지점|기여|현황|합산|기준|판정)
+- `_pdf_add_prediction_table()` 신규: PDF 동일 구조
+- 전제 조건 및 모델 한계 "※" 문단 포함
+- 초과 행 빨간 배경 처리
+- prediction_result 없는 섹션은 N.4 건너뛰고 기존 구조 유지
+
+#### 4. API 스키마 확장 (schemas/section.py, api/v1/sections.py)
+- `ScaffoldSectionRead`에 `prediction_result: PredictionResultRead | None`, `prediction_narrative: str` 추가
+- scaffold 엔드포인트에서 prediction_result 변환 로직 추가
+
+#### 5. 프론트엔드 (predictions 페이지)
+- `src/types/prediction.ts` 신규: PredictionItem, PredictionResult, ModelInfo, InputParameter 타입
+- `src/lib/prediction-api.ts` 신규: getPredictionModels(), runPrediction() API 클라이언트
+- `src/app/projects/[id]/predictions/page.tsx` 신규:
+  - 섹션별 카드: 모델 선택, 파라미터 입력 폼, 기본값 자동 채움
+  - "배경 데이터 사용" 토글 (Switch)
+  - 예측 실행 버튼 → 결과 테이블 + 판정 Badge
+  - 전제 조건/모델 한계 접이식 영역
+- `src/app/projects/[id]/draft/page.tsx` 수정: "영향 예측" 링크 버튼 추가
+
+#### 6. 테스트 (53개 신규)
+- `test_prediction_narrative.py` (26개): 서술문 키워드, 초과 판정, 미지원 섹션
+- `test_pred3_integration.py` (27개): scaffold 통합, DOCX 구조 검증
+
+### 전체 테스트
+- 579개 전체 통과 (기존 526 + 신규 53)
+
+### 주요 파일
+- `backend/app/services/draft_scaffold.py` (수정)
+- `backend/app/services/narrative_generator.py` (수정)
+- `backend/app/services/export_service.py` (수정)
+- `backend/app/schemas/section.py` (수정)
+- `backend/app/api/v1/sections.py` (수정)
+- `backend/tests/test_prediction_narrative.py` (신규)
+- `backend/tests/test_pred3_integration.py` (신규)
+- `src/types/prediction.ts` (신규)
+- `src/lib/prediction-api.ts` (신규)
+- `src/app/projects/[id]/predictions/page.tsx` (신규)
+- `src/app/projects/[id]/draft/page.tsx` (수정)
 - `backend/tests/test_prediction_noise_water.py` (신규 — 82개 테스트)
 
 ---
@@ -1337,3 +1403,63 @@
 - `backend/app/api/v1/predictions.py` (신규)
 - `backend/app/main.py` (수정 — predictions_router 등록)
 - `backend/tests/test_prediction.py` (신규 — 74개 테스트)
+
+---
+
+## Pred-3: 예측 결과 통합 ✅
+
+### 완료 항목
+
+#### 1. draft_scaffold.py 확장
+- `ScaffoldSection` 데이터클래스에 `prediction_result: PredictionResult | None`, `prediction_narrative: str` 필드 추가
+- `_extract_background_data()` 헬퍼 함수 신규: evidence 항목에서 섹션별 배경 농도 추출
+  - 대기질: PM10_연평균 → PM10, PM2.5_연평균 → PM2.5, NO2_연평균 → NO2, SO2_연평균 → SO2
+  - 소음: 소음_Leq_주간/야간 그대로 매핑
+  - 수질: BOD, COD, SS, T-N, T-P 그대로 매핑
+- `generate_section_scaffold()`: `project_type` 파라미터 추가 + 예측 모델 자동 실행
+- `generate_draft_scaffold()`: Project 테이블 조회로 `project_type` 취득 후 전달
+
+#### 2. narrative_generator.py 확장
+- `generate_prediction_narrative(section_key, prediction_result) → str` 함수 신규
+- 대기질: 가우시안 플룸 기반 오염물질별 100m 지점 기여농도 + 현황 + 합산 + 법적 근거 + 판정
+- 소음: 점음원 거리감쇠 기반 주간/야간 최근접 수음점 소음도 + 에너지 합산 + 판정
+- 수질: 완전혼합 희석 기반 BOD, COD 혼합 후 농도 + 기타 항목 + 초과 시 처리 대책
+- 미지원 섹션: "본 분야에 대한 영향 예측은 별도 전문 분석이 필요하다." 반환
+
+#### 3. export_service.py 확장 (DOCX + PDF)
+- `_docx_add_section()`: prediction_result가 있는 섹션에 N.4 영향 예측 소챕터 삽입
+  - N.4: 적용 모델 / 예측 서술문 / 예측 결과 테이블 / 전제 조건 / 모델 한계
+  - N.5(기존 N.4): 측정 데이터 (측정번호 자동 조정)
+- `_docx_add_prediction_table()` 함수 신규
+  - 수질: 항목 | 방류수 | 하천현황 | 혼합후 | 기준 | 판정
+  - 대기질/소음: 지점/거리 | 오염물질 | 기여농도 | 현황 | 합산 | 기준 | 판정
+  - 초과 행 빨간 배경(_EXCEED_BG)
+- PDF 동일 구조 적용 (`_pdf_add_section`, `_pdf_add_prediction_table` 신규)
+
+#### 4. Pydantic 스키마 업데이트
+- `schemas/section.py`: `ScaffoldSectionRead`에 `prediction_result: PredictionResultRead | None`, `prediction_narrative: str` 추가
+- `api/v1/sections.py`: `_prediction_result_to_read()` 변환 헬퍼 추가, 두 scaffold 엔드포인트에 prediction 필드 포함
+
+#### 5. 테스트 (26개 신규)
+- `test_prediction_narrative.py`: 26개 테스트
+  - TestAirPredictionNarrative: 7개 (가우시안 플룸 서술문)
+  - TestNoisePredictionNarrative: 6개 (소음 서술문)
+  - TestWaterPredictionNarrative: 6개 (수질 서술문)
+  - TestUnsupportedSectionNarrative: 3개 (미지원 섹션 fallback)
+  - TestScaffoldPredictionIntegration: 4개 (통합 검증)
+
+### 마이그레이션
+- 불필요: 신규 DB 컬럼 없음 (prediction_result는 메모리 내 dataclass 필드)
+
+### 주요 파일 (수정)
+- `backend/app/services/draft_scaffold.py` — ScaffoldSection 확장 + 예측 통합
+- `backend/app/services/narrative_generator.py` — generate_prediction_narrative 추가
+- `backend/app/services/export_service.py` — N.4 영향 예측 소챕터 + 예측 테이블
+- `backend/app/schemas/section.py` — prediction_result/prediction_narrative 필드 추가
+- `backend/app/api/v1/sections.py` — prediction 변환 헬퍼 + 응답 필드 포함
+
+### 주요 파일 (신규)
+- `backend/tests/test_prediction_narrative.py` — 26개 테스트
+
+### 전체 테스트
+- 551개 전체 통과 (기존 525 + 신규 26)

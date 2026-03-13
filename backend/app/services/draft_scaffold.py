@@ -5,6 +5,7 @@ evidence 데이터를 섹션별로 분류하여 초안 뼈대 구조를 생성�
 근거 나열 방식으로만 텍스트를 배치한다.
 
 Post-3 개편: 서술문 → 통계 요약 테이블 → 환경기준 비교 테이블 → 상세 데이터 샘플(최대 5건)
+Pred-3 추가: 예측 모델 실행 결과 및 예측 서술문 포함
 """
 
 from __future__ import annotations
@@ -18,7 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import draft_narrative as draft_narrative_crud
 from app.models.evidence import Evidence
-from app.services.narrative_generator import generate_narrative
+from app.models.project import Project
+from app.services.narrative_generator import generate_narrative, generate_prediction_narrative
+from app.services.prediction.base import PredictionResult
+from app.services.prediction.registry import get_default_model_for_section
 from app.services.section_planner import (
     EIA_SECTIONS,
     SectionDefinition,
@@ -68,6 +72,9 @@ class ScaffoldSection:
     narrative: str = ""             # Post-3: 서술문 템플릿 엔진 결과
     state: str = "empty"            # 섹션 상태 (output-contracts.md 스펙)
     missing_indicators: list[str] = field(default_factory=list)  # 누락된 필수 지표
+    # Pred-3: 예측 모델 실행 결과 및 예측 서술문
+    prediction_result: PredictionResult | None = None
+    prediction_narrative: str = ""
 
 
 @dataclass
@@ -235,12 +242,66 @@ def _evidence_to_entry(ev: Evidence) -> EvidenceEntry:
     )
 
 
+def _extract_background_data(
+    section_key: str,
+    entries: list[EvidenceEntry],
+) -> dict[str, float]:
+    """evidence 항목에서 섹션별 배경 농도 데이터를 추출한다.
+
+    지표별 numeric_value 평균값을 계산하여 예측 모델의 background_data로 사용한다.
+    """
+    # 섹션별 배경 지표 매핑: evidence indicator → 예측 모델 키
+    INDICATOR_MAP: dict[str, dict[str, str]] = {
+        "air_quality": {
+            "PM10_연평균": "PM10",
+            "PM2.5_연평균": "PM2.5",
+            "NO2_연평균": "NO2",
+            "SO2_연평균": "SO2",
+            "CO_연평균": "CO",
+            "O3_연평균": "O3",
+        },
+        "noise_vibration": {
+            "소음_Leq_주간": "소음_Leq_주간",
+            "소음_Leq_야간": "소음_Leq_야간",
+        },
+        "water_quality": {
+            "BOD": "BOD",
+            "COD": "COD",
+            "SS": "SS",
+            "T-N": "T-N",
+            "T-P": "T-P",
+        },
+    }
+
+    indicator_map = INDICATOR_MAP.get(section_key, {})
+    if not indicator_map:
+        return {}
+
+    # 지표별 numeric_value 수집
+    bucket: dict[str, list[float]] = {}
+    for entry in entries:
+        model_key = indicator_map.get(entry.indicator)
+        if model_key and entry.numeric_value is not None:
+            bucket.setdefault(model_key, []).append(entry.numeric_value)
+
+    # 평균 계산
+    return {key: sum(vals) / len(vals) for key, vals in bucket.items() if vals}
+
+
 async def generate_section_scaffold(
     db: AsyncSession,
     project_id: uuid.UUID,
     section_key: str,
+    project_type: str | None = None,
 ) -> ScaffoldSection | None:
-    """단일 섹션의 초안 뼈대를 생성한다."""
+    """단일 섹션의 초안 뼈대를 생성한다.
+
+    Args:
+        db: DB 세션
+        project_id: 프로젝트 UUID
+        section_key: 섹션 키
+        project_type: 사업 유형 (예측 모델 기본값 적용에 사용)
+    """
     section_def = get_section_definition(section_key)
     if section_def is None:
         return None
@@ -289,6 +350,31 @@ async def generate_section_scaffold(
     state = section_status.status if section_status else "empty"
     missing = section_status.missing_indicators if section_status else []
 
+    # Pred-3: 예측 모델 실행
+    prediction_result: PredictionResult | None = None
+    pred_narrative = ""
+
+    model = get_default_model_for_section(section_key)
+    if model is not None:
+        # evidence에서 배경 농도 데이터 추출
+        bg_data = _extract_background_data(section_key, entries)
+
+        # 사업 유형 파라미터 구성 (project_type 없으면 기본값 "other")
+        params: dict = {"project_type": project_type or "other"}
+
+        try:
+            prediction_result = model.predict(
+                parameters=params,
+                background_data=bg_data if bg_data else None,
+            )
+            pred_narrative = generate_prediction_narrative(
+                section_key, prediction_result
+            )
+        except Exception:
+            # 예측 실패 시 결과 없이 계속 진행
+            prediction_result = None
+            pred_narrative = ""
+
     return ScaffoldSection(
         section_key=section_def.key,
         title=section_def.title,
@@ -299,6 +385,8 @@ async def generate_section_scaffold(
         narrative=narrative,
         state=state,
         missing_indicators=missing,
+        prediction_result=prediction_result,
+        prediction_narrative=pred_narrative,
     )
 
 
@@ -309,13 +397,24 @@ async def generate_draft_scaffold(
     """프로젝트의 전체 초안 뼈대를 생성한다.
 
     모든 섹션에 대해 evidence를 수집하고 근거 텍스트를 배치한다.
+    Pred-3: project_type을 DB에서 조회하여 각 섹션 예측 모델에 전달한다.
     """
+    # project_type 조회 — 예측 모델 기본값 적용에 사용
+    project_type: str | None = None
+    result = await db.execute(
+        select(Project).where(Project.id == project_id)
+    )
+    project = result.scalar_one_or_none()
+    if project is not None:
+        project_type = project.project_type
+
     sections = []
     total_count = 0
 
     for section_def in EIA_SECTIONS:
         scaffold = await generate_section_scaffold(
-            db, project_id, section_def.key
+            db, project_id, section_def.key,
+            project_type=project_type,
         )
         if scaffold is not None:
             sections.append(scaffold)
