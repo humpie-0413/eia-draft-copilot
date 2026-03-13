@@ -1073,3 +1073,70 @@
 - `backend/tests/test_e2e.py` — 기존 테스트 호환성 수정
 - `backend/tests/test_export_format.py` — 기존 테스트 호환성 수정
 - `backend/tests/test_export_pdf.py` — 기존 테스트 호환성 수정
+
+---
+
+## Reg-4: 사업유형별 평가 범위 자동 판단 ✅
+
+### 완료 항목
+
+#### 1. 평가 범위 서비스 (scope_service.py) — 신규
+- `get_assessment_scope(project_type)`: 사업유형별 필수/권장/선택 섹션 분류
+- 12개 사업유형 지원, 미등록 유형은 'other' 기준 적용
+- 필수 섹션의 법적 필수 지표 목록 포함
+- `SectionScope`, `AssessmentScope` 데이터 구조 정의
+
+#### 2. API: GET /api/v1/projects/{id}/assessment-scope — 신규
+- `backend/app/api/v1/scope.py`: 라우터 + 엔드포인트
+- `backend/app/schemas/scope.py`: AssessmentScopeRead, SectionScopeRead 스키마
+- `backend/app/main.py`: scope_router 등록
+
+#### 3. 섹션 플래너 연동 (section_planner.py)
+- `calculate_section_status()`: project_type 파라미터 추가
+- 필수 섹션 empty → `expert_required` 상태 전환
+- 선택 섹션 empty → `not_applicable` 상태 전환
+- `SectionStatus`에 `scope` 필드 추가 ("required"/"optional"/"")
+- `calculate_all_sections_status()`: project_type 전달
+- API(sections.py): 프로젝트에서 project_type 조회 후 전달
+
+#### 4. 프론트엔드
+- `src/types/section.ts`: SectionScopeValue, AssessmentScope, SECTION_SCOPE_LABELS 추가
+- `src/types/project.ts`: tourism, military 유형 추가 + PROJECT_TYPE_LABELS 매핑
+- `src/lib/section-api.ts`: getAssessmentScope() 함수 추가
+- `src/components/section/section-status-card.tsx`: 필수/권장/선택 배지 + 필수 미충족 빨간 테두리
+- `src/app/projects/[id]/sections/page.tsx`: 평가 범위 요약 바 (필수 N/M, 권장, 선택)
+- `src/app/projects/[id]/evidences/page.tsx`: 필수 섹션 미수집 지표 경고 패널
+- `src/app/projects/page.tsx`: 사업유형 한글 라벨 표시
+- `backend/app/schemas/section.py`: SectionStatusRead에 scope 필드 추가
+
+#### 5. DOCX/PDF 목차 개선
+- DOCX 목차: '구분' 열 추가 (필수/선택), 필수 미수집 빨간 배경
+- PDF 목차: '구분' 열 추가 (필수/선택), 필수 미수집 빨간 텍스트
+- DOCX/PDF 섹션 본문: "본 사업({유형})에서 {섹션} 항목은 환경영향평가법 시행령에 따라 필수 평가 항목에 해당한다." 안내 문구 삽입
+- ExportContext에 required_section_keys 필드 추가
+
+#### 6. 기존 테스트 호환성 수정
+- `test_e2e.py`: ecology 상태 "empty"→"not_applicable" (industrial에서 선택 섹션)
+  - soil scope="required" + status="expert_required" 검증 추가
+
+### 테스트
+- 20개 신규 테스트 (기존 345 + 신규 20 = 365개 전체 통과)
+  - TestScopeService (10개): 12개 사업유형 범위 반환 검증
+  - TestSectionPlannerScopeIntegration (4개): 상태 연동 검증
+  - TestScopeAPI (3개): API 엔드포인트 검증
+  - TestExportScopeTOC (3개): 목차 구분열/안내문구 검증
+
+### 주요 파일
+- `backend/app/services/scope_service.py` — 평가 범위 서비스 (신규)
+- `backend/app/api/v1/scope.py` — 평가 범위 API (신규)
+- `backend/app/schemas/scope.py` — 평가 범위 스키마 (신규)
+- `backend/app/services/section_planner.py` — scope 연동 (수정)
+- `backend/app/services/export_service.py` — 목차 구분열 + 필수 안내문구 (수정)
+- `backend/app/api/v1/sections.py` — project_type 전달 (수정)
+- `backend/app/schemas/section.py` — scope 필드 (수정)
+- `backend/app/main.py` — scope_router 등록 (수정)
+- `src/types/section.ts` — SectionScopeValue 등 타입 (수정)
+- `src/types/project.ts` — PROJECT_TYPE_LABELS (수정)
+- `src/components/section/section-status-card.tsx` — 범위 배지 (수정)
+- `src/app/projects/[id]/sections/page.tsx` — 범위 요약 바 (수정)
+- `src/app/projects/[id]/evidences/page.tsx` — 미수집 지표 경고 (수정)
