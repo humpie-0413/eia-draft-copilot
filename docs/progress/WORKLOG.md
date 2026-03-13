@@ -1012,3 +1012,64 @@
 - `backend/app/services/draft_scaffold.py` — scaffold 테이블 법적 근거 열 (수정)
 - `backend/app/services/export_service.py` — DOCX/PDF 테이블 법적 근거 열 (수정)
 - `backend/tests/test_narrative_generator.py` — 14개 신규 테스트 (수정)
+
+---
+
+## Reg-3: QA 규칙 정밀화 ✅
+
+### 완료 항목
+
+#### 1. qa_engine.py — R007/R008 법적 필수 항목 검증 + R001 동적 판단
+- `QaIssue` 데이터클래스에 `legal_basis: str = ""` 필드 추가
+- `_CRITICAL_SECTIONS` 하드코딩 → `_get_critical_sections(project_type)` 동적 함수로 교체
+  - 사업유형 설정 시: `required_items.get_required_sections()` 사용
+  - 미설정 시: 기존 4개 핵심 섹션 fallback 유지
+- `_get_project_type_name()` 헬퍼: 사업유형 코드 → 한글명 변환
+- R001 수정: `critical_sections` 매개변수 + `legally_required` 플래그
+  - 법적 필수 섹션은 R007에서 처리하므로 R001에서 건너뜀
+- R002 수정: `critical_sections` 매개변수 사용 (동적 심각도)
+- R007 신규: 법적 필수 섹션 누락 (critical, legal_basis 포함)
+  - 메시지: "{사업유형} 사업은 환경영향평가법 시행령 별표 3에 따라 {섹션명} 평가가 필수입니다."
+- R008 신규: 법적 필수 지표 누락 (warning, legal_basis 포함)
+  - required_items의 섹션별 법적 필수 지표 기준으로 누락 검출
+- `run_qa()`: DB에서 project_type 조회 후 동적 규칙 적용
+
+#### 2. QA 결과 스키마 수정
+- `backend/app/schemas/qa.py`: `QaIssueRead`에 `legal_basis` 필드 추가
+- `backend/app/api/v1/qa.py`: 변환 시 `legal_basis` 전달
+
+#### 3. QA 결과 UI 수정
+- `src/types/qa.ts`: `QaIssue` 인터페이스에 `legal_basis` 필드 추가
+- `src/components/qa/qa-issue-list.tsx`:
+  - `legal_basis`가 있는 critical 이슈: 빨간 배경(`bg-red-50`) + 빨간 테두리(`border-red-300`)
+  - 법적 근거 텍스트 표시: "근거: {legal_basis}" (빨간색, 작은 글씨)
+
+#### 4. Export 수정
+- DOCX 부록 C: 6열→7열 (+ "법적 근거"), 열 너비 재조정
+- PDF 부록 C: 5열→6열 (+ "법적 근거"), 열 너비 재조정
+
+#### 5. 기존 테스트 호환성 수정
+- `test_e2e.py`: industrial 사업유형 → ecology R001 severity "critical"→"warning" (올바른 변경)
+  - industrial 필수 섹션 보충 데이터 추가 (soil, waste)
+- `test_export_format.py`: power_plant 필수 섹션 토지이용 증거 추가
+- `test_export_pdf.py`: power_plant 필수 섹션 토지이용 증거 추가
+
+### 테스트
+- 22개 신규 테스트 (기존 323 + 신규 22 = 345개 전체 통과)
+  - TestR007RequiredSectionMissing (7개): 사업유형별 R007 동작 검증
+  - TestR008RequiredIndicatorMissing (5개): R008 동작 검증
+  - TestR001DynamicCritical (5개): 동적 심각도 판단 검증
+  - TestQaIssueLegalBasis (4개): legal_basis 필드 및 사업유형명 변환
+  - TestQaExportLegalBasisColumn (1개): DOCX 부록 C 법적 근거 열 검증
+
+### 주요 파일
+- `backend/app/services/qa_engine.py` — R007/R008 추가, R001/R002 동적 판단 (수정)
+- `backend/app/schemas/qa.py` — legal_basis 필드 (수정)
+- `backend/app/api/v1/qa.py` — legal_basis 전달 (수정)
+- `backend/app/services/export_service.py` — 부록 C 법적 근거 열 (수정)
+- `src/types/qa.ts` — QaIssue 타입 (수정)
+- `src/components/qa/qa-issue-list.tsx` — 법적 근거 표시 + R007 스타일 (수정)
+- `backend/tests/test_regulations.py` — 22개 신규 테스트 (수정)
+- `backend/tests/test_e2e.py` — 기존 테스트 호환성 수정
+- `backend/tests/test_export_format.py` — 기존 테스트 호환성 수정
+- `backend/tests/test_export_pdf.py` — 기존 테스트 호환성 수정

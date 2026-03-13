@@ -1,6 +1,7 @@
 """법령 데이터 무결성 및 구조 테스트.
 
 Reg-1에서 구축한 법령 데이터의 완전성과 정합성을 검증한다.
+Reg-3에서 추가: QA 규칙 R007/R008 법적 필수 항목 검증 테스트.
 """
 
 import pytest
@@ -428,3 +429,380 @@ class TestEnvStandardsCompat:
         grade = determine_water_grade(bod=1.5)
         assert grade is not None
         assert grade.grade == "Ib"
+
+
+# ────────────────────────────────────────────
+# 5. QA 규칙 R007/R008 법적 필수 항목 검증 테스트
+# ────────────────────────────────────────────
+
+from app.services.qa_engine import (
+    Severity,
+    QaIssue,
+    _get_critical_sections,
+    _get_project_type_name,
+    _rule_required_section_missing,
+    _rule_required_indicator_missing,
+    _rule_section_empty,
+)
+from app.services.section_planner import (
+    SectionDefinition,
+    IndicatorStatus,
+    SectionStatus,
+)
+
+
+def _make_section_def(key: str, title: str, indicators: list[str]) -> SectionDefinition:
+    """테스트용 SectionDefinition 생성."""
+    return SectionDefinition(
+        key=key,
+        title=title,
+        description=f"{title} 설명",
+        evidence_category=key,
+        required_indicators=indicators,
+        order=1,
+    )
+
+
+def _make_section_status(
+    key: str,
+    title: str,
+    total_evidence: int = 0,
+    indicators: list[tuple[str, bool, int]] | None = None,
+) -> SectionStatus:
+    """테스트용 SectionStatus 생성.
+
+    indicators: [(이름, 충족여부, evidence_count), ...]
+    """
+    ind_list = []
+    fulfilled = 0
+    missing = []
+    if indicators:
+        for name, is_fulfilled, count in indicators:
+            ind_list.append(IndicatorStatus(name=name, fulfilled=is_fulfilled, evidence_count=count))
+            if is_fulfilled:
+                fulfilled += 1
+            else:
+                missing.append(name)
+    required_count = len(ind_list)
+    ratio = fulfilled / required_count if required_count > 0 else 0.0
+    if total_evidence == 0:
+        status = "empty"
+    elif fulfilled >= required_count:
+        status = "complete"
+    else:
+        status = "partial"
+    return SectionStatus(
+        section_key=key,
+        title=title,
+        description=f"{title} 설명",
+        order=1,
+        total_evidence_count=total_evidence,
+        required_indicators=ind_list,
+        fulfilled_count=fulfilled,
+        required_count=required_count,
+        coverage_ratio=round(ratio, 4),
+        status=status,
+        missing_indicators=missing,
+    )
+
+
+class TestR007RequiredSectionMissing:
+    """R007: 법적 필수 섹션 누락 테스트."""
+
+    def test_power_plant_empty_air_quality_triggers_r007(self):
+        """발전소 사업에서 대기질 섹션 비어 있으면 R007 critical이 발생해야 한다."""
+        sec_def = _make_section_def("air_quality", "대기질", ["PM10_연평균", "PM2.5_연평균"])
+        sec_status = _make_section_status("air_quality", "대기질", total_evidence=0)
+        issue = _rule_required_section_missing(sec_def, sec_status, "power_plant")
+        assert issue is not None
+        assert issue.rule_id == "R007"
+        assert issue.severity == Severity.CRITICAL
+        assert "발전소" in issue.message
+        assert "대기질" in issue.message
+        assert "환경영향평가법 시행령 별표 3" in issue.legal_basis
+
+    def test_power_plant_with_data_no_r007(self):
+        """발전소 사업에서 대기질 데이터가 있으면 R007이 발생하지 않아야 한다."""
+        sec_def = _make_section_def("air_quality", "대기질", ["PM10_연평균"])
+        sec_status = _make_section_status(
+            "air_quality", "대기질", total_evidence=3,
+            indicators=[("PM10_연평균", True, 3)],
+        )
+        issue = _rule_required_section_missing(sec_def, sec_status, "power_plant")
+        assert issue is None
+
+    def test_tourism_empty_air_quality_no_r007(self):
+        """관광 사업에서 대기질은 필수가 아니므로 R007이 발생하지 않아야 한다."""
+        sec_def = _make_section_def("air_quality", "대기질", ["PM10_연평균"])
+        sec_status = _make_section_status("air_quality", "대기질", total_evidence=0)
+        issue = _rule_required_section_missing(sec_def, sec_status, "tourism")
+        assert issue is None
+
+    def test_tourism_empty_ecology_triggers_r007(self):
+        """관광 사업에서 생태 섹션 비어 있으면 R007이 발생해야 한다."""
+        sec_def = _make_section_def("ecology", "생태", ["식물상_종수", "동물상_종수"])
+        sec_status = _make_section_status("ecology", "생태", total_evidence=0)
+        issue = _rule_required_section_missing(sec_def, sec_status, "tourism")
+        assert issue is not None
+        assert issue.rule_id == "R007"
+        assert issue.severity == Severity.CRITICAL
+        assert "관광" in issue.message
+
+    def test_road_empty_traffic_triggers_r007(self):
+        """도로 사업에서 교통 섹션 비어 있으면 R007이 발생해야 한다."""
+        sec_def = _make_section_def("traffic", "교통", ["교통량_현황"])
+        sec_status = _make_section_status("traffic", "교통", total_evidence=0)
+        issue = _rule_required_section_missing(sec_def, sec_status, "road")
+        assert issue is not None
+        assert issue.rule_id == "R007"
+        assert "도로" in issue.message
+
+    def test_unknown_project_type_uses_other_fallback(self):
+        """미등록 사업유형은 'other' 기준을 적용한다."""
+        sec_def = _make_section_def("air_quality", "대기질", ["PM10_연평균"])
+        sec_status = _make_section_status("air_quality", "대기질", total_evidence=0)
+        issue = _rule_required_section_missing(sec_def, sec_status, "unknown_type")
+        # 'other' 타입에서 air_quality는 필수
+        assert issue is not None
+        assert issue.rule_id == "R007"
+
+    def test_r007_legal_basis_field_nonempty(self):
+        """R007 이슈에는 항상 법적 근거가 포함되어야 한다."""
+        sec_def = _make_section_def("water_quality", "수질", ["BOD"])
+        sec_status = _make_section_status("water_quality", "수질", total_evidence=0)
+        issue = _rule_required_section_missing(sec_def, sec_status, "industrial")
+        assert issue is not None
+        assert issue.legal_basis != ""
+        assert "별표 3" in issue.legal_basis
+
+
+class TestR008RequiredIndicatorMissing:
+    """R008: 법적 필수 지표 누락 테스트."""
+
+    def test_power_plant_missing_air_indicator_triggers_r008(self):
+        """발전소 사업에서 대기질 필수 지표 누락 시 R008이 발생해야 한다."""
+        sec_def = _make_section_def("air_quality", "대기질", [
+            "PM10_연평균", "PM2.5_연평균", "NO2_연평균", "SO2_연평균",
+        ])
+        sec_status = _make_section_status(
+            "air_quality", "대기질", total_evidence=2,
+            indicators=[
+                ("PM10_연평균", True, 1),
+                ("PM2.5_연평균", True, 1),
+                ("NO2_연평균", False, 0),
+                ("SO2_연평균", False, 0),
+            ],
+        )
+        issues = _rule_required_indicator_missing(sec_def, sec_status, "power_plant")
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue.rule_id == "R008"
+        assert issue.severity == Severity.WARNING
+        assert "NO2_연평균" in issue.message
+        assert "SO2_연평균" in issue.message
+        assert issue.legal_basis != ""
+
+    def test_power_plant_all_indicators_present_no_r008(self):
+        """발전소 사업에서 모든 법적 필수 지표가 있으면 R008이 발생하지 않아야 한다."""
+        sec_def = _make_section_def("air_quality", "대기질", [
+            "PM10_연평균", "PM2.5_연평균", "NO2_연평균", "SO2_연평균",
+        ])
+        sec_status = _make_section_status(
+            "air_quality", "대기질", total_evidence=4,
+            indicators=[
+                ("PM10_연평균", True, 1),
+                ("PM2.5_연평균", True, 1),
+                ("NO2_연평균", True, 1),
+                ("SO2_연평균", True, 1),
+            ],
+        )
+        issues = _rule_required_indicator_missing(sec_def, sec_status, "power_plant")
+        assert len(issues) == 0
+
+    def test_empty_section_no_r008(self):
+        """섹션에 증거가 전혀 없으면 R008이 아닌 R007에서 처리된다."""
+        sec_def = _make_section_def("air_quality", "대기질", ["PM10_연평균"])
+        sec_status = _make_section_status("air_quality", "대기질", total_evidence=0)
+        issues = _rule_required_indicator_missing(sec_def, sec_status, "power_plant")
+        assert len(issues) == 0
+
+    def test_non_required_section_no_r008(self):
+        """필수가 아닌 섹션에서는 R008이 발생하지 않아야 한다."""
+        sec_def = _make_section_def("landscape", "경관", ["주요_조망점"])
+        sec_status = _make_section_status(
+            "landscape", "경관", total_evidence=1,
+            indicators=[("주요_조망점", False, 0)],
+        )
+        # power_plant에서 landscape는 필수가 아님
+        issues = _rule_required_indicator_missing(sec_def, sec_status, "power_plant")
+        assert len(issues) == 0
+
+    def test_r008_indicators_match_missing(self):
+        """R008의 indicators 필드에 누락된 법적 필수 지표만 포함되어야 한다."""
+        sec_def = _make_section_def("water_quality", "수질", [
+            "BOD", "COD", "SS", "DO", "T-P", "T-N",
+        ])
+        sec_status = _make_section_status(
+            "water_quality", "수질", total_evidence=3,
+            indicators=[
+                ("BOD", True, 1),
+                ("COD", True, 1),
+                ("SS", True, 1),
+                ("DO", False, 0),
+                ("T-P", False, 0),
+                ("T-N", False, 0),
+            ],
+        )
+        issues = _rule_required_indicator_missing(sec_def, sec_status, "power_plant")
+        assert len(issues) == 1
+        issue = issues[0]
+        # power_plant 수질 필수: BOD, COD, SS, DO, T-P
+        # T-N은 power_plant 법적 필수가 아님
+        assert "DO" in issue.indicators
+        assert "T-P" in issue.indicators
+        assert "T-N" not in issue.indicators
+
+
+class TestR001DynamicCritical:
+    """R001: 사업유형 기반 동적 심각도 판단 테스트."""
+
+    def test_critical_sections_with_project_type(self):
+        """사업유형 설정 시 필수 섹션이 동적으로 결정되어야 한다."""
+        # power_plant: air_quality, water_quality, noise_vibration, ecology, land_use
+        cs = _get_critical_sections("power_plant")
+        assert "air_quality" in cs
+        assert "water_quality" in cs
+        assert "ecology" in cs
+        assert "land_use" in cs
+        # traffic은 power_plant 필수가 아님
+        assert "traffic" not in cs
+
+    def test_critical_sections_without_project_type(self):
+        """사업유형 미설정 시 기존 하드코딩 fallback을 사용해야 한다."""
+        cs = _get_critical_sections(None)
+        assert cs == {"air_quality", "water_quality", "noise_vibration", "ecology"}
+
+    def test_r001_skips_legally_required_sections(self):
+        """법적 필수 섹션은 R007에서 처리하므로 R001이 건너뛰어야 한다."""
+        sec_def = _make_section_def("air_quality", "대기질", ["PM10_연평균"])
+        sec_status = _make_section_status("air_quality", "대기질", total_evidence=0)
+        critical_sections = _get_critical_sections("power_plant")
+        # legally_required=True → R001 발생하지 않음
+        issue = _rule_section_empty(
+            sec_def, sec_status, critical_sections, legally_required=True
+        )
+        assert issue is None
+
+    def test_r001_fires_for_non_required_section(self):
+        """법적 필수가 아닌 섹션은 R001에서 처리해야 한다."""
+        sec_def = _make_section_def("landscape", "경관", ["주요_조망점"])
+        sec_status = _make_section_status("landscape", "경관", total_evidence=0)
+        # power_plant에서 landscape는 필수가 아님
+        critical_sections = _get_critical_sections("power_plant")
+        issue = _rule_section_empty(
+            sec_def, sec_status, critical_sections, legally_required=False
+        )
+        assert issue is not None
+        assert issue.rule_id == "R001"
+        assert issue.severity == Severity.WARNING  # 필수 섹션이 아니므로 warning
+
+    def test_r001_critical_for_tourism_ecology(self):
+        """사업유형 동적 판단: 관광 사업에서 ecology 비어 있고 legally_required=False면 critical."""
+        sec_def = _make_section_def("ecology", "생태", ["식물상_종수"])
+        sec_status = _make_section_status("ecology", "생태", total_evidence=0)
+        # 관광: ecology는 필수 → critical_sections에 포함
+        critical_sections = _get_critical_sections("tourism")
+        assert "ecology" in critical_sections
+        # legally_required=False로 설정 시 R001이 critical로 동작
+        issue = _rule_section_empty(
+            sec_def, sec_status, critical_sections, legally_required=False
+        )
+        assert issue is not None
+        assert issue.severity == Severity.CRITICAL
+
+
+class TestQaIssurLegalBasis:
+    """QaIssue legal_basis 필드 테스트."""
+
+    def test_qa_issue_default_legal_basis_empty(self):
+        """QaIssue의 legal_basis 기본값은 빈 문자열이어야 한다."""
+        issue = QaIssue(
+            rule_id="R001", severity=Severity.WARNING,
+            section_key="air_quality", title="테스트", message="메시지",
+        )
+        assert issue.legal_basis == ""
+
+    def test_qa_issue_with_legal_basis(self):
+        """QaIssue에 legal_basis를 설정할 수 있어야 한다."""
+        issue = QaIssue(
+            rule_id="R007", severity=Severity.CRITICAL,
+            section_key="air_quality", title="테스트", message="메시지",
+            legal_basis="환경영향평가법 시행령 별표 3",
+        )
+        assert issue.legal_basis == "환경영향평가법 시행령 별표 3"
+
+    def test_project_type_name_lookup(self):
+        """사업유형 코드가 한글명으로 올바르게 변환되어야 한다."""
+        assert _get_project_type_name("power_plant") == "발전소"
+        assert _get_project_type_name("road") == "도로"
+        assert _get_project_type_name("tourism") == "관광"
+        assert _get_project_type_name("military") == "군사"
+
+    def test_unknown_project_type_name_passthrough(self):
+        """미등록 사업유형 코드는 그대로 반환되어야 한다."""
+        assert _get_project_type_name("custom_type") == "custom_type"
+
+
+class TestQaExportLegalBasisColumn:
+    """부록 C QA 결과 테이블에 법적 근거 열 반영 테스트."""
+
+    def test_docx_appendix_c_has_legal_basis_column(self):
+        """DOCX 부록 C 테이블에 '법적 근거' 열이 있어야 한다."""
+        from app.services.export_service import _build_docx, ExportContext, ExportOptions
+        from app.services.qa_engine import QaResult, QaSummary
+        from app.services.draft_scaffold import DraftScaffold, ScaffoldSection, EvidenceEntry
+
+        scaffold = DraftScaffold(
+            project_id="test-id",
+            generated_at="2025-06-01T00:00:00",
+            sections=[],
+            total_evidence_count=0,
+        )
+        qa_issue = QaIssue(
+            rule_id="R007", severity=Severity.CRITICAL,
+            section_key="air_quality", title="대기질 법적 필수 섹션 누락",
+            message="발전소 사업은 환경영향평가법 시행령 별표 3에 따라 대기질 평가가 필수입니다.",
+            legal_basis="환경영향평가법 시행령 별표 3",
+        )
+        qa_result = QaResult(
+            project_id="test-id",
+            run_at="2025-06-01T00:00:00",
+            issues=[qa_issue],
+            summary=QaSummary(critical_count=1, warning_count=0, info_count=0),
+            export_ready=False,
+        )
+        ctx = ExportContext(
+            scaffold=scaffold,
+            project_name="테스트",
+            project_type="power_plant",
+            centroid=None,
+            section_data={},
+            similar_cases=[],
+            qa_result=qa_result,
+            options=ExportOptions(
+                include_appendix_a=False,
+                include_appendix_b=False,
+                include_appendix_c=True,
+            ),
+            generated_at="2025-06-01T00:00:00",
+        )
+        doc = _build_docx(ctx)
+        # 부록 C 테이블 찾기 — 마지막 테이블이 QA 결과
+        last_table = doc.tables[-1]
+        header_row = last_table.rows[0]
+        header_texts = [cell.text for cell in header_row.cells]
+        assert "법적 근거" in header_texts
+        # 데이터 행에 법적 근거 값이 있어야 함
+        data_row = last_table.rows[1]
+        data_texts = [cell.text for cell in data_row.cells]
+        assert "환경영향평가법 시행령 별표 3" in data_texts

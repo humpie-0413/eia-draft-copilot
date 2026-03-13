@@ -976,15 +976,15 @@ def _docx_add_appendix_c(doc: Document, ctx: ExportContext) -> None:
         doc.add_paragraph("검출된 QA 이슈가 없습니다.")
         return
 
-    # 이슈 테이블
-    headers = ["#", "심각도", "규칙", "섹션", "제목", "설명"]
-    table = doc.add_table(rows=1, cols=6)
+    # 이슈 테이블 (법적 근거 열 포함)
+    headers = ["#", "심각도", "규칙", "섹션", "제목", "설명", "법적 근거"]
+    table = doc.add_table(rows=1, cols=7)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
     for i, h_text in enumerate(headers):
         table.rows[0].cells[i].text = h_text
-    _docx_style_header_row(table, 6)
+    _docx_style_header_row(table, 7)
 
     for idx, issue in enumerate(qa.issues):
         row = table.add_row()
@@ -994,6 +994,7 @@ def _docx_add_appendix_c(doc: Document, ctx: ExportContext) -> None:
         row.cells[3].text = issue.section_key or "-"
         row.cells[4].text = issue.title
         row.cells[5].text = issue.message
+        row.cells[6].text = issue.legal_basis or "-"
         _docx_style_data_row(row, font_size=8)
 
         # critical 이슈는 빨간 배경
@@ -1004,7 +1005,7 @@ def _docx_add_appendix_c(doc: Document, ctx: ExportContext) -> None:
             for cell in row.cells:
                 _docx_set_cell_shading(cell, _ALT_ROW_BG)
 
-    widths = [Cm(1), Cm(1.8), Cm(1.5), Cm(2.5), Cm(4), Cm(5)]
+    widths = [Cm(0.8), Cm(1.5), Cm(1.2), Cm(2), Cm(3.5), Cm(4.5), Cm(3)]
     for row in table.rows:
         for i, width in enumerate(widths):
             row.cells[i].width = width
@@ -1687,6 +1688,7 @@ def _pdf_add_appendix_c(story, styles, font_name, ctx: ExportContext):
         Paragraph("규칙", header_s),
         Paragraph("섹션", header_s),
         Paragraph("제목", header_s),
+        Paragraph("법적 근거", header_s),
     ]]
 
     critical_rows = []
@@ -1697,11 +1699,12 @@ def _pdf_add_appendix_c(story, styles, font_name, ctx: ExportContext):
             Paragraph(issue.rule_id, cell_s),
             Paragraph(issue.section_key or "-", cell_s),
             Paragraph(issue.title, cell_s),
+            Paragraph(issue.legal_basis or "-", cell_s),
         ])
         if issue.severity.value == "critical":
             critical_rows.append(idx + 1)
 
-    col_widths = [1 * cm, 2 * cm, 1.5 * cm, 3 * cm, 8 * cm]
+    col_widths = [0.8 * cm, 1.5 * cm, 1.2 * cm, 2.5 * cm, 6 * cm, 3.5 * cm]
     table = Table(data, colWidths=col_widths, repeatRows=1)
 
     style_commands = list(_PDF_TABLE_STYLE.getCommands())

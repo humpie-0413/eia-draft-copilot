@@ -51,7 +51,8 @@ SAMPLE_POLYGON = {
     ],
 }
 
-# 4개 핵심 섹션 모두 충족시키는 증거 데이터
+# power_plant 사업유형 필수 섹션 충족 증거 데이터
+# (대기질, 수질, 소음진동, 생태, 토지이용)
 ALL_EVIDENCES = [
     {"category": "air_quality", "indicator": "PM10_연평균", "value": "45", "numeric_value": 45.0, "unit": "ug/m3"},
     {"category": "air_quality", "indicator": "PM2.5_연평균", "value": "23", "numeric_value": 23.0, "unit": "ug/m3"},
@@ -73,6 +74,10 @@ ALL_EVIDENCES = [
     {"category": "ecology", "indicator": "법정보호종", "value": "2", "numeric_value": 2.0, "unit": "종"},
     {"category": "ecology", "indicator": "비오톱_유형", "value": "자연림"},
     {"category": "ecology", "indicator": "녹지자연도", "value": "7등급"},
+    # 토지이용 (power_plant 필수)
+    {"category": "land_use", "indicator": "용도지역구분", "value": "제2종일반주거지역"},
+    {"category": "land_use", "indicator": "용도지구", "value": "미지정"},
+    {"category": "land_use", "indicator": "지목", "value": "대"},
 ]
 
 

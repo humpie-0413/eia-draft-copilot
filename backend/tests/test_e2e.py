@@ -91,6 +91,16 @@ NOISE_MISSING = [
     {"category": "noise_vibration", "indicator": "진동_Lv_주간", "value": "63", "numeric_value": 63.0, "unit": "dB(V)"},
 ]
 
+# industrial 사업유형 필수 섹션 보충 (토양, 폐기물)
+INDUSTRIAL_REQUIRED_EXTRA = [
+    {"category": "soil", "indicator": "Pb", "value": "15.0", "numeric_value": 15.0, "unit": "mg/kg"},
+    {"category": "soil", "indicator": "Cd", "value": "0.8", "numeric_value": 0.8, "unit": "mg/kg"},
+    {"category": "soil", "indicator": "pH", "value": "6.5", "numeric_value": 6.5, "unit": ""},
+    {"category": "soil", "indicator": "유기물함량", "value": "3.2", "numeric_value": 3.2, "unit": "%"},
+    {"category": "waste", "indicator": "폐기물_발생량", "value": "150", "numeric_value": 150.0, "unit": "톤/년"},
+    {"category": "waste", "indicator": "폐기물_종류", "value": "사업장일반폐기물"},
+]
+
 SIMILAR_CASE_DATA = {
     "name": "E2E 유사사례",
     "description": "산업단지 개발 유사사례",
@@ -261,13 +271,13 @@ async def test_e2e_full_workflow(client: AsyncClient):
     assert qa["export_ready"] is False, "critical 이슈가 있으므로 export 불가"
     assert qa["summary"]["critical_count"] >= 2, "생태 R001 + 소음 R002 최소 2건"
 
-    # R001: 생태 섹션 증거 없음 (critical)
+    # R001: 생태 섹션 증거 없음 (industrial 사업에서 ecology는 법적 필수가 아니므로 warning)
     ecology_r001 = [
         i for i in qa["issues"]
         if i["rule_id"] == "R001" and i["section_key"] == "ecology"
     ]
     assert len(ecology_r001) == 1
-    assert ecology_r001[0]["severity"] == "critical"
+    assert ecology_r001[0]["severity"] == "warning"
 
     # R002: 소음진동 필수 지표 누락 (critical)
     noise_r002 = [
@@ -299,6 +309,10 @@ async def test_e2e_full_workflow(client: AsyncClient):
 
     # 소음진동 누락 지표 보충 (R002 해소)
     for ev in NOISE_MISSING:
+        await _create_evidence(client, project_id, ev)
+
+    # industrial 필수 섹션 보충 — 토양, 폐기물 (R007 해소)
+    for ev in INDUSTRIAL_REQUIRED_EXTRA:
         await _create_evidence(client, project_id, ev)
 
     # QA 재검사: critical 이슈 0건

@@ -43,11 +43,13 @@ export function QaIssueList({ issues, filterSeverity }: QaIssueListProps) {
         <Card
           key={`${issue.rule_id}-${issue.section_key}-${idx}`}
           className={`border ${
-            issue.severity === "critical"
-              ? "border-red-200"
-              : issue.severity === "warning"
-                ? "border-yellow-200"
-                : "border-blue-200"
+            issue.severity === "critical" && issue.legal_basis
+              ? "border-red-300 bg-red-50"
+              : issue.severity === "critical"
+                ? "border-red-200"
+                : issue.severity === "warning"
+                  ? "border-yellow-200"
+                  : "border-blue-200"
           }`}
         >
           <CardHeader className="pb-2 pt-3 px-4">
@@ -73,6 +75,11 @@ export function QaIssueList({ issues, filterSeverity }: QaIssueListProps) {
           </CardHeader>
           <CardContent className="px-4 pb-3 pt-0">
             <p className="text-sm text-muted-foreground">{issue.message}</p>
+            {issue.legal_basis && (
+              <p className="mt-1 text-xs text-red-700 font-medium">
+                근거: {issue.legal_basis}
+              </p>
+            )}
             {issue.indicators.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {issue.indicators.map((ind) => (

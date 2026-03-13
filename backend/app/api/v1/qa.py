@@ -40,6 +40,7 @@ def _qa_result_to_read(result: QaResult) -> QaResultRead:
                 title=issue.title,
                 message=issue.message,
                 indicators=issue.indicators,
+                legal_basis=issue.legal_basis,
             )
             for issue in result.issues
         ],

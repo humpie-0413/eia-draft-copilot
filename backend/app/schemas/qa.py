@@ -26,6 +26,9 @@ class QaIssueRead(BaseModel):
     indicators: list[str] = Field(
         default_factory=list, description="관련 지표 목록"
     )
+    legal_basis: str = Field(
+        "", description="법적 근거 (R007, R008에서 사용)"
+    )
 
 
 class QaSummaryRead(BaseModel):

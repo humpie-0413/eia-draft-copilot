@@ -9,6 +9,7 @@ export interface QaIssue {
   title: string;
   message: string;
   indicators: string[];
+  legal_basis: string;
 }
 
 /** QA 요약 통계 */
