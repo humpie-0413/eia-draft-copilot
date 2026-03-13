@@ -4,9 +4,10 @@
 각 기준은 지표명 → 시간기준 → 기준값 형태로 정의된다.
 
 참조 법령:
-- 대기환경기준: 환경정책기본법 시행령 [별표] (대기환경기준)
-- 수질환경기준: 환경정책기본법 시행령 [별표] (수질 및 수생태계 환경기준 — 하천 생활환경)
-- 소음환경기준: 환경정책기본법 시행령 [별표] (소음환경기준)
+- 대기환경기준: 환경정책기본법 시행령 별표 제1호 (대기환경기준)
+- 수질환경기준: 환경정책기본법 시행령 별표 제1호 (수질 및 수생태계 환경기준 — 하천 생활환경기준)
+- 소음환경기준: 환경정책기본법 시행령 별표 제1호 (소음환경기준)
+- 토양오염우려기준: 토양환경보전법 시행규칙 별표 제3호 (토양오염우려기준)
 """
 
 from __future__ import annotations
@@ -32,35 +33,38 @@ class Standard:
     unit: str              # 단위
     op: ComparisonOp       # 비교 방향
     description: str = ""  # 설명
+    legal_basis: str = ""  # 법적 근거 (예: "환경정책기본법 시행령 별표 제1호")
 
 
 # ────────────────────────────────────────────
-# 대기환경기준 (환경정책기본법 시행령 별표)
+# 대기환경기준 (환경정책기본법 시행령 별표 제1호)
 # ────────────────────────────────────────────
+
+_AIR_LEGAL = "환경정책기본법 시행령 별표 제1호 (대기환경기준)"
 
 AIR_STANDARDS: list[Standard] = [
     # PM10
-    Standard("PM10_연평균", "연평균", 50.0, "ug/m3", ComparisonOp.LEQ, "미세먼지 연평균"),
-    Standard("PM10_24시간", "24시간", 100.0, "ug/m3", ComparisonOp.LEQ, "미세먼지 24시간 평균"),
+    Standard("PM10_연평균", "연평균", 50.0, "ug/m3", ComparisonOp.LEQ, "미세먼지 연평균", _AIR_LEGAL),
+    Standard("PM10_24시간", "24시간", 100.0, "ug/m3", ComparisonOp.LEQ, "미세먼지 24시간 평균", _AIR_LEGAL),
     # PM2.5
-    Standard("PM2.5_연평균", "연평균", 15.0, "ug/m3", ComparisonOp.LEQ, "초미세먼지 연평균"),
-    Standard("PM2.5_24시간", "24시간", 35.0, "ug/m3", ComparisonOp.LEQ, "초미세먼지 24시간 평균"),
+    Standard("PM2.5_연평균", "연평균", 15.0, "ug/m3", ComparisonOp.LEQ, "초미세먼지 연평균", _AIR_LEGAL),
+    Standard("PM2.5_24시간", "24시간", 35.0, "ug/m3", ComparisonOp.LEQ, "초미세먼지 24시간 평균", _AIR_LEGAL),
     # SO2
-    Standard("SO2_연평균", "연평균", 0.02, "ppm", ComparisonOp.LEQ, "아황산가스 연평균"),
-    Standard("SO2_24시간", "24시간", 0.05, "ppm", ComparisonOp.LEQ, "아황산가스 24시간 평균"),
-    Standard("SO2_1시간", "1시간", 0.15, "ppm", ComparisonOp.LEQ, "아황산가스 1시간 평균"),
+    Standard("SO2_연평균", "연평균", 0.02, "ppm", ComparisonOp.LEQ, "아황산가스 연평균", _AIR_LEGAL),
+    Standard("SO2_24시간", "24시간", 0.05, "ppm", ComparisonOp.LEQ, "아황산가스 24시간 평균", _AIR_LEGAL),
+    Standard("SO2_1시간", "1시간", 0.15, "ppm", ComparisonOp.LEQ, "아황산가스 1시간 평균", _AIR_LEGAL),
     # NO2
-    Standard("NO2_연평균", "연평균", 0.03, "ppm", ComparisonOp.LEQ, "이산화질소 연평균"),
-    Standard("NO2_24시간", "24시간", 0.06, "ppm", ComparisonOp.LEQ, "이산화질소 24시간 평균"),
-    Standard("NO2_1시간", "1시간", 0.10, "ppm", ComparisonOp.LEQ, "이산화질소 1시간 평균"),
+    Standard("NO2_연평균", "연평균", 0.03, "ppm", ComparisonOp.LEQ, "이산화질소 연평균", _AIR_LEGAL),
+    Standard("NO2_24시간", "24시간", 0.06, "ppm", ComparisonOp.LEQ, "이산화질소 24시간 평균", _AIR_LEGAL),
+    Standard("NO2_1시간", "1시간", 0.10, "ppm", ComparisonOp.LEQ, "이산화질소 1시간 평균", _AIR_LEGAL),
     # CO
-    Standard("CO_8시간", "8시간", 9.0, "ppm", ComparisonOp.LEQ, "일산화탄소 8시간 평균"),
-    Standard("CO_1시간", "1시간", 25.0, "ppm", ComparisonOp.LEQ, "일산화탄소 1시간 평균"),
-    Standard("CO_연평균", "연평균", 9.0, "ppm", ComparisonOp.LEQ, "일산화탄소 (8시간 기준 적용)"),
+    Standard("CO_8시간", "8시간", 9.0, "ppm", ComparisonOp.LEQ, "일산화탄소 8시간 평균", _AIR_LEGAL),
+    Standard("CO_1시간", "1시간", 25.0, "ppm", ComparisonOp.LEQ, "일산화탄소 1시간 평균", _AIR_LEGAL),
+    Standard("CO_연평균", "연평균", 9.0, "ppm", ComparisonOp.LEQ, "일산화탄소 (8시간 기준 적용)", _AIR_LEGAL),
     # O3
-    Standard("O3_8시간", "8시간", 0.06, "ppm", ComparisonOp.LEQ, "오존 8시간 평균"),
-    Standard("O3_1시간", "1시간", 0.1, "ppm", ComparisonOp.LEQ, "오존 1시간 평균"),
-    Standard("O3_연평균", "연평균", 0.06, "ppm", ComparisonOp.LEQ, "오존 (8시간 기준 적용)"),
+    Standard("O3_8시간", "8시간", 0.06, "ppm", ComparisonOp.LEQ, "오존 8시간 평균", _AIR_LEGAL),
+    Standard("O3_1시간", "1시간", 0.1, "ppm", ComparisonOp.LEQ, "오존 1시간 평균", _AIR_LEGAL),
+    Standard("O3_연평균", "연평균", 0.06, "ppm", ComparisonOp.LEQ, "오존 (8시간 기준 적용)", _AIR_LEGAL),
 ]
 
 # 대기 지표 → 기준 빠른 조회 (indicator → list of Standard)
@@ -97,25 +101,30 @@ WATER_GRADES: list[WaterGrade] = [
 
 # 수질 지표별 환경기준 (하천 III등급 '보통' 기준을 기본 비교 기준으로 사용)
 # 실무에서 III등급은 일반적 하천의 기본 환경기준으로 가장 많이 참조됨
+_WATER_LEGAL = "환경정책기본법 시행령 별표 제1호 (수질 및 수생태계 환경기준) — 하천 생활환경기준"
+
 WATER_STANDARDS: list[Standard] = [
-    Standard("BOD", "평균", 5.0, "mg/L", ComparisonOp.LEQ, "생물화학적산소요구량 (III등급 기준)"),
-    Standard("COD", "평균", 7.0, "mg/L", ComparisonOp.LEQ, "화학적산소요구량 (III등급 기준)"),
-    Standard("SS", "평균", 25.0, "mg/L", ComparisonOp.LEQ, "부유물질 (III등급 기준)"),
-    Standard("DO", "평균", 5.0, "mg/L", ComparisonOp.GEQ, "용존산소 (III등급 기준)"),
-    Standard("T-P", "평균", 0.2, "mg/L", ComparisonOp.LEQ, "총인 (III등급 기준)"),
-    Standard("T-N", "평균", 1.0, "mg/L", ComparisonOp.LEQ, "총질소 (참고기준)"),
+    Standard("BOD", "평균", 5.0, "mg/L", ComparisonOp.LEQ, "생물화학적산소요구량 (III등급 기준)", _WATER_LEGAL),
+    Standard("COD", "평균", 7.0, "mg/L", ComparisonOp.LEQ, "화학적산소요구량 (III등급 기준)", _WATER_LEGAL),
+    Standard("SS", "평균", 25.0, "mg/L", ComparisonOp.LEQ, "부유물질 (III등급 기준)", _WATER_LEGAL),
+    Standard("DO", "평균", 5.0, "mg/L", ComparisonOp.GEQ, "용존산소 (III등급 기준)", _WATER_LEGAL),
+    Standard("T-P", "평균", 0.2, "mg/L", ComparisonOp.LEQ, "총인 (III등급 기준)", _WATER_LEGAL),
+    Standard("T-N", "평균", 1.0, "mg/L", ComparisonOp.LEQ, "총질소 (참고기준)", _WATER_LEGAL),
 ]
 
 
 # ────────────────────────────────────────────
-# 소음환경기준 (지역구분 "가" 일반지역, 주거지역 기준)
+# 소음환경기준 (지역구분 "나" 일반지역 기준 — 기본 비교용)
+# 지역구분별 차등 기준은 regulations/area_classifications.py 참조
 # ────────────────────────────────────────────
+
+_NOISE_LEGAL = "환경정책기본법 시행령 별표 제1호 (소음환경기준)"
 
 NOISE_STANDARDS: list[Standard] = [
     Standard("소음_Leq_주간", "주간(06~22시)", 55.0, "dB(A)", ComparisonOp.LEQ,
-             "소음 환경기준 주거지역 주간"),
+             "소음 환경기준 주거지역 주간", _NOISE_LEGAL),
     Standard("소음_Leq_야간", "야간(22~06시)", 45.0, "dB(A)", ComparisonOp.LEQ,
-             "소음 환경기준 주거지역 야간"),
+             "소음 환경기준 주거지역 야간", _NOISE_LEGAL),
 ]
 
 
@@ -123,13 +132,15 @@ NOISE_STANDARDS: list[Standard] = [
 # 토양오염 우려기준 (토양환경보전법 시행규칙 별표 3, 1지역)
 # ────────────────────────────────────────────
 
+_SOIL_LEGAL = "토양환경보전법 시행규칙 별표 제3호 (토양오염우려기준)"
+
 SOIL_STANDARDS: list[Standard] = [
-    Standard("Cd", "우려기준", 4.0, "mg/kg", ComparisonOp.LEQ, "카드뮴 1지역 우려기준"),
-    Standard("Cu", "우려기준", 150.0, "mg/kg", ComparisonOp.LEQ, "구리 1지역 우려기준"),
-    Standard("Pb", "우려기준", 200.0, "mg/kg", ComparisonOp.LEQ, "납 1지역 우려기준"),
-    Standard("Zn", "우려기준", 300.0, "mg/kg", ComparisonOp.LEQ, "아연 1지역 우려기준"),
-    Standard("Ni", "우려기준", 100.0, "mg/kg", ComparisonOp.LEQ, "니켈 1지역 우려기준"),
-    Standard("Cr6+", "우려기준", 5.0, "mg/kg", ComparisonOp.LEQ, "6가크롬 1지역 우려기준"),
+    Standard("Cd", "우려기준", 4.0, "mg/kg", ComparisonOp.LEQ, "카드뮴 1지역 우려기준", _SOIL_LEGAL),
+    Standard("Cu", "우려기준", 150.0, "mg/kg", ComparisonOp.LEQ, "구리 1지역 우려기준", _SOIL_LEGAL),
+    Standard("Pb", "우려기준", 200.0, "mg/kg", ComparisonOp.LEQ, "납 1지역 우려기준", _SOIL_LEGAL),
+    Standard("Zn", "우려기준", 300.0, "mg/kg", ComparisonOp.LEQ, "아연 1지역 우려기준", _SOIL_LEGAL),
+    Standard("Ni", "우려기준", 100.0, "mg/kg", ComparisonOp.LEQ, "니켈 1지역 우려기준", _SOIL_LEGAL),
+    Standard("Cr6+", "우려기준", 5.0, "mg/kg", ComparisonOp.LEQ, "6가크롬 1지역 우려기준", _SOIL_LEGAL),
 ]
 
 
