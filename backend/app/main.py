@@ -6,6 +6,7 @@ from app.api.v1.data_sources import router as data_sources_router
 from app.api.v1.evidences import router as evidences_router
 from app.api.v1.export import router as export_router
 from app.api.v1.llm import router as llm_router
+from app.api.v1.predictions import router as predictions_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.qa import router as qa_router
 from app.api.v1.scope import router as scope_router
@@ -46,6 +47,7 @@ app.include_router(statistics_router, prefix="/api/v1")
 app.include_router(standards_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 app.include_router(llm_router, prefix="/api/v1")
+app.include_router(predictions_router, prefix="/api/v1")
 
 
 @app.get("/health")

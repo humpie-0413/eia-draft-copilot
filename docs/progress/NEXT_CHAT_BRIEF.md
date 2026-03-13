@@ -1,35 +1,39 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Bugfix: 서술문 법적 근거 누락 + 유사사례 중복 재발** ✅
+**Pred-1: 예측 모듈 기반 구조 + 대기 확산 모델** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
 - Post-0.5 ~ Post-11: Post-MVP 개선 완료 ✅
-- Reg-0: 경미한 이슈 수정 ✅ (Post-11에서 처리)
-- Reg-1: 법령 데이터 구축 ✅
-- Reg-2: 서술문 법적 근거 반영 ✅
-- Reg-3: QA 규칙 정밀화 ✅
-- Reg-4: 사업유형별 평가 범위 자동 판단 ✅
-- Reg-5: 통합 검증 + 문서화 ✅
+- Reg-0~Reg-5: 법령 반영 완료 ✅
+- Pred-1: 예측 모듈 + 대기 확산 모델 ✅
 
-## 완료된 작업 (Bugfix)
+## 완료된 작업 (Pred-1)
 
-### 문제 1: 서술문/테이블에 법적 근거 미반영
-- draft_scaffold.py: LLM 보강 서술문에 법적 근거 키워드 없으면 템플릿 서술문으로 대체
-- 검증: 대기/수질/토양/소음 서술문에 환경정책기본법/토양환경보전법 포함 확인
-- 검증: 환경기준 비교 테이블 4개에 "법적 근거" 열 + 실제 값 확인
+### 예측 엔진 기반 구조
+- `prediction/base.py`: BasePredictionModel 추상 클래스 (predict, get_required_inputs, get_model_info)
+- `prediction/registry.py`: 모델 레지스트리 (section_key → model 매핑)
+- PredictionResult: section_key, model_name, input_parameters, predictions, summary, assumptions, limitations
 
-### 문제 2: 부록 B 유사사례 중복 재발
-- similarity.py: 이름 기준 중복 제거를 top_k 슬라이싱 전으로 이동
-- 검증: 부록 B에 화성시/당진시/해남군 각 1건씩 3건만 표시
+### 대기 확산 모델 (가우시안 플룸)
+- `prediction/air_dispersion.py`: Pasquill-Gifford 확산계수 + 가우시안 플룸 지표면 농도 계산
+- PM10, PM2.5, NO2, SO2에 대해 6지점(100m~5km) 예측
+- 배경 농도(에어코리아) 합산 → 사업 후 예상 농도 → 환경기준 초과 판정
+- 사업유형별 기본 배출량/굴뚝 높이 딕셔너리
+
+### API 엔드포인트
+- `POST /api/v1/projects/{id}/predict/{section_key}` — 예측 실행
+- `GET /api/v1/prediction-models` — 모델 목록 + 입력 파라미터
+- 배경 농도: evidence에서 연평균 대기 데이터 자동 추출
+- 풍속: 기후 데이터에서 자동 추출, 없으면 기본값 3.0 m/s
 
 ### 테스트
-- 5개 신규 테스트 추가 (370개 전체 통과)
+- 74개 신규 테스트 (444개 전체 통과)
 
 ## 시스템 전체 현황
 
-### 백엔드 서비스 (9개)
+### 백엔드 서비스 (10개)
 | 서비스 | 역할 |
 |--------|------|
 | section_planner.py | 11개 섹션 정의 + 필수 지표 충족도 계산 + 평가 범위 연동 |
@@ -37,10 +41,16 @@
 | draft_scaffold.py | 초안 뼈대 생성 (법적 근거 포함 서술문 우선 → 템플릿 fallback) |
 | statistics.py | 지표별 기술 통계 (평균, 최대, 최소, 표준편차) |
 | standard_checker.py | 대기/수질/소음/토양 환경기준 비교 + 등급 판정 + 법적 근거 |
-| narrative_generator.py | 섹션별 서술문 템플릿 (대기/수질/소음/생태/범용) + 법적 근거 자동 삽입 |
+| narrative_generator.py | 섹션별 서술문 템플릿 + 법적 근거 자동 삽입 |
 | similarity.py | 유사사례 가중 유사도 계산 |
 | qa_engine.py | 8개 QA 규칙 (R001~R008) + 사업유형 기반 동적 판단 |
-| export_service.py | DOCX/PDF 생성 (표지+목차+4부 구조+부록 A/B/C) + 법적 근거 열 + 필수 섹션 표시 |
+| export_service.py | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 |
+| prediction/ | 예측 모듈 (가우시안 플룸 대기 확산 모델) |
+
+### 예측 모델 (Pred-1)
+| 모델 | 적용 섹션 | 설명 |
+|------|----------|------|
+| gaussian_plume | air_quality | 가우시안 플룸 대기 확산 (PM10, PM2.5, NO2, SO2) |
 
 ### QA 규칙 (8개)
 | 규칙 | 설명 | 심각도 |
@@ -71,10 +81,10 @@
 | `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
 
-### 테스트 (370개)
-- test_regulations.py (95), test_connectors.py (69), test_export_format.py (40+)
-- test_narrative_generator.py (51), test_llm_adapter.py (29), test_standard_checker.py (27)
-- test_spec_alignment.py (23), test_statistics.py (16)
+### 테스트 (444개)
+- test_prediction.py (74), test_regulations.py (95), test_connectors.py (69)
+- test_export_format.py (40+), test_narrative_generator.py (51), test_llm_adapter.py (29)
+- test_standard_checker.py (27), test_spec_alignment.py (23), test_statistics.py (16)
 - test_projects.py (9), test_export_pdf.py (4), test_e2e.py (1)
 
 ## 주의사항
@@ -88,7 +98,7 @@
   - `LLM_ADAPTER=gemini_free` + `GOOGLE_API_KEY=...`
   - 기본값 `LLM_ADAPTER=none` → LLM 없이 동작
 - 마이그레이션 실행: `cd backend && alembic upgrade head`
-- 프론트엔드 환경변수: `NEXT_PUBLIC_API_URL` (기본값 http://localhost:8000)
+- 프론트엔드 환경변수: `NEXT_PUBLIC_API_URL` (기본값 http://localhost:3000)
 
 ## 실행 방법
 ```bash
@@ -102,7 +112,7 @@ uvicorn app.main:app --reload    # http://localhost:8000
 
 # 테스트
 cd backend
-pytest tests/ -v    # 370개 테스트
+pytest tests/ -v    # 444개 테스트
 
 # 통합 데모 (백엔드 서버 실행 후)
 python scripts/demo_full_scenario.py

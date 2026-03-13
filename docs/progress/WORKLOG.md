@@ -1222,3 +1222,64 @@
 - `docs/development.md` — 법령 데이터 수정 가이드 (수정)
 - `docs/progress/WORKLOG.md` — Reg-5 이력 (수정)
 - `docs/progress/NEXT_CHAT_BRIEF.md` — 최종 브리핑 (수정)
+
+---
+
+## Pred-1: 예측 모듈 기반 구조 + 대기 확산 모델 ✅
+
+### 완료 항목
+
+#### 1. 예측 엔진 기반 구조
+- `backend/app/services/prediction/__init__.py` — 패키지 초기화 및 공개 API
+- `backend/app/services/prediction/base.py` — BasePredictionModel 추상 클래스
+  - `predict(parameters, background_data)` → PredictionResult
+  - `get_required_inputs()` → InputParameter 목록
+  - `get_model_info()` → ModelInfo (모델명, 설명, 적용 섹션)
+- `backend/app/services/prediction/registry.py` — 모델 레지스트리 (section_key → model 매핑)
+- PredictionResult 스키마: section_key, model_name, input_parameters, predictions, summary, assumptions, limitations
+
+#### 2. 대기 확산 모델 (가우시안 플룸)
+- `backend/app/services/prediction/air_dispersion.py`
+- Pasquill-Gifford 확산계수 (A~F 등급별 σy, σz 경험식)
+- 가우시안 플룸 지표면 중심선 농도 공식: C = Q/(π·σy·σz·u) × exp(-H²/(2σz²))
+- PM10, PM2.5, NO2, SO2 예측 (ug/m3 통일)
+- 풍하거리 6지점: 100m, 200m, 500m, 1km, 2km, 5km
+- 배경 농도(에어코리아 현황 데이터) 합산 → 사업 후 예상 농도
+- 환경기준 초과 여부 판정
+- 사업유형별 기본 배출량 + 굴뚝 높이 딕셔너리
+
+#### 3. API 엔드포인트
+- `POST /api/v1/projects/{id}/predict/{section_key}` — 예측 실행
+- `GET /api/v1/prediction-models` — 사용 가능한 모델 목록 + 입력 파라미터
+- `backend/app/schemas/prediction.py` — Pydantic 응답 스키마
+- `backend/app/api/v1/predictions.py` — 라우터 (main.py 등록 완료)
+- 배경 농도: 프로젝트 evidence에서 연평균 대기 데이터 자동 추출
+- 풍속: 프로젝트 기후 데이터에서 자동 추출 (없으면 기본값 3.0 m/s)
+
+#### 4. 기본값 체계
+- power_plant: PM10=0.5, PM2.5=0.3, NO2=1.0, SO2=0.5 (g/s) / 굴뚝 50m
+- industrial: PM10=1.0, PM2.5=0.5, NO2=2.0, SO2=1.0 (g/s) / 굴뚝 30m
+- 기타 유형: power_plant의 50% / 굴뚝 20m
+- 대기안정도: 기본 D(중립), A~F 선택 가능
+
+#### 5. 테스트 (74개)
+- TestSigmaCoefficients: 확산계수 계산 (12개, 안정도 등급별 파라메트릭 포함)
+- TestGaussianPlume: 가우시안 플룸 농도 계산 (12개, 수동 계산 검증 포함)
+- TestAirDispersionModel: 모델 클래스 통합 (14개)
+- TestDefaults: 사업유형별 기본값 (6개)
+- TestRegistry: 모델 레지스트리 (7개)
+- TestPredictionAPI: API 엔드포인트 (4개)
+- TestBasePredictionModel: 추상 클래스 검증 (3개)
+
+### 전체 테스트
+- 444개 전체 통과 (기존 370 + 신규 74)
+
+### 주요 파일
+- `backend/app/services/prediction/__init__.py` (신규)
+- `backend/app/services/prediction/base.py` (신규)
+- `backend/app/services/prediction/air_dispersion.py` (신규)
+- `backend/app/services/prediction/registry.py` (신규)
+- `backend/app/schemas/prediction.py` (신규)
+- `backend/app/api/v1/predictions.py` (신규)
+- `backend/app/main.py` (수정 — predictions_router 등록)
+- `backend/tests/test_prediction.py` (신규 — 74개 테스트)
