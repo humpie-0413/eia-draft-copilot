@@ -1,28 +1,20 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Post-9: 커넥터 2종 추가 + DOCX/LLM 수정** ✅
+**Post-10: 전체 문서 최신화 + 프론트엔드 지표명 정합성** ✅
 
-## 완료된 작업 (Post-9)
+## 완료된 작업 (Post-10)
 
-### DOCX/PDF 수정
-- 꼬리말 페이지 번호: `- N -` 형식 (OOXML fldChar 구조 수정)
-- 토양 3.3 환경기준 비교 누락 수정 (필터 조건 변경)
+### 전체 문서 Post-9 기준 최신화
+- README, architecture, api-reference, development, user-guide 5개 문서 갱신
+- 커넥터 4→6종, 테스트 230→247개, Alembic 3→4개, 필수 지표명 정합성 반영
 
-### 커넥터 2종 추가
-- `vworld_land_use`: V-world 2D데이터 API → 용도지역구분/지목/용도지구
-- `cultural_heritage`: 국가유산청 Open API (XML) → 문화재명/종별/이격거리 (반경 1km)
-- section_planner 필수 지표명 정합성 수정
-- 프론트엔드 파라미터 UI 추가
+### 프론트엔드 수동 입력 지표명 정합성
+- evidence-form-dialog: 토지이용(용도지역구분, 용도지구, 지목), 문화재(문화재명) 수정
+- 커넥터 자동 수집 가능 안내 힌트 추가
 
-### LLM 보강 → DOCX export 반영
-- DraftNarrative 모델 + 마이그레이션 추가
-- LLM enhance 시 DB 저장 → export 시 LLM 서술문 우선 사용
-
-### 검증 결과
-- 247개 전체 테스트 통과
-- 데모 11단계: 8개 섹션 완료(100%), 3개 미수집
-- DOCX/PDF: 꼬리말, 토양 3.3, 토지이용/문화재 데이터 모두 검증 통과
+### 개선 계획 문서 최신화
+- post-mvp-improvement-plan.md: Post-1~Post-9 전체 완료 체크 반영
 
 ## 전체 Phase 완료 현황
 - Phase 0: 스캐폴딩 ✅
@@ -42,6 +34,7 @@
 - Post-7: 통합 테스트 및 최종 데모 ✅
 - Post-8: 데이터 파이프라인 정합성 수정 ✅
 - Post-9: 커넥터 2종 추가 + DOCX/LLM 수정 ✅
+- Post-10: 전체 문서 최신화 + 프론트엔드 지표명 정합성 ✅
 
 ## 시스템 전체 현황
 
