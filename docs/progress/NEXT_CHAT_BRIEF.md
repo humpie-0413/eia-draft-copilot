@@ -1,37 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Reg-4: 사업유형별 평가 범위 자동 판단** ✅
-
-## 완료된 작업 (Reg-4)
-
-### scope_service.py — 평가 범위 서비스 (신규)
-- `get_assessment_scope(project_type)`: 12개 사업유형별 필수/권장/선택 섹션 분류
-- `SectionScope`, `AssessmentScope` 데이터 구조
-- 미등록 유형은 'other' 기준 적용
-
-### API: GET /api/v1/projects/{id}/assessment-scope (신규)
-- scope.py 라우터 + 엔드포인트
-- AssessmentScopeRead, SectionScopeRead 스키마
-
-### 섹션 플래너 연동
-- `calculate_section_status()`: project_type 기반 상태 보정
-  - 필수 섹션 empty → `expert_required`
-  - 선택 섹션 empty → `not_applicable`
-- `SectionStatus.scope` 필드 추가 ("required"/"optional"/"")
-
-### 프론트엔드
-- 섹션 플래너: 평가 범위 요약 바 (필수 N/M, 권장, 선택)
-- section-status-card: 필수/권장/선택 배지 + 필수 미충족 빨간 테두리
-- 증거 작업대: 필수 섹션 미수집 지표 경고 패널
-- 프로젝트 목록: 사업유형 한글 라벨
-
-### DOCX/PDF 목차 개선
-- 목차 '구분' 열 (필수/선택) + 필수 미수집 빨간 강조
-- 섹션 본문: "본 사업({유형})에서 {섹션} 항목은 환경영향평가법 시행령에 따라 필수 평가 항목에 해당한다."
-
-### 테스트
-- 20개 신규 테스트 추가 (365개 전체 통과)
+**Reg-5: 통합 검증 + 문서화** ✅ — 법령 반영 Phase 전체 완료
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -41,11 +11,25 @@
 - Reg-2: 서술문 법적 근거 반영 ✅
 - Reg-3: QA 규칙 정밀화 ✅
 - Reg-4: 사업유형별 평가 범위 자동 판단 ✅
+- Reg-5: 통합 검증 + 문서화 ✅
 
-## 다음 작업: Reg-5 이후
+## 완료된 작업 (Reg-5)
 
-### 참조
-- `docs/regulation-phase-plan.md` — 전체 Reg-phase 계획
+### 데모 스크립트 업데이트
+- 단계 4.5: 법령 반영 검증 추가 (평가 범위, 법적 근거, R007/R008)
+- QA 단계에서 R007/R008 법적 근거 표시
+- 최종 요약에 법령 반영 현황 + MVP→Post-MVP→법령 비교 표
+
+### 전체 테스트 통과
+- 365개 전체 테스트 통과 (변경 없음)
+
+### 문서 최종 업데이트
+- README.md: 법령 반영 기능, 8개 QA 규칙, 365개 테스트
+- docs/architecture.md: 법령 데이터 구조, scope_service, 8개 QA 규칙
+- docs/user-guide.md: 평가 범위, 법적 근거 표시, 필수 섹션 배지
+- docs/api-reference.md: assessment-scope API, legal_basis 필드
+- docs/development.md: 법령 데이터 수정 가이드, 9개 서비스
+- docs/progress/WORKLOG.md: Reg-0~Reg-5 전체 이력
 
 ## 시스템 전체 현황
 
@@ -74,7 +58,7 @@
 | R007 | 법적 필수 섹션 누락 (사업유형 기반) | critical |
 | R008 | 법적 필수 지표 누락 (사업유형 기반) | warning |
 
-### 법령 데이터 (Reg-1 신규)
+### 법령 데이터 (Reg-1~Reg-4)
 | 파일 | 역할 |
 |------|------|
 | regulations/legal_references.py | 환경기준별 법적 근거 매핑 |
@@ -92,7 +76,7 @@
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
 
 ### 테스트 (365개)
-- test_connectors.py (69), test_regulations.py (95), test_export_format.py (40+)
+- test_regulations.py (95), test_connectors.py (69), test_export_format.py (40+)
 - test_narrative_generator.py (51), test_llm_adapter.py (29), test_standard_checker.py (27)
 - test_spec_alignment.py (23), test_statistics.py (16)
 - test_projects.py (9), test_export_pdf.py (4), test_e2e.py (1)

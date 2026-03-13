@@ -16,7 +16,7 @@
   → 환경기준 비교 (대기/수질/소음/토양 기준 적합·초과 판정)
   → 서술문 템플릿 생성 (LLM 미사용 결정적 방식)
   → LLM 보강 (선택: OpenAI/Gemini adapter → DB 저장 → Export 반영)
-  → QA 검증 (6개 규칙, critical/warning/info 등급)
+  → QA 검증 (8개 규칙, critical/warning/info 등급 + 법적 필수 항목 검증)
   → DOCX/PDF export (표지 + 목차 + 본문 + 부록 3종)
 ```
 
@@ -47,18 +47,20 @@
 | `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
 
-### QA 규칙 (6개)
+### QA 규칙 (8개)
 
 | ID | 규칙 | 심각도 |
 |----|------|--------|
-| R001 | 섹션 증거 없음 | 핵심 섹션 critical / 기타 warning |
-| R002 | 필수 지표 누락 | 핵심 섹션 critical / 기타 warning |
+| R001 | 섹션 증거 없음 (사업유형 기반 동적 심각도) | critical/warning |
+| R002 | 필수 지표 누락 (사업유형 기반 동적 심각도) | critical/warning |
 | R003 | 충족도 50% 미만 | warning |
 | R004 | 근거 없는 완료 상태 (unsupported claim) | critical |
 | R005 | 단일 근거 지표 | info |
 | R006 | 환경기준 초과 지표 | warning |
+| R007 | 법적 필수 섹션 누락 (사업유형 기반) | critical |
+| R008 | 법적 필수 지표 누락 (사업유형 기반) | warning |
 
-> 핵심 섹션: 대기질, 수질, 소음·진동, 생태
+> 사업유형이 설정되면 환경영향평가법 시행령 별표 3 기반으로 필수 섹션을 동적 판단합니다.
 
 ### LLM Adapter (3종)
 
@@ -69,6 +71,25 @@
 | `gemini_free` | Google Gemini | gemini-2.0-flash |
 
 > MVP는 LLM 없이(`LLM_ADAPTER=none`) 완전 동작합니다.
+
+### 법령 반영 기능
+
+| 기능 | 설명 |
+|------|------|
+| 법적 근거 인용 | 서술문에 "환경정책기본법 시행령 별표 제1호에 따른…" 자동 삽입 |
+| 사업유형별 평가 범위 | 12개 사업유형에 따라 필수/권장/선택 섹션 자동 분류 |
+| 법적 필수 항목 검증 | QA R007/R008 규칙으로 법적 필수 섹션·지표 누락 자동 검출 |
+| 환경기준 법적 근거 | 기준 비교 테이블에 법적 근거 열 (법령명·조문) 표시 |
+| 지역구분별 기준 차등 | 소음 환경기준의 지역구분(가~라) 차등 적용 |
+| DOCX/PDF 필수 표시 | 목차에 필수/선택 구분, 필수 미충족 섹션 강조 |
+
+### 법령 데이터 모듈 (3개)
+
+| 모듈 | 경로 | 역할 |
+|------|------|------|
+| `legal_references.py` | `backend/app/data/regulations/` | 환경기준별 법적 근거 매핑 |
+| `required_items.py` | `backend/app/data/regulations/` | 사업유형별 필수 평가 항목 (12개 유형) |
+| `area_classifications.py` | `backend/app/data/regulations/` | 소음 지역구분별 기준 차등 |
 
 ## 기술 스택
 
@@ -87,7 +108,7 @@
 - **HTTP 클라이언트**: httpx (공공데이터 API 호출)
 - **문서 생성**: python-docx (DOCX), reportlab (PDF)
 - **LLM**: openai SDK + httpx (Gemini REST)
-- **테스트**: pytest + httpx (ASGI 테스트, 247개)
+- **테스트**: pytest + httpx (ASGI 테스트, 365개)
 
 ## 로컬 개발 환경 설정
 
@@ -189,7 +210,7 @@ python scripts/demo_full_scenario.py
 
 ## 테스트
 
-### 백엔드 테스트 (pytest, 247개)
+### 백엔드 테스트 (pytest, 365개)
 
 ```bash
 cd backend
@@ -203,10 +224,11 @@ pytest tests/ -v
 - `tests/test_spec_alignment.py` — 스펙 정렬 검증 (23개)
 - `tests/test_statistics.py` — 통계 엔진 (16개)
 - `tests/test_standard_checker.py` — 환경기준 비교 (27개)
-- `tests/test_narrative_generator.py` — 서술문 생성기 (28개)
+- `tests/test_narrative_generator.py` — 서술문 생성기 (51개)
 - `tests/test_export_format.py` — DOCX/PDF 포맷 (40+개)
 - `tests/test_export_pdf.py` — PDF 출력 (4개)
 - `tests/test_llm_adapter.py` — LLM adapter (29개)
+- `tests/test_regulations.py` — 법령 데이터 + QA 규칙 + 평가 범위 (95개)
 
 ### 커넥터 실제 API 검증
 
@@ -251,16 +273,17 @@ eia-draft-copilot/
 │   │   ├── api/v1/               # REST API 엔드포인트 (11개 라우터)
 │   │   ├── connectors/           # 공공데이터 커넥터 (6종)
 │   │   ├── crud/                 # DB CRUD 함수
-│   │   ├── data/                 # 환경기준 데이터
+│   │   ├── data/                 # 환경기준 데이터 + 법령 데이터
+│   │   │   └── regulations/     # 법령 데이터 (법적 근거, 필수 항목, 지역구분)
 │   │   ├── llm/                  # LLM adapter (3종)
 │   │   ├── models/               # SQLAlchemy 모델
 │   │   ├── schemas/              # Pydantic 스키마
-│   │   ├── services/             # 비즈니스 로직 (통계, 기준비교, 서술문, QA, Export)
+│   │   ├── services/             # 비즈니스 로직 (통계, 기준비교, 서술문, QA, 평가범위, Export)
 │   │   ├── main.py               # FastAPI 앱 엔트리포인트
 │   │   ├── config.py             # 환경 설정
 │   │   └── db.py                 # DB 세션 관리
 │   ├── alembic/                  # DB 마이그레이션 (4개)
-│   ├── tests/                    # 백엔드 테스트 (247개)
+│   ├── tests/                    # 백엔드 테스트 (365개)
 │   └── requirements.txt          # Python 의존성
 ├── scripts/                      # 유틸리티 스크립트
 │   ├── demo_full_scenario.py     # 통합 데모 (11단계)
@@ -282,4 +305,5 @@ eia-draft-copilot/
 - [API 레퍼런스](docs/api-reference.md)
 - [개발자 가이드](docs/development.md)
 - [Phase 계획](docs/claude/phase-plan.md)
+- [법령 반영 Phase 계획](docs/regulation-phase-plan.md)
 - [작업 이력](docs/progress/WORKLOG.md)

@@ -26,11 +26,11 @@
 │  ┌──────────┐ ┌──────────────┐ ┌─────────────────────────────┐ │
 │  │ API      │ │  서비스 계층   │ │    커넥터 파이프라인          │ │
 │  │ 라우터   │─▶│              │ │ BaseConnector               │ │
-│  │ (11개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector         │ │
+│  │ (12개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector         │ │
 │  └──────────┘ │ ├기준비교     │ │ ├─ WaterInfoConnector       │ │
 │               │ ├서술문생성   │ │ ├─ SoilInfoConnector        │ │
 │               │ ├QA 규칙     │ │ ├─ KmaWeatherConnector      │ │
-│               │              │ │ ├─ LandUseConnector         │ │
+│               │ ├평가범위     │ │ ├─ LandUseConnector         │ │
 │               │              │ │ └─ CulturalHeritageConnector│ │
 │               │ ├Export      │ └─────────────────────────────┘ │
 │               │ └유사도 계산 │                                  │
@@ -100,7 +100,8 @@
     └─ 서술문 + 통계 요약 테이블 + 환경기준 비교 + 상세 데이터 샘플
 
 11. QA (Quality Assurance)
-    └─ 6개 결정적 규칙 실행 → critical/warning/info 이슈 목록
+    └─ 8개 결정적 규칙 실행 → critical/warning/info 이슈 목록
+    └─ R007/R008: 사업유형 기반 법적 필수 항목 검증
 
 12. Export (Post-5)
     └─ export_ready 확인 (critical 0건)
@@ -284,6 +285,12 @@ Unique 제약: (project_id, section_key)
 | GET | `/projects/{id}/sections/scaffold` | 전체 초안 뼈대 |
 | GET | `/projects/{id}/sections/scaffold/{key}` | 단일 섹션 초안 뼈대 |
 
+### 평가 범위 (Assessment Scope) — Reg-4
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/projects/{id}/assessment-scope` | 사업유형 기반 평가 범위 (필수/권장/선택) |
+
 ### 통계 (Statistics) — Post-1
 
 | 메서드 | 경로 | 설명 |
@@ -408,14 +415,65 @@ generate_narrative(section_def, section_stats, section_check)
 └── 미수집 섹션: 고정 서술문 "현장조사 및 자료 수집이 필요하다"
 ```
 
+## 법령 데이터 구조 (Reg-1~Reg-4)
+
+```
+backend/app/data/regulations/
+│
+├── legal_references.py         # 환경기준별 법적 근거 매핑
+│   └── {indicator → {standard_value, legal_basis, law_name, article}}
+│
+├── required_items.py           # 사업유형별 필수 평가 항목
+│   └── REQUIRED_BY_TYPE: {project_type → RequiredItems}
+│   └── 12개 사업유형 정의:
+│       power_plant, road, housing, industrial, tourism, port,
+│       military, airport, dam, reclamation, railway, other
+│
+└── area_classifications.py     # 소음 지역구분별 기준 차등
+    └── 가/나/다/라 지역 × 주간/야간 × 일반/도로변
+```
+
+### 평가 범위 서비스 (scope_service.py)
+
+```
+get_assessment_scope(project_type)
+│
+├── required_items.py에서 필수 섹션·지표 조회
+├── 각 섹션을 required / recommended / optional로 분류
+└── AssessmentScope 반환 (섹션별 scope + required_indicators)
+```
+
+### 법적 근거 반영 흐름
+
+```
+1. 환경기준 비교 (standard_checker.py)
+   └── IndicatorCheckResult.legal_basis에 법적 근거 매핑
+
+2. 서술문 생성 (narrative_generator.py)
+   └── 기준 비교 서술 시 "환경정책기본법 시행령 별표 제1호에 따른…" 자동 삽입
+
+3. DOCX/PDF export (export_service.py)
+   └── 기준 비교 테이블에 법적 근거 열 추가
+   └── 목차에 필수/선택 구분 열 추가
+   └── 필수 섹션 본문에 법적 필수 안내 문장 삽입
+
+4. QA (qa_engine.py)
+   └── R007: 법적 필수 섹션에 증거 없으면 critical
+   └── R008: 법적 필수 지표 누락 시 warning
+```
+
 ## QA 규칙 엔진 구조
 
 ```
 run_qa(db, project_id)
 │
+├── 프로젝트 조회 → project_type 확인
+├── 사업유형 기반 필수 섹션 집합 결정
 ├── 각 섹션(11개)에 대해:
 │   ├── calculate_section_status() → 충족 상태 계산
-│   ├── R001: 섹션 비어 있음 검사
+│   ├── R007: 법적 필수 섹션 누락 (사업유형 설정 시)
+│   ├── R001: 섹션 비어 있음 검사 (법적 필수는 R007에서 처리)
+│   ├── R008: 법적 필수 지표 누락 (사업유형 설정 시)
 │   ├── R002: 필수 지표 누락 검사
 │   ├── R003: 충족도 50% 미만 검사
 │   ├── R004: unsupported claim 검출
@@ -427,8 +485,8 @@ run_qa(db, project_id)
 ```
 
 심각도 등급:
-- **critical**: Export 차단. 핵심 4개 섹션의 증거 부재 또는 필수 지표 누락
-- **warning**: Export 가능. 비핵심 섹션 이슈, 충족도 부족, 환경기준 초과
+- **critical**: Export 차단. 법적 필수 섹션 누락, 핵심 섹션 증거 부재, unsupported claim
+- **warning**: Export 가능. 법적 필수 지표 누락, 비핵심 섹션 이슈, 충족도 부족, 환경기준 초과
 - **info**: 참고 정보. 근거 1건인 지표 안내
 
 ## LLM Adapter 구조 (Post-6)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""실사용 시나리오 전체 흐름 데모 (Post-9 최종판).
+"""실사용 시나리오 전체 흐름 데모 (Reg-5 최종판).
 
 시나리오: "서울특별시 강남구 태양광 발전소 건설 프로젝트"
 
@@ -16,11 +16,16 @@
      h. 생태 수동 데이터
   3. 유사사례 등록 및 매칭
   4. 섹션 플래너 충족도 확인
+  4.5. 법령 반영 검증 (Reg-5)
+     a. 평가 범위 조회 (power_plant)
+     b. 필수 섹션 확인
+     c. 서술문 법적 근거 포함 확인
+     d. 환경기준 비교 법적 근거 열 확인
   5. 통계 엔진 실행 (Post-1)
   6. 환경기준 비교 실행 (Post-2)
   7. 초안 뼈대 + 서술문 생성 (Post-3)
   8. LLM 보강 실행 (Post-6, 선택)
-  9. QA 실행
+  9. QA 실행 + R007/R008 법적 필수 항목 검증 (Reg-3)
   10. DOCX + PDF export (부록 포함, Post-5)
   11. 결과 요약 비교
 
@@ -559,6 +564,173 @@ async def step4_section_planner(client: httpx.AsyncClient, project_id: str) -> d
 
 
 # ═══════════════════════════════════════════════════════════════
+# 단계 4.5: 법령 반영 검증 (Reg-5)
+# ═══════════════════════════════════════════════════════════════
+
+async def step4_5_regulation_check(
+    client: httpx.AsyncClient,
+    project_id: str,
+) -> dict:
+    """법령 반영 기능을 종합 검증한다.
+
+    Reg-1~Reg-4에서 구현한 기능들이 정상 동작하는지 확인:
+    a. 평가 범위 조회 (power_plant 유형 기반)
+    b. 필수 섹션 목록 확인
+    c. 서술문에 법적 근거 포함 여부 확인
+    d. 환경기준 비교 테이블에 법적 근거 열 존재 확인
+    """
+    banner("단계 4.5: 법령 반영 검증 (Reg-5)")
+
+    reg_summary = {
+        "scope_ok": False,
+        "required_sections": [],
+        "narrative_legal_refs": 0,
+        "standards_legal_refs": 0,
+    }
+
+    # ── a. 평가 범위 조회 ──
+    sub_banner("4.5-a. 평가 범위 조회 (power_plant)")
+    scope = await api_call(
+        client, "GET",
+        f"/api/v1/projects/{project_id}/assessment-scope",
+        label="평가 범위",
+    )
+    if scope:
+        reg_summary["scope_ok"] = True
+        print(f"    사업유형: {scope['type_name']} ({scope['project_type']})")
+        print(f"    법적 근거: {scope['legal_basis']}")
+        print(f"    필수 섹션: {scope['required_count']}개")
+        print(f"    권장 섹션: {scope['recommended_count']}개")
+        print(f"    선택 섹션: {scope['optional_count']}개")
+        print()
+
+        required = [s for s in scope["sections"] if s["scope"] == "required"]
+        recommended = [s for s in scope["sections"] if s["scope"] == "recommended"]
+        optional = [s for s in scope["sections"] if s["scope"] == "optional"]
+
+        reg_summary["required_sections"] = [s["section_key"] for s in required]
+
+        print("    필수 섹션 목록:")
+        for s in required:
+            ind_count = len(s.get("required_indicators", []))
+            print(f"      - {s['title']} ({s['section_key']}): 필수 지표 {ind_count}개")
+        if recommended:
+            print("    권장 섹션:")
+            for s in recommended:
+                print(f"      - {s['title']} ({s['section_key']})")
+        if optional:
+            print("    선택 섹션:")
+            for s in optional:
+                print(f"      - {s['title']} ({s['section_key']})")
+
+    # ── b. 섹션 상태에 scope 필드 확인 ──
+    sub_banner("4.5-b. 섹션 상태 scope 필드 확인")
+    status_result = await api_call(
+        client, "GET",
+        f"/api/v1/projects/{project_id}/sections/status",
+        label="섹션 상태 + scope",
+    )
+    if status_result:
+        sections = status_result.get("sections", [])
+        scope_found = 0
+        for s in sections:
+            scope_val = s.get("scope", "")
+            if scope_val:
+                scope_found += 1
+            scope_label = {"required": "필수", "recommended": "권장", "optional": "선택"}.get(scope_val, "-")
+            print(f"    {s['order']:2d}. {s['title']:<12s}  [{scope_label}]  {s['status']}")
+        print(f"\n    scope 정보 존재 섹션: {scope_found}/{len(sections)}")
+
+    # ── c. 서술문 법적 근거 포함 확인 ──
+    sub_banner("4.5-c. 서술문 법적 근거 포함 확인")
+    scaffold = await api_call(
+        client, "GET",
+        f"/api/v1/projects/{project_id}/sections/scaffold",
+        label="초안 뼈대 (법적 근거 검증)",
+    )
+    if scaffold:
+        # 법적 근거 키워드 패턴
+        legal_keywords = [
+            "환경정책기본법",
+            "토양환경보전법",
+            "환경영향평가법",
+            "시행령",
+            "별표",
+        ]
+        narrative_ref_count = 0
+        for s in scaffold.get("sections", []):
+            narrative = s.get("narrative", "") or ""
+            found = [kw for kw in legal_keywords if kw in narrative]
+            if found:
+                narrative_ref_count += 1
+                print(f"    {s['title']:<12s}: 법적 근거 포함 ({', '.join(found)})")
+                # 첫 줄 미리보기
+                first_legal = ""
+                for line in narrative.split("\n"):
+                    if any(kw in line for kw in legal_keywords):
+                        first_legal = line.strip()[:80]
+                        break
+                if first_legal:
+                    print(f"        예시: {first_legal}")
+            else:
+                if narrative and "수집" not in narrative:
+                    print(f"    {s['title']:<12s}: 서술문 있음, 법적 근거 없음")
+
+        reg_summary["narrative_legal_refs"] = narrative_ref_count
+        print(f"\n    법적 근거 포함 서술문: {narrative_ref_count}개 섹션")
+
+    # ── d. 환경기준 비교 법적 근거 열 확인 ──
+    sub_banner("4.5-d. 환경기준 비교 법적 근거 열 확인")
+    standards = await api_call(
+        client, "GET",
+        f"/api/v1/projects/{project_id}/standards-check",
+        label="환경기준 비교 (법적 근거 열)",
+    )
+    if standards:
+        legal_ref_count = 0
+        for s in standards.get("sections", []):
+            for ind in s.get("indicators", []):
+                legal = ind.get("legal_basis", "")
+                if legal:
+                    legal_ref_count += 1
+        reg_summary["standards_legal_refs"] = legal_ref_count
+        print(f"    환경기준 비교 지표 중 법적 근거 포함: {legal_ref_count}건")
+
+        # 대표 예시 출력
+        for s in standards.get("sections", []):
+            for ind in s.get("indicators", []):
+                legal = ind.get("legal_basis", "")
+                if legal and ind.get("standard_value") is not None:
+                    print(f"    예시: {ind['indicator']} — {legal}")
+                    break
+            if any(ind.get("legal_basis") for ind in s.get("indicators", [])):
+                break
+
+    # ── 검증 요약 ──
+    sub_banner("법령 반영 검증 요약")
+    checks = [
+        ("평가 범위 API 동작", reg_summary["scope_ok"]),
+        ("필수 섹션 식별", len(reg_summary["required_sections"]) > 0),
+        ("서술문 법적 근거 포함", reg_summary["narrative_legal_refs"] > 0),
+        ("환경기준 법적 근거 열", reg_summary["standards_legal_refs"] > 0),
+    ]
+    all_pass = True
+    for label, ok in checks:
+        mark = "✓" if ok else "✗"
+        print(f"    {mark} {label}")
+        if not ok:
+            all_pass = False
+
+    print()
+    if all_pass:
+        print("    법령 반영 검증 통과")
+    else:
+        print("    [경고] 일부 검증 항목 미통과 — 상세 확인 필요")
+
+    return reg_summary
+
+
+# ═══════════════════════════════════════════════════════════════
 # 단계 5: 통계 엔진 실행 (Post-1)
 # ═══════════════════════════════════════════════════════════════
 
@@ -801,6 +973,23 @@ async def step9_qa(client: httpx.AsyncClient, project_id: str) -> dict:
         sev = severity_label.get(issue["severity"], issue["severity"])
         print(f"    {sev} [{issue['rule_id']}] {issue['title']}")
         print(f"           {issue['message']}")
+        # R007/R008은 법적 근거 표시
+        legal = issue.get("legal_basis", "")
+        if legal:
+            print(f"           법적 근거: {legal}")
+
+    # R007/R008 법적 필수 항목 규칙 동작 확인
+    r007_issues = [i for i in issues if i["rule_id"] == "R007"]
+    r008_issues = [i for i in issues if i["rule_id"] == "R008"]
+    print()
+    print(f"    R007 (법적 필수 섹션 누락): {len(r007_issues)}건")
+    print(f"    R008 (법적 필수 지표 누락): {len(r008_issues)}건")
+    if r007_issues:
+        for r in r007_issues:
+            print(f"      → {r['section_key']}: {r['title']}")
+    if r008_issues:
+        for r in r008_issues:
+            print(f"      → {r['section_key']}: {r['title']}")
 
     return {
         "export_ready": export_ready,
@@ -808,6 +997,8 @@ async def step9_qa(client: httpx.AsyncClient, project_id: str) -> dict:
         "warning": summary.get("warning_count", 0),
         "info": summary.get("info_count", 0),
         "total": summary.get("total", 0),
+        "r007_count": len(r007_issues),
+        "r008_count": len(r008_issues),
     }
 
 
@@ -903,6 +1094,7 @@ def step11_summary(
     project_id: str,
     collect_stats: dict,
     section_summary: dict,
+    reg_summary: dict,
     stats_summary: dict,
     check_summary: dict,
     scaffold_summary: dict,
@@ -933,6 +1125,17 @@ def step11_summary(
     print(f"  │ 데이터 있는 섹션: {section_summary.get('complete', 0) + section_summary.get('partial', 0)}개 "
           f"(완료 {section_summary.get('complete', 0)} + 부분 {section_summary.get('partial', 0)})")
     print(f"  │ 미수집 섹션: {section_summary.get('empty', 0)}개")
+    print()
+
+    # 법령 반영 (Reg-1~Reg-5)
+    print("  ┌─ 법령 반영 (Reg-1~Reg-5) ──────────────────────")
+    print(f"  │ 평가 범위 API: {'정상' if reg_summary.get('scope_ok') else '미동작'}")
+    req_secs = reg_summary.get("required_sections", [])
+    print(f"  │ 필수 섹션: {len(req_secs)}개{f' ({', '.join(req_secs[:5])})' if req_secs else ''}")
+    print(f"  │ 서술문 법적 근거: {reg_summary.get('narrative_legal_refs', 0)}개 섹션")
+    print(f"  │ 환경기준 법적 근거: {reg_summary.get('standards_legal_refs', 0)}건")
+    print(f"  │ R007 법적 필수 섹션 누락: {qa_summary.get('r007_count', 0)}건")
+    print(f"  │ R008 법적 필수 지표 누락: {qa_summary.get('r008_count', 0)}건")
     print()
 
     # 통계 엔진
@@ -989,18 +1192,20 @@ def step11_summary(
     print()
 
     # 기능 비교 표
-    print("  ┌─ MVP vs Post-MVP 기능 비교 ─────────────────────")
+    print("  ┌─ MVP → Post-MVP → 법령 반영 기능 비교 ─────────")
     print("  │")
-    print("  │  기능                 │ MVP (Phase 6)  │ Post-MVP      ")
-    print("  │  ─────────────────────┼────────────────┼───────────────")
-    print("  │  커넥터 수             │ 2개            │ 6개           ")
-    print("  │  통계 엔진             │ 미구현         │ 지표별 기술통계")
-    print("  │  환경기준 비교         │ 미구현         │ 대기/수질/소음 ")
-    print("  │  서술문 생성           │ 미구현         │ 템플릿 기반    ")
-    print("  │  LLM 보강             │ 미구현         │ 3종 adapter   ")
-    print("  │  문서 포맷             │ 기본 DOCX      │ 표지+목차+부록 ")
-    print("  │  PDF 출력             │ 미구현         │ reportlab 기반 ")
-    print("  │  수동 입력 가이드      │ 미구현         │ 10개 분야 안내 ")
+    print("  │  기능                 │ MVP (Phase 6)  │ Post-MVP       │ 법령 반영 (Reg)")
+    print("  │  ─────────────────────┼────────────────┼────────────────┼────────────────")
+    print("  │  커넥터 수             │ 2개            │ 6개            │ 6개 (동일)     ")
+    print("  │  통계 엔진             │ 미구현         │ 지표별 기술통계 │ (동일)         ")
+    print("  │  환경기준 비교         │ 미구현         │ 대기/수질/소음  │ +법적 근거 열   ")
+    print("  │  서술문 생성           │ 미구현         │ 템플릿 기반     │ +법적 근거 인용 ")
+    print("  │  QA 규칙              │ 6개            │ 6개            │ 8개(+R007,R008)")
+    print("  │  평가 범위 판단        │ 미구현         │ 미구현          │ 12개 사업유형  ")
+    print("  │  법령 데이터           │ 없음           │ 없음           │ 3개 모듈       ")
+    print("  │  LLM 보강             │ 미구현         │ 3종 adapter    │ (동일)         ")
+    print("  │  문서 포맷             │ 기본 DOCX      │ 표지+목차+부록  │ +필수 섹션 표시 ")
+    print("  │  PDF 출력             │ 미구현         │ reportlab 기반  │ (동일)         ")
     print("  │")
     print("  └─────────────────────────────────────────────────")
     print()
@@ -1012,9 +1217,9 @@ def step11_summary(
 
 async def main():
     print("╔══════════════════════════════════════════════════════════════════╗")
-    print("║  EIA Draft Copilot — Post-MVP 통합 데모 (Post-9)                ║")
+    print("║  EIA Draft Copilot — 법령 반영 통합 데모 (Reg-5)                ║")
     print("║  시나리오: 서울특별시 강남구 태양광 발전소 건설 프로젝트            ║")
-    print("║  범위: Phase 0~6 + Post-1~Post-9 전체 기능                      ║")
+    print("║  범위: Phase 0~6 + Post-1~Post-11 + Reg-1~Reg-5 전체 기능      ║")
     print("╚══════════════════════════════════════════════════════════════════╝")
     print()
     print(f"  백엔드 URL: {BASE_URL}")
@@ -1050,6 +1255,9 @@ async def main():
         # ── 단계 4: 섹션 플래너 ──
         section_summary = await step4_section_planner(client, project_id)
 
+        # ── 단계 4.5: 법령 반영 검증 (Reg-5) ──
+        reg_summary = await step4_5_regulation_check(client, project_id)
+
         # ── 단계 5: 통계 엔진 (Post-1) ──
         stats_summary = await step5_statistics(client, project_id)
 
@@ -1080,6 +1288,7 @@ async def main():
         project_id=project_id,
         collect_stats=collect_stats,
         section_summary=section_summary,
+        reg_summary=reg_summary,
         stats_summary=stats_summary,
         check_summary=check_summary,
         scaffold_summary=scaffold_summary,

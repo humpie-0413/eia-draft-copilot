@@ -112,7 +112,7 @@ npm run dev  # http://localhost:3000
 
 ```bash
 cd backend
-pytest tests/ -v                         # 전체 테스트 (247개)
+pytest tests/ -v                         # 전체 테스트 (365개)
 pytest tests/test_projects.py -v         # 프로젝트 테스트만
 pytest tests/test_connectors.py -v       # 커넥터 테스트만
 pytest tests/test_e2e.py -v              # E2E 테스트만
@@ -266,14 +266,15 @@ register_connector(NewConnector())
 
 | 파일 | 역할 |
 |------|------|
-| `section_planner.py` | 섹션 정의 + 충족도 계산 |
+| `section_planner.py` | 섹션 정의 + 충족도 계산 + 평가 범위 연동 |
+| `scope_service.py` | 사업유형별 필수/권장/선택 평가 범위 판단 (Reg-4) |
 | `draft_scaffold.py` | 초안 뼈대 생성 (LLM 서술문 우선 → 템플릿 fallback) |
 | `statistics.py` | 지표별 기술 통계 (Post-1) |
-| `standard_checker.py` | 환경기준 비교 (Post-2) |
-| `narrative_generator.py` | 서술문 템플릿 생성 (Post-3) |
+| `standard_checker.py` | 환경기준 비교 + 법적 근거 (Post-2, Reg-2) |
+| `narrative_generator.py` | 서술문 템플릿 생성 + 법적 근거 인용 (Post-3, Reg-2) |
 | `similarity.py` | 유사사례 유사도 계산 |
-| `qa_engine.py` | QA 규칙 엔진 (6개 규칙) |
-| `export_service.py` | DOCX/PDF 생성 (Post-5) |
+| `qa_engine.py` | QA 규칙 엔진 (8개 규칙, R007/R008 포함) |
+| `export_service.py` | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 |
 
 ### 새 서비스 추가 패턴
 
@@ -312,9 +313,68 @@ def _rule_new_check(section_def, section_status):
 
 ### 3. 규칙 ID 규칙
 
-- 형식: `R{3자리 숫자}` (예: R001~R007)
+- 형식: `R{3자리 숫자}` (예: R001~R008)
 - 심각도: `CRITICAL` (export 차단), `WARNING` (경고), `INFO` (참고)
-- critical은 핵심 섹션(대기질, 수질, 소음·진동, 생태)에 대해서만 부여 권장
+- 사업유형 설정 시 required_items.py 기반으로 동적 심각도 판단
+- R007/R008은 법적 근거 필드(legal_basis) 포함
+
+---
+
+## 법령 데이터 수정/추가 방법 (Reg-1~Reg-4)
+
+법령 데이터는 `backend/app/data/regulations/` 디렉토리에 Python 데이터 구조로 관리됩니다.
+
+### 법적 근거 매핑 수정 (`legal_references.py`)
+
+환경기준에 대한 법적 근거(법령명, 조문)를 매핑합니다.
+`env_standards.py`의 `Standard` 클래스에 `legal_basis` 필드로 연동됩니다.
+
+```python
+# 새 법적 근거 추가 예시
+LEGAL_REFS["새_지표명"] = LegalReference(
+    indicator="새_지표명",
+    standard_value=기준값,
+    legal_basis="해당 법령명 및 조문",
+    law_name="법령 약칭",
+    article="조문 번호",
+)
+```
+
+### 사업유형별 필수 항목 수정 (`required_items.py`)
+
+12개 사업유형별 필수 평가 섹션과 지표를 정의합니다.
+
+```python
+# 새 사업유형 추가 예시
+REQUIRED_BY_TYPE["new_type"] = RequiredItems(
+    project_type="new_type",
+    type_name="사업유형 한글명",
+    legal_basis="환경영향평가법 시행령 별표 3 제X호",
+    sections={
+        "air_quality": ["PM10_연평균", "PM2.5_연평균"],
+        "water_quality": ["BOD", "COD"],
+        # ...
+    },
+)
+```
+
+변경 후 반드시 테스트 실행:
+```bash
+pytest tests/test_regulations.py -v
+```
+
+### 소음 지역구분 수정 (`area_classifications.py`)
+
+소음환경기준의 지역구분별 기준값을 관리합니다.
+현재 가/나/다/라 4개 지역 × 주간/야간 × 일반/도로변 구조입니다.
+
+### 변경 시 영향 범위
+
+| 파일 변경 | 영향받는 서비스 |
+|-----------|----------------|
+| `legal_references.py` | standard_checker, narrative_generator, export_service |
+| `required_items.py` | scope_service, qa_engine (R007/R008), section_planner |
+| `area_classifications.py` | standard_checker (소음 섹션) |
 
 ---
 

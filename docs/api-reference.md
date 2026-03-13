@@ -285,6 +285,56 @@ EIA 11개 섹션 정의를 반환합니다 (DB 비의존).
 
 ---
 
+## 평가 범위 (Assessment Scope) — Reg-4
+
+### GET /projects/{project_id}/assessment-scope
+
+프로젝트의 사업유형 기반 평가 범위를 반환합니다.
+사업유형 미설정 시 'other' 기준으로 산정합니다.
+
+**응답 (200)**:
+```json
+{
+  "project_type": "power_plant",
+  "type_name": "발전소",
+  "legal_basis": "환경영향평가법 시행령 별표 3 제1호 나목",
+  "sections": [
+    {
+      "section_key": "air_quality",
+      "title": "대기질",
+      "scope": "required",
+      "required_indicators": ["PM10_연평균", "PM2.5_연평균", "NO2_연평균", "SO2_연평균", "CO_연평균", "O3_연평균"],
+      "legal_basis": "환경영향평가법 시행령 별표 3 제1호 나목"
+    },
+    {
+      "section_key": "climate",
+      "title": "기후",
+      "scope": "recommended",
+      "required_indicators": [],
+      "legal_basis": ""
+    },
+    {
+      "section_key": "waste",
+      "title": "폐기물",
+      "scope": "optional",
+      "required_indicators": [],
+      "legal_basis": ""
+    }
+  ],
+  "required_count": 5,
+  "recommended_count": 2,
+  "optional_count": 4
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| scope | `required` = 법적 필수, `recommended` = 권장, `optional` = 선택 |
+| required_indicators | 해당 섹션에서 법적으로 요구되는 지표 목록 (required만 해당) |
+| legal_basis | 법적 근거 (필수 섹션만 해당) |
+
+---
+
 ## 통계 (Statistics) — Post-1
 
 ### GET /projects/{project_id}/statistics
@@ -361,7 +411,8 @@ EIA 11개 섹션 정의를 반환합니다 (DB 비의존).
           "measured_count": 3,
           "status": "pass",
           "exceedance_rate": 0.0,
-          "description": "PM10 연평균: 42.0 ug/m3 ≤ 기준 50.0 ug/m3 → 적합"
+          "description": "PM10 연평균: 42.0 ug/m3 ≤ 기준 50.0 ug/m3 → 적합",
+          "legal_basis": "환경정책기본법 시행령 별표 제1호 (대기환경기준)"
         }
       ],
       "water_grade": null,
@@ -394,12 +445,13 @@ QA 규칙을 실행하고 결과를 반환합니다.
   "run_at": "...",
   "issues": [
     {
-      "rule_id": "R001",
+      "rule_id": "R007",
       "severity": "critical",
       "section_key": "water_quality",
-      "title": "수질 섹션 증거 없음",
-      "message": "...",
-      "indicators": ["BOD", "COD", "SS", "T-N", "T-P", "DO"]
+      "title": "수질 법적 필수 섹션 누락",
+      "message": "발전소 사업은 환경영향평가법 시행령 별표 3에 따라 수질 평가가 필수입니다.",
+      "indicators": ["BOD", "COD", "SS", "T-N", "T-P", "DO"],
+      "legal_basis": "환경영향평가법 시행령 별표 3 제1호 나목"
     }
   ],
   "summary": {

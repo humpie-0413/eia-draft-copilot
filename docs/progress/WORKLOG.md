@@ -884,6 +884,12 @@
 | 59 | `defc325` | docs: 전체 문서 Post-9 기준 최신화 |
 | 60 | `5a8ec71` | fix: 프론트엔드 수동 입력 지표명 정합성 + 개선 계획 문서 최신화 |
 | 61 | `41760d1` | docs: Post-10 완료 — 문서 최신화 작업 기록 |
+| 62 | `5603382` | fix: 비수치형 서술문 불일치 + 부록 B 유사사례 중복 수정 (Post-11) |
+| 63 | `0bff1c7` | feat: 법령 데이터 구축 (Reg-1) |
+| 64 | `359420c` | feat: 서술문 법적 근거 반영 (Reg-2) |
+| 65 | `2e6b8c1` | feat: QA 규칙 정밀화 — R007/R008 법적 필수 항목 검증 (Reg-3) |
+| 66 | `1c06bbc` | feat: 사업유형별 평가 범위 자동 판단 (Reg-4) |
+| 67 | `016f08a` | docs: Reg-4 완료 — 문서 최신화 작업 기록 |
 
 ---
 
@@ -1140,3 +1146,54 @@
 - `src/components/section/section-status-card.tsx` — 범위 배지 (수정)
 - `src/app/projects/[id]/sections/page.tsx` — 범위 요약 바 (수정)
 - `src/app/projects/[id]/evidences/page.tsx` — 미수집 지표 경고 (수정)
+
+---
+
+## Reg-5: 통합 검증 + 문서화 ✅
+
+### 완료 항목
+
+#### 1. 데모 스크립트 업데이트 (scripts/demo_full_scenario.py)
+- 기존 11단계에 "단계 4.5: 법령 반영 검증" 추가
+  - a. 평가 범위 API 조회 (power_plant → 필수 5, 권장 2, 선택 4)
+  - b. 섹션 상태 scope 필드 확인 (required/recommended/optional)
+  - c. 서술문 법적 근거 포함 여부 검증 (환경정책기본법, 토양환경보전법 등)
+  - d. 환경기준 비교 지표별 legal_basis 존재 확인
+  - e. 검증 결과 4항목 합격/불합격 요약 출력
+- QA 실행(단계 9)에서 R007/R008 이슈 건수 및 법적 근거 표시 추가
+- 최종 요약(단계 11)에 법령 반영 현황 섹션 추가
+- 기능 비교 표에 "법령 반영 (Reg)" 열 추가 (8개 QA 규칙, 12개 사업유형, 법적 근거 등)
+- 스크립트 헤더 "Post-9 최종판" → "Reg-5 최종판" 업데이트
+
+#### 2. 전체 테스트 실행
+- 365개 전체 테스트 통과 (변경 없음)
+- 테스트 분포:
+  - test_regulations.py: 95개 (법령 데이터 + QA 규칙 + 평가 범위)
+  - test_connectors.py: 69개 (6종 커넥터)
+  - test_narrative_generator.py: 51개 (서술문 생성기 + 법적 근거)
+  - test_export_format.py: 40+개 (DOCX/PDF 포맷)
+  - test_llm_adapter.py: 29개 (LLM adapter)
+  - test_standard_checker.py: 27개 (환경기준 비교)
+  - test_spec_alignment.py: 23개 (스펙 정렬)
+  - test_statistics.py: 16개 (통계 엔진)
+  - test_projects.py: 9개 (프로젝트 CRUD)
+  - test_export_pdf.py: 4개 (PDF 출력)
+  - test_e2e.py: 1개 (E2E 통합)
+
+#### 3. 문서 최종 업데이트
+- **README.md**: 법령 반영 기능 섹션 추가 (법적 근거 인용, 평가 범위, R007/R008, 법령 데이터 모듈), QA 8개 규칙, 테스트 365개
+- **docs/architecture.md**: 법령 데이터 구조도, 평가 범위 서비스 구조, 법적 근거 반영 흐름, QA 8개 규칙 업데이트, API 평가 범위 엔드포인트
+- **docs/user-guide.md**: 사업유형별 평가 범위 설명, 섹션 플래너 범위 배지, 서술문 법적 근거 표시, QA 8개 규칙 + R007/R008 설명, Export 목차 필수 표시
+- **docs/api-reference.md**: GET /assessment-scope 엔드포인트 추가, QA 응답에 legal_basis 필드, 환경기준 비교 응답에 legal_basis 필드
+- **docs/development.md**: 서비스 파일 목록 업데이트 (9개 서비스), 법령 데이터 수정/추가 방법 가이드, QA 규칙 8개, 테스트 365개
+- **docs/progress/WORKLOG.md**: Reg-5 이력 추가
+
+### 주요 파일
+- `scripts/demo_full_scenario.py` — 법령 반영 검증 단계 추가 (수정)
+- `README.md` — 법령 반영 기능 문서화 (수정)
+- `docs/architecture.md` — 법령 데이터 구조 + scope_service (수정)
+- `docs/user-guide.md` — 평가 범위 + 법적 근거 표시 (수정)
+- `docs/api-reference.md` — assessment-scope API + legal_basis 필드 (수정)
+- `docs/development.md` — 법령 데이터 수정 가이드 (수정)
+- `docs/progress/WORKLOG.md` — Reg-5 이력 (수정)
+- `docs/progress/NEXT_CHAT_BRIEF.md` — 최종 브리핑 (수정)
