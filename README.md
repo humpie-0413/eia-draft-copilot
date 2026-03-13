@@ -8,14 +8,14 @@
 
 ```
 프로젝트 입력 (이름, 유형, geometry)
-  → 공공데이터 수집 (대기질 · 수질 · 토양 · 기후 4종 커넥터 + 수동 입력)
+  → 공공데이터 수집 (대기질 · 수질 · 토양 · 기후 · 토지이용 · 문화재 6종 커넥터 + 수동 입력)
   → 증거(Evidence) 정규화 및 저장
   → 유사사례 매칭 (사업유형/위치/규모/환경분야 가중 유사도)
   → 섹션 플래너 (11개 섹션 필수 지표 충족도 계산)
   → 통계 엔진 (지표별 기술 통계 산출)
-  → 환경기준 비교 (대기/수질/소음 기준 적합·초과 판정)
+  → 환경기준 비교 (대기/수질/소음/토양 기준 적합·초과 판정)
   → 서술문 템플릿 생성 (LLM 미사용 결정적 방식)
-  → LLM 보강 (선택: OpenAI/Gemini adapter)
+  → LLM 보강 (선택: OpenAI/Gemini adapter → DB 저장 → Export 반영)
   → QA 검증 (6개 규칙, critical/warning/info 등급)
   → DOCX/PDF export (표지 + 목차 + 본문 + 부록 3종)
 ```
@@ -26,17 +26,17 @@
 |------|------|-----------|
 | 1 | 대기질 | PM10, PM2.5, NO2, SO2, CO, O3 |
 | 2 | 수질 | BOD, COD, SS, T-N, T-P, DO |
-| 3 | 토양 | 중금속(납, 카드뮴), 유류오염(TPH), pH |
+| 3 | 토양 | Pb, Cd, pH, 유기물함량 |
 | 4 | 소음·진동 | 소음 Leq(주간/야간), 진동 Lv(주간) |
 | 5 | 생태 | 식물상 종수, 동물상 종수, 법정보호종, 비오톱 유형, 녹지자연도 |
-| 6 | 토지이용 | 용도지역, 토지피복, 개발면적 |
+| 6 | 토지이용 | 용도지역구분, 용도지구, 지목 |
 | 7 | 교통 | 교통량 현황, 서비스수준 |
 | 8 | 폐기물 | 폐기물 발생량, 폐기물 종류 |
 | 9 | 경관 | 주요 조망점, 경관 유형 |
-| 10 | 문화재 | 문화재 목록, 이격거리 |
-| 11 | 기후 | 기온 연평균, 강수량 연평균, 풍향·풍속 |
+| 10 | 문화재 | 문화재명, 이격거리 |
+| 11 | 기후 | 평균기온, 강수량, 평균풍속 |
 
-### 공공데이터 커넥터 (4종)
+### 공공데이터 커넥터 (6종)
 
 | 커넥터 | 대상 API | 수집 지표 |
 |--------|----------|-----------|
@@ -44,6 +44,8 @@
 | `water_info` | 국립환경과학원 수질 DB | BOD, COD, SS, DO, T-N, T-P |
 | `soil_info` | 국립환경과학원 토양측정망 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 |
 | `kma_weather` | 기상청 ASOS 일자료 | 평균기온, 최고/최저기온, 강수량, 풍속, 습도 |
+| `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
+| `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
 
 ### QA 규칙 (6개)
 
@@ -85,7 +87,7 @@
 - **HTTP 클라이언트**: httpx (공공데이터 API 호출)
 - **문서 생성**: python-docx (DOCX), reportlab (PDF)
 - **LLM**: openai SDK + httpx (Gemini REST)
-- **테스트**: pytest + httpx (ASGI 테스트, 230개)
+- **테스트**: pytest + httpx (ASGI 테스트, 247개)
 
 ## 로컬 개발 환경 설정
 
@@ -119,6 +121,7 @@ docker exec eia-postgres psql -U postgres -d eia_copilot_test -c "CREATE EXTENSI
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/eia_copilot
 DEBUG=true
 DATA_GO_KR_API_KEY=발급받은_인코딩_키
+VWORLD_API_KEY=발급받은_V-world_키
 CONNECTOR_TIMEOUT=30
 
 # LLM adapter (선택, 기본값: none)
@@ -144,7 +147,15 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
    - **기상청 ASOS 일자료**: https://www.data.go.kr/data/15059093/openapi.do
 3. 발급받은 **인코딩 키**를 `backend/.env`의 `DATA_GO_KR_API_KEY`에 설정
 
-> 4개 커넥터 모두 동일한 공공데이터포털 키를 사용합니다.
+> 4개 커넥터(keco_air, water_info, soil_info, kma_weather)가 동일한 공공데이터포털 키를 사용합니다.
+
+### 4. V-world API 키 발급 (토지이용 커넥터)
+
+1. [V-world](https://www.vworld.kr/) 회원가입 및 로그인
+2. 오픈 API 인증키 발급
+3. `backend/.env`의 `VWORLD_API_KEY`에 설정
+
+> 국가유산청 문화재 커넥터는 API 키 없이 사용 가능합니다 (공개 API).
 
 ## 실행 방법
 
@@ -174,11 +185,11 @@ npm run dev                   # http://localhost:3000
 python scripts/demo_full_scenario.py
 ```
 
-전체 워크플로우를 자동 실행합니다: 프로젝트 생성 → 4종 커넥터 수집 → 유사사례 매칭 → 통계 → 기준비교 → 서술문 → LLM 보강 → QA → DOCX/PDF Export.
+전체 워크플로우를 자동 실행합니다: 프로젝트 생성 → 6종 커넥터 수집 → 유사사례 매칭 → 통계 → 기준비교 → 서술문 → LLM 보강 → QA → DOCX/PDF Export.
 
 ## 테스트
 
-### 백엔드 테스트 (pytest, 230개)
+### 백엔드 테스트 (pytest, 247개)
 
 ```bash
 cd backend
@@ -187,13 +198,13 @@ pytest tests/ -v
 
 주요 테스트 파일:
 - `tests/test_projects.py` — 프로젝트 CRUD + 헬스체크 (9개)
-- `tests/test_connectors.py` — 커넥터 4종 fetch/normalize + 레지스트리 (52개)
+- `tests/test_connectors.py` — 커넥터 6종 fetch/normalize + 레지스트리 (69개)
 - `tests/test_e2e.py` — 전체 워크플로우 E2E 테스트 (1개)
 - `tests/test_spec_alignment.py` — 스펙 정렬 검증 (23개)
 - `tests/test_statistics.py` — 통계 엔진 (16개)
 - `tests/test_standard_checker.py` — 환경기준 비교 (27개)
 - `tests/test_narrative_generator.py` — 서술문 생성기 (28개)
-- `tests/test_export_format.py` — DOCX/PDF 포맷 (40개)
+- `tests/test_export_format.py` — DOCX/PDF 포맷 (40+개)
 - `tests/test_export_pdf.py` — PDF 출력 (4개)
 - `tests/test_llm_adapter.py` — LLM adapter (29개)
 
@@ -203,7 +214,7 @@ pytest tests/ -v
 python scripts/test_connectors_live.py
 ```
 
-> `DATA_GO_KR_API_KEY`가 설정되어 있어야 합니다.
+> `DATA_GO_KR_API_KEY`가 설정되어 있어야 합니다. V-world 토지이용 커넥터는 `VWORLD_API_KEY`도 필요합니다.
 
 ### 프론트엔드 테스트
 
@@ -238,7 +249,7 @@ eia-draft-copilot/
 ├── backend/                      # FastAPI 백엔드
 │   ├── app/
 │   │   ├── api/v1/               # REST API 엔드포인트 (11개 라우터)
-│   │   ├── connectors/           # 공공데이터 커넥터 (4종)
+│   │   ├── connectors/           # 공공데이터 커넥터 (6종)
 │   │   ├── crud/                 # DB CRUD 함수
 │   │   ├── data/                 # 환경기준 데이터
 │   │   ├── llm/                  # LLM adapter (3종)
@@ -248,8 +259,8 @@ eia-draft-copilot/
 │   │   ├── main.py               # FastAPI 앱 엔트리포인트
 │   │   ├── config.py             # 환경 설정
 │   │   └── db.py                 # DB 세션 관리
-│   ├── alembic/                  # DB 마이그레이션 (3개)
-│   ├── tests/                    # 백엔드 테스트 (230개)
+│   ├── alembic/                  # DB 마이그레이션 (4개)
+│   ├── tests/                    # 백엔드 테스트 (247개)
 │   └── requirements.txt          # Python 의존성
 ├── scripts/                      # 유틸리티 스크립트
 │   ├── demo_full_scenario.py     # 통합 데모 (11단계)

@@ -112,7 +112,7 @@ npm run dev  # http://localhost:3000
 
 ```bash
 cd backend
-pytest tests/ -v                         # 전체 테스트 (230개)
+pytest tests/ -v                         # 전체 테스트 (247개)
 pytest tests/test_projects.py -v         # 프로젝트 테스트만
 pytest tests/test_connectors.py -v       # 커넥터 테스트만
 pytest tests/test_e2e.py -v              # E2E 테스트만
@@ -151,7 +151,7 @@ async def test_something(client: AsyncClient):
 python scripts/test_connectors_live.py
 ```
 
-이 스크립트는 4개 커넥터(에어코리아, 수질, 토양, 기후)의 실제 공공데이터 API 호출을 검증합니다.
+이 스크립트는 6개 커넥터(에어코리아, 수질, 토양, 기후, V-world 토지이용, 국가유산청 문화재)의 실제 API 호출을 검증합니다.
 
 ### 통합 데모
 
@@ -179,6 +179,7 @@ npm run test  # Vitest
 | 001 | `001_create_projects.py` | projects 테이블 + PostGIS 확장 |
 | 002 | `002_create_evidence_tables.py` | data_sources, source_snapshots, evidences 테이블 |
 | 003 | `003_create_similar_cases.py` | similar_cases 테이블 |
+| 004 | `a2042f226531_add_draft_narratives...` | draft_narratives 테이블 (LLM 보강 서술문 저장) |
 
 ### 마이그레이션 명령어
 
@@ -266,7 +267,7 @@ register_connector(NewConnector())
 | 파일 | 역할 |
 |------|------|
 | `section_planner.py` | 섹션 정의 + 충족도 계산 |
-| `draft_scaffold.py` | 초안 뼈대 생성 |
+| `draft_scaffold.py` | 초안 뼈대 생성 (LLM 서술문 우선 → 템플릿 fallback) |
 | `statistics.py` | 지표별 기술 통계 (Post-1) |
 | `standard_checker.py` | 환경기준 비교 (Post-2) |
 | `narrative_generator.py` | 서술문 템플릿 생성 (Post-3) |

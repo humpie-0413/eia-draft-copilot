@@ -29,7 +29,9 @@
 │  │ (11개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector         │ │
 │  └──────────┘ │ ├기준비교     │ │ ├─ WaterInfoConnector       │ │
 │               │ ├서술문생성   │ │ ├─ SoilInfoConnector        │ │
-│               │ ├QA 규칙     │ │ └─ KmaWeatherConnector      │ │
+│               │ ├QA 규칙     │ │ ├─ KmaWeatherConnector      │ │
+│               │              │ │ ├─ LandUseConnector         │ │
+│               │              │ │ └─ CulturalHeritageConnector│ │
 │               │ ├Export      │ └─────────────────────────────┘ │
 │               │ └유사도 계산 │                                  │
 │               └──────┬───────┘  ┌────────────────────┐         │
@@ -52,6 +54,7 @@
               │  source_snapshots        │
               │  evidences               │
               │  similar_cases           │
+              │  draft_narratives        │
               └──────────────────────────┘
 ```
 
@@ -76,7 +79,7 @@
    └─ 카테고리별 기본 연도 필터 (수질 5년, 대기 1년)
 
 6. 환경기준 비교 (Post-2)
-   └─ 대기/수질/소음 환경기준 데이터 내장
+   └─ 대기/수질/소음/토양 환경기준 데이터 내장
    └─ 통계 결과 ↔ 기준 비교 → 적합/초과 판정
    └─ 수질 등급 판정 (Ia~V)
 
@@ -91,6 +94,7 @@
    └─ NoneAdapter: 원본 반환 / OpenAIAdapter / GeminiAdapter
    └─ 시스템 프롬프트: "한국 환경영향평가서 전문 작성자"
    └─ API 실패 시 fallback → 원본 반환
+   └─ 보강 결과 DB 저장 (DraftNarrative) → Export 시 우선 사용 (Post-9)
 
 10. 초안 뼈대 (Draft Scaffold)
     └─ 서술문 + 통계 요약 테이블 + 환경기준 비교 + 상세 데이터 샘플
@@ -115,6 +119,8 @@ projects (프로젝트)
 │       │                         │
 │       └── data_sources ─────────┘
 │           (데이터 소스)
+│
+├─── draft_narratives (LLM 보강 서술문) [project_id + section_key unique]
 │
 └─── similar_cases (유사사례) [독립 테이블, 매칭 시 projects 참조]
 ```
@@ -192,6 +198,20 @@ projects (프로젝트)
 | source_url | VARCHAR(500) | 출처 URL |
 | metadata_json | JSONB | 추가 메타데이터 |
 
+### draft_narratives 테이블
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| id | UUID (PK) | 고유 ID |
+| project_id | UUID (FK) | 프로젝트 참조 (CASCADE) |
+| section_key | VARCHAR(100) | 섹션 키 |
+| narrative_text | TEXT | LLM 보강 서술문 |
+| adapter_used | VARCHAR(100) | 사용된 LLM adapter |
+| created_at | TIMESTAMPTZ | 생성일 |
+| updated_at | TIMESTAMPTZ | 수정일 |
+
+Unique 제약: (project_id, section_key)
+
 ## API 엔드포인트 전체 목록
 
 기본 경로: `/api/v1`
@@ -240,7 +260,7 @@ projects (프로젝트)
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/connectors` | 사용 가능한 커넥터 목록 (4종) |
+| GET | `/connectors` | 사용 가능한 커넥터 목록 (6종) |
 | POST | `/connectors/{connector_key}/collect` | 데이터 수집 실행 |
 
 ### 유사사례 (Similar Cases)
@@ -321,7 +341,7 @@ BaseConnector (추상 클래스)
         └── Evidence 벌크 INSERT
 ```
 
-### 구현된 커넥터 (4종)
+### 구현된 커넥터 (6종)
 
 | 커넥터 키 | 이름 | API | 수집 지표 |
 |-----------|------|-----|-----------|
@@ -329,6 +349,8 @@ BaseConnector (추상 클래스)
 | `water_info` | 수질 DB | WaterQualityService | BOD, COD, SS, DO, T-N, T-P |
 | `soil_info` | 토양측정망 | 토양측정정보 조회 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 |
 | `kma_weather` | 기상청 ASOS | 지상일자료 조회 | 기온, 강수량, 풍속, 습도 |
+| `vworld_land_use` | V-world 토지이용 | 2D데이터 API (geomFilter) | 용도지역구분, 용도지구, 지목 |
+| `cultural_heritage` | 국가유산청 문화재 | Open API (XML) | 문화재명, 종별, 이격거리, 소재지 |
 
 ## 통계 엔진 구조 (Post-1)
 
@@ -358,7 +380,8 @@ check_section_standards(db, project_id, section_key)
 ├── 환경기준 데이터 (backend/app/data/env_standards.py):
 │   ├── 대기: PM10(50ug/m3), PM2.5(25), SO2(0.02ppm), NO2(0.03), CO(9), O3(0.06)
 │   ├── 수질: BOD/COD/SS/DO/T-P 등급 기준 (Ia~V)
-│   └── 소음: 주간 55dB, 야간 45dB
+│   ├── 소음: 주간 55dB, 야간 45dB
+│   └── 토양: Cd(4mg/kg), Cu(150), Pb(200), Zn(300), Ni(100), Cr6+(5) — 1지역 우려기준
 │
 ├── 판정:
 │   ├── pass: 기준 이하 (DO는 기준 이상)

@@ -149,7 +149,7 @@ ReDoc: http://localhost:8000/redoc
 
 ### GET /connectors
 
-사용 가능한 커넥터 목록을 조회합니다 (4종).
+사용 가능한 커넥터 목록을 조회합니다 (6종).
 
 **응답 (200)**:
 ```json
@@ -157,7 +157,9 @@ ReDoc: http://localhost:8000/redoc
   { "connector_key": "keco_air", "display_name": "한국환경공단 대기질 (에어코리아)" },
   { "connector_key": "water_info", "display_name": "국립환경과학원 수질 DB (물환경 수질측정망)" },
   { "connector_key": "soil_info", "display_name": "국립환경과학원 토양측정망" },
-  { "connector_key": "kma_weather", "display_name": "기상청 지상(ASOS) 일자료" }
+  { "connector_key": "kma_weather", "display_name": "기상청 지상(ASOS) 일자료" },
+  { "connector_key": "vworld_land_use", "display_name": "V-world 토지이용 (2D데이터)" },
+  { "connector_key": "cultural_heritage", "display_name": "국가유산청 문화재 조회" }
 ]
 ```
 
@@ -191,6 +193,23 @@ ReDoc: http://localhost:8000/redoc
 | stn_id | O | 관측소 번호 (예: "108"=서울) |
 | start_dt | O | 시작일 (YYYYMMDD) |
 | end_dt | O | 종료일 (YYYYMMDD) |
+
+#### vworld_land_use (V-world 토지이용)
+| 파라미터 | 필수 | 설명 |
+|----------|------|------|
+| lng | O | 경도 (예: "126.978") |
+| lat | O | 위도 (예: "37.566") |
+
+> `VWORLD_API_KEY` 환경변수 설정 필요
+
+#### cultural_heritage (국가유산청 문화재)
+| 파라미터 | 필수 | 설명 |
+|----------|------|------|
+| lng | O | 경도 (예: "126.978") |
+| lat | O | 위도 (예: "37.566") |
+| ccba_ctcd | X | 시도코드 (미입력 시 좌표에서 추론) |
+
+> API 키 불필요 (공개 API). 반경 1km 이내 문화재 자동 필터링.
 
 **응답 (200)**:
 ```json
