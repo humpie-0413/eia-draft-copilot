@@ -1,8 +1,8 @@
 """국가유산청 문화재 커넥터.
 
 국가유산청 Open API를 통해 프로젝트 인근 문화재 정보를 조회한다.
-- 목록 조회: http://www.khs.go.kr/cha/SearchKindOpenapiList.do
-- 상세 조회: http://www.khs.go.kr/cha/SearchKindOpenapiDt.do
+- 목록 조회: https://www.khs.go.kr/cha/SearchKindOpenapiList.do
+- 상세 조회: https://www.khs.go.kr/cha/SearchKindOpenapiDt.do
 - 시도코드 기반 조회 후 프로젝트 중심점과의 거리 필터링 (반경 1km)
 - API 키 불필요 (Open API)
 - 응답: XML
@@ -24,8 +24,8 @@ from app.schemas.evidence import EvidenceCategory, EvidenceCreate
 logger = logging.getLogger(__name__)
 
 # 국가유산청 Open API 엔드포인트
-CHA_LIST_URL = "http://www.khs.go.kr/cha/SearchKindOpenapiList.do"
-CHA_DETAIL_URL = "http://www.khs.go.kr/cha/SearchKindOpenapiDt.do"
+CHA_LIST_URL = "https://www.khs.go.kr/cha/SearchKindOpenapiList.do"
+CHA_DETAIL_URL = "https://www.khs.go.kr/cha/SearchKindOpenapiDt.do"
 
 # 시도코드 매핑 (프로젝트 좌표 → 시도코드)
 SIDO_CODES: dict[str, str] = {
