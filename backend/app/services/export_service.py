@@ -463,20 +463,45 @@ def _docx_setup_body_section(doc: Document, project_name: str) -> None:
 
 
 def _docx_add_page_number_field(paragraph) -> None:
-    """꼬리말에 페이지 번호 필드를 삽입한다."""
-    run = paragraph.add_run()
-    run.font.size = Pt(9)
-    run.font.color.rgb = RGBColor(120, 120, 120)
+    """꼬리말에 페이지 번호 필드를 삽입한다. 형식: '- N -'"""
+    _ns = nsdecls("w")
+    _font_size = Pt(9)
+    _font_color = RGBColor(120, 120, 120)
 
-    # PAGE 필드 삽입
-    fldChar_begin = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="begin"/>')
-    run._r.append(fldChar_begin)
+    # "- " 접두사
+    run_prefix = paragraph.add_run("- ")
+    run_prefix.font.size = _font_size
+    run_prefix.font.color.rgb = _font_color
 
-    instrText = parse_xml(f'<w:instrText {nsdecls("w")} xml:space="preserve"> PAGE </w:instrText>')
-    run._r.append(instrText)
+    # PAGE 필드 — begin / instrText / separate / placeholder / end
+    run_begin = paragraph.add_run()
+    run_begin.font.size = _font_size
+    run_begin.font.color.rgb = _font_color
+    run_begin._r.append(parse_xml(f'<w:fldChar {_ns} w:fldCharType="begin"/>'))
 
-    fldChar_end = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="end"/>')
-    run._r.append(fldChar_end)
+    run_instr = paragraph.add_run()
+    run_instr.font.size = _font_size
+    run_instr.font.color.rgb = _font_color
+    run_instr._r.append(parse_xml(f'<w:instrText {_ns} xml:space="preserve"> PAGE </w:instrText>'))
+
+    run_sep = paragraph.add_run()
+    run_sep.font.size = _font_size
+    run_sep.font.color.rgb = _font_color
+    run_sep._r.append(parse_xml(f'<w:fldChar {_ns} w:fldCharType="separate"/>'))
+
+    run_num = paragraph.add_run("1")
+    run_num.font.size = _font_size
+    run_num.font.color.rgb = _font_color
+
+    run_end = paragraph.add_run()
+    run_end.font.size = _font_size
+    run_end.font.color.rgb = _font_color
+    run_end._r.append(parse_xml(f'<w:fldChar {_ns} w:fldCharType="end"/>'))
+
+    # " -" 접미사
+    run_suffix = paragraph.add_run(" -")
+    run_suffix.font.size = _font_size
+    run_suffix.font.color.rgb = _font_color
 
 
 def _docx_add_toc(doc: Document, ctx: ExportContext) -> None:
@@ -583,11 +608,12 @@ def _docx_add_section(
             _docx_add_stats_table(doc, indicator_with_data, check)
 
     # N.3 환경기준 비교 (기준 비교 테이블)
+    # standard_value가 정의된 지표를 모두 포함 (NA 상태도 표시)
     if check and check.indicators:
-        measured = [r for r in check.indicators if r.status != CheckStatus.NA]
-        if measured:
+        with_standards = [r for r in check.indicators if r.standard_value is not None]
+        if with_standards:
             doc.add_heading(f"{chapter}.3 환경기준 비교", level=2)
-            _docx_add_standards_table(doc, measured)
+            _docx_add_standards_table(doc, with_standards)
 
     # N.4 측정 데이터 (대표 샘플)
     doc.add_heading(f"{chapter}.4 측정 데이터", level=2)
@@ -1142,7 +1168,7 @@ def _pdf_header_footer(canvas, doc_template, project_name: str):
     # 꼬리말
     canvas.setFont(doc_template._pdf_font_name, 9)
     canvas.setFillColor(colors.Color(0.5, 0.5, 0.5))
-    canvas.drawCentredString(width / 2, 1.3 * cm, str(page_num))
+    canvas.drawCentredString(width / 2, 1.3 * cm, f"- {page_num} -")
     # 꼬리말 구분선
     canvas.line(2 * cm, 1.6 * cm, width - 2 * cm, 1.6 * cm)
 
@@ -1307,11 +1333,12 @@ def _pdf_add_section(story, styles, font_name, section, stats, check):
             _pdf_add_stats_table(story, font_name, indicator_with_data, check)
 
     # N.3 환경기준 비교
+    # standard_value가 정의된 지표를 모두 포함 (NA 상태도 표시)
     if check and check.indicators:
-        measured = [r for r in check.indicators if r.status != CheckStatus.NA]
-        if measured:
+        with_standards = [r for r in check.indicators if r.standard_value is not None]
+        if with_standards:
             story.append(Paragraph(f"{chapter}.3 환경기준 비교", styles["heading2"]))
-            _pdf_add_standards_table(story, font_name, measured)
+            _pdf_add_standards_table(story, font_name, with_standards)
 
     # N.4 측정 데이터
     story.append(Paragraph(f"{chapter}.4 측정 데이터", styles["heading2"]))
