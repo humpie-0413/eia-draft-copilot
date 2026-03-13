@@ -60,7 +60,7 @@ EIA_SECTIONS: list[SectionDefinition] = [
         description="토양오염 현황 및 영향 분석",
         evidence_category="soil",
         required_indicators=[
-            "중금속_납", "중금속_카드뮴", "유류오염_TPH", "pH",
+            "Pb", "Cd", "pH", "유기물함량",
         ],
         order=3,
     ),
@@ -141,7 +141,7 @@ EIA_SECTIONS: list[SectionDefinition] = [
         description="기후 현황 및 온실가스 영향 분석",
         evidence_category="climate",
         required_indicators=[
-            "기온_연평균", "강수량_연평균", "풍향_풍속",
+            "평균기온", "강수량", "평균풍속",
         ],
         order=11,
     ),

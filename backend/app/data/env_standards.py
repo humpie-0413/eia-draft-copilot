@@ -120,6 +120,20 @@ NOISE_STANDARDS: list[Standard] = [
 
 
 # ────────────────────────────────────────────
+# 토양오염 우려기준 (토양환경보전법 시행규칙 별표 3, 1지역)
+# ────────────────────────────────────────────
+
+SOIL_STANDARDS: list[Standard] = [
+    Standard("Cd", "우려기준", 4.0, "mg/kg", ComparisonOp.LEQ, "카드뮴 1지역 우려기준"),
+    Standard("Cu", "우려기준", 150.0, "mg/kg", ComparisonOp.LEQ, "구리 1지역 우려기준"),
+    Standard("Pb", "우려기준", 200.0, "mg/kg", ComparisonOp.LEQ, "납 1지역 우려기준"),
+    Standard("Zn", "우려기준", 300.0, "mg/kg", ComparisonOp.LEQ, "아연 1지역 우려기준"),
+    Standard("Ni", "우려기준", 100.0, "mg/kg", ComparisonOp.LEQ, "니켈 1지역 우려기준"),
+    Standard("Cr6+", "우려기준", 5.0, "mg/kg", ComparisonOp.LEQ, "6가크롬 1지역 우려기준"),
+]
+
+
+# ────────────────────────────────────────────
 # 카테고리별 기준 매핑
 # ────────────────────────────────────────────
 
@@ -128,6 +142,7 @@ STANDARDS_BY_CATEGORY: dict[str, list[Standard]] = {
     "air_quality": AIR_STANDARDS,
     "water_quality": WATER_STANDARDS,
     "noise_vibration": NOISE_STANDARDS,
+    "soil": SOIL_STANDARDS,
 }
 
 

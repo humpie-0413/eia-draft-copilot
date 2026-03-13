@@ -363,24 +363,24 @@ class TestGenericNarrative:
         """토양 섹션 범용 서술문"""
         section_def = get_section_definition("soil")
         stats = _make_section_stats("soil", "토양", [
-            _make_indicator_stats("중금속_납", 15.0, unit="mg/kg"),
+            _make_indicator_stats("Pb", 15.0, unit="mg/kg"),
             _make_indicator_stats("pH", 6.5, unit=""),
         ])
 
         result = generate_generic_narrative(section_def, stats, None)
 
         assert "토양 현황" in result
-        assert "중금속_납" in result
+        assert "Pb" in result
         assert "pH" in result
 
     def test_with_exceedance(self):
         """범용 섹션에서 환경기준 초과"""
         section_def = get_section_definition("soil")
         stats = _make_section_stats("soil", "토양", [
-            _make_indicator_stats("중금속_납", 250.0, unit="mg/kg"),
+            _make_indicator_stats("Pb", 250.0, unit="mg/kg"),
         ])
         check = _make_section_check("soil", "토양", [
-            _make_check_result("중금속_납", 200.0, 250.0, CheckStatus.FAIL, "mg/kg"),
+            _make_check_result("Pb", 200.0, 250.0, CheckStatus.FAIL, "mg/kg"),
         ])
 
         result = generate_generic_narrative(section_def, stats, check)
@@ -422,7 +422,7 @@ class TestGenerateNarrative:
         """climate → 범용 생성 함수 호출"""
         section_def = get_section_definition("climate")
         stats = _make_section_stats("climate", "기후", [
-            _make_indicator_stats("기온_연평균", 13.5, unit="℃"),
+            _make_indicator_stats("평균기온", 13.5, unit="℃"),
         ])
 
         result = generate_narrative(section_def, stats, None)
