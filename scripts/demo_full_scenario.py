@@ -200,27 +200,32 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         },
         expected=200, label="수질 수집",
     )
-    if result:
+    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
         print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
         stats["connectors"]["water_info"] = result["evidence_count"]
     else:
-        print("    [경고] 수질 수집 실패 — 수동 수질 데이터로 대체합니다.")
-        water_manual = [
-            {"category": "water_quality", "indicator": "BOD", "value": "1.8", "numeric_value": 1.8, "unit": "mg/L"},
-            {"category": "water_quality", "indicator": "COD", "value": "3.5", "numeric_value": 3.5, "unit": "mg/L"},
-            {"category": "water_quality", "indicator": "SS", "value": "8.2", "numeric_value": 8.2, "unit": "mg/L"},
-            {"category": "water_quality", "indicator": "T-N", "value": "2.1", "numeric_value": 2.1, "unit": "mg/L"},
-            {"category": "water_quality", "indicator": "T-P", "value": "0.04", "numeric_value": 0.04, "unit": "mg/L"},
-            {"category": "water_quality", "indicator": "DO", "value": "9.2", "numeric_value": 9.2, "unit": "mg/L"},
-        ]
-        for ev in water_manual:
-            await api_call(
-                client, "POST", "/api/v1/evidences",
-                json={"project_id": project_id, "screening_only": False, **ev},
-                expected=201, label=f"수동 수질: {ev['indicator']}",
-            )
-        stats["connectors"]["water_info"] = len(water_manual)
-        print(f"    수동 수질 데이터 {len(water_manual)}건 추가 완료")
+        if result:
+            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
+        print("    [경고] 수질 수집 실패/부족 — 수동 수질 데이터로 보충합니다.")
+
+    # 2-b2. 수질 필수 지표 수동 보충 (커넥터 데이터가 오래된 경우 대비)
+    sub_banner("2-b2. 수질 필수 지표 수동 보충")
+    water_supplement = [
+        {"category": "water_quality", "indicator": "BOD", "value": "1.8", "numeric_value": 1.8, "unit": "mg/L"},
+        {"category": "water_quality", "indicator": "COD", "value": "3.5", "numeric_value": 3.5, "unit": "mg/L"},
+        {"category": "water_quality", "indicator": "SS", "value": "8.2", "numeric_value": 8.2, "unit": "mg/L"},
+        {"category": "water_quality", "indicator": "T-N", "value": "2.1", "numeric_value": 2.1, "unit": "mg/L"},
+        {"category": "water_quality", "indicator": "T-P", "value": "0.04", "numeric_value": 0.04, "unit": "mg/L"},
+        {"category": "water_quality", "indicator": "DO", "value": "9.2", "numeric_value": 9.2, "unit": "mg/L"},
+    ]
+    for ev in water_supplement:
+        await api_call(
+            client, "POST", "/api/v1/evidences",
+            json={"project_id": project_id, "screening_only": False, **ev},
+            expected=201, label=f"수질 보충: {ev['indicator']}",
+        )
+    stats["connectors"].setdefault("water_info", 0)
+    print(f"    수질 필수 지표 {len(water_supplement)}건 보충 완료")
 
     # 2-c. 토양측정망 커넥터 (Post-4)
     sub_banner("2-c. 토양측정망 커넥터 — 서울특별시")
@@ -233,18 +238,21 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         },
         expected=200, label="토양측정망 수집",
     )
-    if result:
+    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
         print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
         stats["connectors"]["soil_info"] = result["evidence_count"]
-        if result.get("error_message"):
-            print(f"    오류: {result['error_message']}")
     else:
+        if result:
+            msg = result.get("error_message", "")
+            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
+            if msg:
+                print(f"    오류: {msg}")
         print("    [경고] 토양 커넥터 실패 — 수동 토양 데이터로 대체합니다.")
         soil_manual = [
-            {"category": "soil", "indicator": "납(Pb)", "value": "12.5", "numeric_value": 12.5, "unit": "mg/kg"},
-            {"category": "soil", "indicator": "카드뮴(Cd)", "value": "0.8", "numeric_value": 0.8, "unit": "mg/kg"},
-            {"category": "soil", "indicator": "유류오염(TPH)", "value": "180", "numeric_value": 180.0, "unit": "mg/kg"},
-            {"category": "soil", "indicator": "pH", "value": "6.5", "numeric_value": 6.5, "unit": "-"},
+            {"category": "soil", "indicator": "Pb", "value": "12.5", "numeric_value": 12.5, "unit": "mg/kg"},
+            {"category": "soil", "indicator": "Cd", "value": "0.8", "numeric_value": 0.8, "unit": "mg/kg"},
+            {"category": "soil", "indicator": "pH", "value": "6.5", "numeric_value": 6.5, "unit": ""},
+            {"category": "soil", "indicator": "유기물함량", "value": "3.2", "numeric_value": 3.2, "unit": "%"},
         ]
         for ev in soil_manual:
             await api_call(
@@ -270,17 +278,20 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         },
         expected=200, label="기상청 ASOS 수집",
     )
-    if result:
+    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
         print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
         stats["connectors"]["kma_weather"] = result["evidence_count"]
-        if result.get("error_message"):
-            print(f"    오류: {result['error_message']}")
     else:
+        if result:
+            msg = result.get("error_message", "")
+            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
+            if msg:
+                print(f"    오류: {msg}")
         print("    [경고] 기후 커넥터 실패 — 수동 기후 데이터로 대체합니다.")
         climate_manual = [
-            {"category": "climate", "indicator": "기온_연평균", "value": "13.2", "numeric_value": 13.2, "unit": "℃"},
-            {"category": "climate", "indicator": "강수량_연평균", "value": "1394", "numeric_value": 1394.0, "unit": "mm"},
-            {"category": "climate", "indicator": "풍향·풍속", "value": "서풍 2.3m/s", "numeric_value": 2.3, "unit": "m/s"},
+            {"category": "climate", "indicator": "평균기온", "value": "13.2", "numeric_value": 13.2, "unit": "\u2103"},
+            {"category": "climate", "indicator": "강수량", "value": "1394", "numeric_value": 1394.0, "unit": "mm"},
+            {"category": "climate", "indicator": "평균풍속", "value": "2.3", "numeric_value": 2.3, "unit": "m/s"},
         ]
         for ev in climate_manual:
             await api_call(
