@@ -52,6 +52,7 @@ class IndicatorCheckResult:
     status: str = CheckStatus.NA          # 판정 (pass/fail/na)
     exceedance_rate: float | None = None  # 초과율 (%, 측정값 중 기준 초과 비율)
     description: str = ""                 # 기준 설명
+    legal_basis: str = ""                 # 법적 근거 (예: "환경정책기본법 시행령 별표 제1호")
 
 
 @dataclass
@@ -92,6 +93,7 @@ def _check_indicator(
         measured_max=stats.max_value,
         measured_count=stats.count,
         description=standard.description,
+        legal_basis=standard.legal_basis,
     )
 
     if stats.mean is None or stats.count == 0:
@@ -119,6 +121,24 @@ def _check_indicator_no_standard(
         status=CheckStatus.NA,
         description="해당 환경기준 없음",
     )
+
+
+def _format_legal_ref(legal_basis: str) -> str:
+    """법적 근거를 서술문에 삽입 가능한 형태로 변환한다.
+
+    "법 시행령 별표 제N호 (기준명)" → "법 시행령 별표 제N호에 따른 기준명"
+    """
+    _CONVERSIONS: dict[str, str] = {
+        "환경정책기본법 시행령 별표 제1호 (대기환경기준)":
+            "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준",
+        "환경정책기본법 시행령 별표 제1호 (수질 및 수생태계 환경기준) — 하천 생활환경기준":
+            "환경정책기본법 시행령 별표 제1호에 따른 하천 수질 및 수생태계 생활환경기준",
+        "환경정책기본법 시행령 별표 제1호 (소음환경기준)":
+            "환경정책기본법 시행령 별표 제1호에 따른 소음환경기준",
+        "토양환경보전법 시행규칙 별표 제3호 (토양오염우려기준)":
+            "토양환경보전법 시행규칙 별표 제3호에 따른 토양오염우려기준",
+    }
+    return _CONVERSIONS.get(legal_basis, legal_basis)
 
 
 def _generate_section_summary(
@@ -154,15 +174,16 @@ def _generate_section_summary(
         unit = r.standard_unit or ""
         avg_str = f"{r.measured_avg:.4g}" if r.measured_avg is not None else "-"
         std_str = f"{r.standard_value:.4g}"
+        legal_prefix = _format_legal_ref(r.legal_basis) if r.legal_basis else "환경기준"
         if r.status == CheckStatus.PASS:
             lines.append(
                 f"{r.indicator} {r.time_basis or '평균'} {avg_str} {unit}으로 "
-                f"환경기준({std_str} {unit}) 이내이며 적합한 수준이다."
+                f"{legal_prefix}({std_str} {unit}) 이내이며 적합한 수준이다."
             )
         elif r.status == CheckStatus.FAIL:
             lines.append(
                 f"{r.indicator} {r.time_basis or '평균'} {avg_str} {unit}으로 "
-                f"환경기준({std_str} {unit}) 초과로 저감대책 검토가 필요하다."
+                f"{legal_prefix}({std_str} {unit}) 초과로 저감대책 검토가 필요하다."
             )
 
     # 종합 판정
@@ -225,6 +246,7 @@ async def check_section_standards(
                     time_basis=std.time_basis,
                     status=CheckStatus.NA,
                     description=f"{std.description} (측정 데이터 없음)",
+                    legal_basis=std.legal_basis,
                 ))
 
     # 초과 집계

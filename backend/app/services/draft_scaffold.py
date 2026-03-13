@@ -80,6 +80,17 @@ class DraftScaffold:
     total_evidence_count: int = 0
 
 
+def _short_legal_ref(legal_basis: str) -> str:
+    """법적 근거를 테이블 열에 적합한 간략 형태로 변환한다."""
+    if not legal_basis:
+        return "-"
+    if "환경정책기본법" in legal_basis:
+        return "환경정책기본법 별표1"
+    if "토양환경보전법" in legal_basis:
+        return "토양환경보전법 별표3"
+    return legal_basis[:20]
+
+
 def _format_period(start: str | None, end: str | None) -> str:
     """관측 기간 문자열을 생성한다."""
     if start and end:
@@ -122,8 +133,8 @@ def _format_stats_summary(
         lines.append("")
 
         if has_standards:
-            lines.append("지표명 | 평균 | 최대 | 최소 | 건수 | 환경기준 | 판정 | 기간")
-            lines.append("--- | --- | --- | --- | --- | --- | --- | ---")
+            lines.append("지표명 | 평균 | 최대 | 최소 | 건수 | 환경기준 | 판정 | 법적 근거 | 기간")
+            lines.append("--- | --- | --- | --- | --- | --- | --- | --- | ---")
         else:
             lines.append("지표명 | 평균 | 최대 | 최소 | 건수 | 기간")
             lines.append("--- | --- | --- | --- | --- | ---")
@@ -143,12 +154,14 @@ def _format_stats_summary(
                     status_str = "적합" if cr.status == CheckStatus.PASS else (
                         "초과" if cr.status == CheckStatus.FAIL else "-"
                     )
+                    legal_short = _short_legal_ref(cr.legal_basis)
                 else:
                     std_str = "-"
                     status_str = "-"
+                    legal_short = "-"
                 lines.append(
                     f"{s.indicator} | {mean_str} | {max_str} | {min_str} | "
-                    f"{s.count} | {std_str} | {status_str} | {period}"
+                    f"{s.count} | {std_str} | {status_str} | {legal_short} | {period}"
                 )
             else:
                 lines.append(

@@ -734,17 +734,29 @@ def _docx_add_stats_table(doc: Document, indicator_stats, check) -> None:
             row.cells[i].width = width
 
 
+def _short_legal_ref(legal_basis: str) -> str:
+    """법적 근거를 테이블 열에 적합한 간략 형태로 변환한다."""
+    if not legal_basis:
+        return "-"
+    if "환경정책기본법" in legal_basis:
+        return "환경정책기본법 별표1"
+    if "토양환경보전법" in legal_basis:
+        return "토양환경보전법 별표3"
+    return legal_basis[:20]
+
+
 def _docx_add_standards_table(doc: Document, check_results) -> None:
-    """환경기준 비교 테이블 — 초과 셀 빨간 배경."""
-    headers = ["지표", "시간기준", "환경기준", "측정평균", "판정"]
-    table = doc.add_table(rows=1, cols=5)
+    """환경기준 비교 테이블 — 초과 셀 빨간 배경, 법적 근거 열 포함."""
+    headers = ["지표", "시간기준", "환경기준", "측정평균", "판정", "법적 근거"]
+    col_count = 6
+    table = doc.add_table(rows=1, cols=col_count)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = True
 
     for i, header_text in enumerate(headers):
         table.rows[0].cells[i].text = header_text
-    _docx_style_header_row(table, 5)
+    _docx_style_header_row(table, col_count)
 
     for idx, cr in enumerate(check_results):
         row = table.add_row()
@@ -769,6 +781,11 @@ def _docx_add_standards_table(doc: Document, check_results) -> None:
         else:
             row.cells[4].text = "-"
 
+        # 법적 근거 열
+        row.cells[5].text = _short_legal_ref(
+            cr.legal_basis if hasattr(cr, "legal_basis") else ""
+        )
+
         _docx_style_data_row(row)
 
         # 초과 시 해당 행 배경 연한 빨간색
@@ -779,7 +796,7 @@ def _docx_add_standards_table(doc: Document, check_results) -> None:
             for cell in row.cells:
                 _docx_set_cell_shading(cell, _ALT_ROW_BG)
 
-    widths = [Cm(3.5), Cm(2.5), Cm(3.5), Cm(3.5), Cm(2)]
+    widths = [Cm(3), Cm(2), Cm(3), Cm(3), Cm(1.5), Cm(3.5)]
     for row in table.rows:
         for i, width in enumerate(widths):
             row.cells[i].width = width
@@ -1442,14 +1459,14 @@ def _pdf_add_stats_table(story, font_name, indicator_stats, check):
 
 
 def _pdf_add_standards_table(story, font_name, check_results):
-    """환경기준 비교 테이블 — PDF."""
+    """환경기준 비교 테이블 — PDF. 법적 근거 열 포함."""
     header_s = _make_header_style(font_name)
     cell_s = _make_cell_style(font_name)
 
     data = [[
         Paragraph("지표", header_s), Paragraph("시간기준", header_s),
         Paragraph("환경기준", header_s), Paragraph("측정평균", header_s),
-        Paragraph("판정", header_s),
+        Paragraph("판정", header_s), Paragraph("법적 근거", header_s),
     ]]
 
     exceed_rows = []
@@ -1466,15 +1483,20 @@ def _pdf_add_standards_table(story, font_name, check_results):
         else:
             status = "-"
 
+        legal_short = _short_legal_ref(
+            cr.legal_basis if hasattr(cr, "legal_basis") else ""
+        )
+
         data.append([
             Paragraph(cr.indicator, cell_s),
             Paragraph(cr.time_basis or "-", cell_s),
             Paragraph(std_str, cell_s),
             Paragraph(avg_str, cell_s),
             Paragraph(status, cell_s),
+            Paragraph(legal_short, cell_s),
         ])
 
-    col_widths = [3.5 * cm, 2.5 * cm, 3.5 * cm, 3.5 * cm, 2 * cm]
+    col_widths = [3 * cm, 2 * cm, 2.5 * cm, 2.5 * cm, 1.5 * cm, 3.5 * cm]
     table = Table(data, colWidths=col_widths, repeatRows=1)
 
     style_commands = list(_PDF_TABLE_STYLE.getCommands())

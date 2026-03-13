@@ -629,6 +629,243 @@ class TestScaffoldIntegration:
 # DOCX 출력물 구조 검증 테스트
 # ────────────────────────────────────────────
 
+# ────────────────────────────────────────────
+# Reg-2: 법적 근거 포함 검증 테스트
+# ────────────────────────────────────────────
+
+class TestLegalBasisInNarrative:
+    """서술문에 법적 근거가 포함되는지 검증한다."""
+
+    def test_air_includes_legal_basis(self):
+        """대기질 서술문에 환경정책기본법 참조가 포함됨"""
+        stats = _make_section_stats("air_quality", "대기질", [
+            _make_indicator_stats("PM10_연평균", 42.0, unit="ug/m3"),
+        ])
+        check = _make_section_check("air_quality", "대기질", [
+            _make_check_result("PM10_연평균", 50.0, 42.0, CheckStatus.PASS),
+        ])
+
+        result = generate_air_quality_narrative(stats, check)
+
+        assert "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준" in result
+        assert "이내 수준이다" in result
+
+    def test_air_exceedance_includes_legal_basis(self):
+        """대기질 초과 서술문에도 법적 근거가 포함됨"""
+        stats = _make_section_stats("air_quality", "대기질", [
+            _make_indicator_stats("PM2.5_연평균", 20.0, unit="ug/m3"),
+        ])
+        check = _make_section_check("air_quality", "대기질", [
+            _make_check_result("PM2.5_연평균", 15.0, 20.0, CheckStatus.FAIL),
+        ])
+
+        result = generate_air_quality_narrative(stats, check)
+
+        assert "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준" in result
+        assert "초과 수준이다" in result
+
+    def test_air_includes_time_basis(self):
+        """대기질 서술문에 시간기준(연평균)이 기준값 앞에 포함됨"""
+        stats = _make_section_stats("air_quality", "대기질", [
+            _make_indicator_stats("PM10_연평균", 42.0, unit="ug/m3"),
+        ])
+        check = _make_section_check("air_quality", "대기질", [
+            _make_check_result("PM10_연평균", 50.0, 42.0, CheckStatus.PASS,
+                               time_basis="연평균"),
+        ])
+
+        result = generate_air_quality_narrative(stats, check)
+
+        # "대기환경기준(연평균 50 ug/m3)" 형태
+        assert "연평균 50 ug/m3" in result
+
+    def test_water_includes_legal_basis_and_grade(self):
+        """수질 서술문에 법적 근거와 등급 BOD 기준값이 포함됨"""
+        stats = _make_section_stats("water_quality", "수질", [
+            _make_indicator_stats("BOD", 1.80, unit="mg/L"),
+            _make_indicator_stats("COD", 3.50, unit="mg/L"),
+        ])
+        check = _make_section_check("water_quality", "수질", [
+            _make_check_result("BOD", 5.0, 1.80, CheckStatus.PASS, "mg/L", "평균"),
+            _make_check_result("COD", 7.0, 3.50, CheckStatus.PASS, "mg/L", "평균"),
+        ], water_grade="Ib", water_grade_name="좋음")
+
+        result = generate_water_quality_narrative(stats, check)
+
+        assert "환경정책기본법 시행령 별표 제1호에 따른 하천 수질 및 수생태계 생활환경기준" in result
+        assert "Ib등급" in result
+        assert "좋음" in result
+        assert "BOD 2 mg/L 이하" in result
+
+    def test_noise_includes_legal_basis_pass(self):
+        """소음 적합 서술문에 법적 근거와 지역구분이 포함됨"""
+        stats = _make_section_stats("noise_vibration", "소음·진동", [
+            _make_indicator_stats("소음_Leq_주간", 52.0, unit="dB(A)"),
+        ])
+        check = _make_section_check("noise_vibration", "소음·진동", [
+            _make_check_result("소음_Leq_주간", 55.0, 52.0, CheckStatus.PASS,
+                               "dB(A)", "주간(06~22시)"),
+        ])
+
+        result = generate_noise_vibration_narrative(stats, check)
+
+        assert "환경정책기본법 시행령 별표 제1호에 따른 소음환경기준" in result
+        assert "적합" in result
+
+    def test_noise_includes_legal_basis_fail(self):
+        """소음 초과 서술문에 법적 근거가 포함됨"""
+        stats = _make_section_stats("noise_vibration", "소음·진동", [
+            _make_indicator_stats("소음_Leq_야간", 48.0, unit="dB(A)"),
+        ])
+        check = _make_section_check("noise_vibration", "소음·진동", [
+            _make_check_result("소음_Leq_야간", 45.0, 48.0, CheckStatus.FAIL,
+                               "dB(A)", "야간(22~06시)"),
+        ])
+
+        result = generate_noise_vibration_narrative(stats, check)
+
+        assert "환경정책기본법 시행령 별표 제1호에 따른 소음환경기준" in result
+        assert "방음대책" in result
+
+    def test_soil_generic_includes_legal_basis(self):
+        """토양 범용 서술문에 법적 근거가 포함됨 (legal_basis 설정 시)"""
+        section_def = get_section_definition("soil")
+        stats = _make_section_stats("soil", "토양", [
+            _make_indicator_stats("Cd", 0.80, unit="mg/kg"),
+        ])
+        check = _make_section_check("soil", "토양", [
+            IndicatorCheckResult(
+                indicator="Cd",
+                standard_value=4.0,
+                standard_unit="mg/kg",
+                time_basis="우려기준",
+                measured_avg=0.80,
+                measured_count=10,
+                status=CheckStatus.PASS,
+                description="카드뮴 1지역 우려기준",
+                legal_basis="토양환경보전법 시행규칙 별표 제3호 (토양오염우려기준)",
+            ),
+        ])
+
+        result = generate_generic_narrative(section_def, stats, check)
+
+        assert "토양환경보전법 시행규칙 별표 제3호에 따른 토양오염우려기준" in result
+        assert "1지역" in result
+        assert "4 mg/kg" in result
+        assert "이내 수준이다" in result
+
+    def test_generic_no_legal_basis_fallback(self):
+        """법적 근거가 없는 범용 서술문은 기존 방식으로 출력됨"""
+        section_def = get_section_definition("soil")
+        stats = _make_section_stats("soil", "토양", [
+            _make_indicator_stats("pH", 6.5, unit=""),
+        ])
+
+        result = generate_generic_narrative(section_def, stats, None)
+
+        assert "pH 평균 6.50로 조사되었다" in result
+
+
+class TestLegalBasisInScaffold:
+    """scaffold 테이블에 법적 근거 열이 포함되는지 검증한다."""
+
+    def test_scaffold_table_has_legal_basis_column(self):
+        """환경기준이 있으면 테이블에 법적 근거 열이 포함됨"""
+        from app.services.draft_scaffold import _format_stats_summary, EvidenceEntry
+
+        section_def = get_section_definition("air_quality")
+        entries = [
+            EvidenceEntry(
+                evidence_id="e1", indicator="PM10_연평균", value="45",
+                numeric_value=45.0, unit="ug/m3",
+                observed_at="2025-06-01T00:00:00",
+                data_source_id=None, metadata_json=None,
+            ),
+        ]
+        indicator_stats = [
+            _make_indicator_stats("PM10_연평균", 45.0, unit="ug/m3"),
+        ]
+        check_results = [
+            IndicatorCheckResult(
+                indicator="PM10_연평균",
+                standard_value=50.0, standard_unit="ug/m3",
+                time_basis="연평균",
+                measured_avg=45.0, measured_count=10,
+                status=CheckStatus.PASS,
+                legal_basis="환경정책기본법 시행령 별표 제1호 (대기환경기준)",
+            ),
+        ]
+
+        result = _format_stats_summary(
+            section_def, entries, indicator_stats,
+            check_results=check_results,
+        )
+
+        assert "법적 근거" in result
+        assert "환경정책기본법 별표1" in result
+
+    def test_scaffold_table_no_legal_basis_without_standards(self):
+        """환경기준이 없으면 법적 근거 열이 없음"""
+        from app.services.draft_scaffold import _format_stats_summary, EvidenceEntry
+
+        section_def = get_section_definition("climate")
+        entries = [
+            EvidenceEntry(
+                evidence_id="e1", indicator="평균기온", value="13.5",
+                numeric_value=13.5, unit="℃",
+                observed_at="2025-06-01T00:00:00",
+                data_source_id=None, metadata_json=None,
+            ),
+        ]
+        indicator_stats = [
+            _make_indicator_stats("평균기온", 13.5, unit="℃"),
+        ]
+
+        result = _format_stats_summary(section_def, entries, indicator_stats)
+
+        assert "법적 근거" not in result
+
+
+class TestLegalBasisInStandardChecker:
+    """StandardCheckResult에 legal_basis가 설정되는지 검증한다."""
+
+    def test_indicator_check_result_has_legal_basis(self):
+        """IndicatorCheckResult에 legal_basis 필드가 존재함"""
+        cr = IndicatorCheckResult(
+            indicator="PM10_연평균",
+            legal_basis="환경정책기본법 시행령 별표 제1호 (대기환경기준)",
+        )
+        assert cr.legal_basis == "환경정책기본법 시행령 별표 제1호 (대기환경기준)"
+
+    def test_indicator_check_result_default_empty(self):
+        """legal_basis 기본값은 빈 문자열"""
+        cr = IndicatorCheckResult(indicator="test")
+        assert cr.legal_basis == ""
+
+    def test_format_legal_ref_conversion(self):
+        """_format_legal_ref가 법적 근거를 서술문 형태로 변환함"""
+        from app.services.standard_checker import _format_legal_ref
+
+        assert _format_legal_ref(
+            "환경정책기본법 시행령 별표 제1호 (대기환경기준)"
+        ) == "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준"
+
+        assert _format_legal_ref(
+            "토양환경보전법 시행규칙 별표 제3호 (토양오염우려기준)"
+        ) == "토양환경보전법 시행규칙 별표 제3호에 따른 토양오염우려기준"
+
+        assert _format_legal_ref("") == ""
+
+    def test_format_legal_ref_water(self):
+        """수질 법적 근거 변환"""
+        from app.services.standard_checker import _format_legal_ref
+
+        result = _format_legal_ref(
+            "환경정책기본법 시행령 별표 제1호 (수질 및 수생태계 환경기준) — 하천 생활환경기준"
+        )
+        assert result == "환경정책기본법 시행령 별표 제1호에 따른 하천 수질 및 수생태계 생활환경기준"
+
+
 class TestDocxStructure:
     def _make_ctx(self, scaffold, project_name, section_data):
         """테스트용 ExportContext를 생성하는 헬퍼."""

@@ -3,10 +3,15 @@
 Post-1 통계 + Post-2 기준비교 결과를 입력으로 받아
 환경영향평가서 초안의 섹션별 서술문을 결정적(deterministic) 방식으로 생성한다.
 LLM을 사용하지 않으며, 모든 서술은 수집된 증거 데이터에 기반한다.
+
+Reg-2: 환경기준 비교 서술 시 법적 근거를 자동 삽입한다.
 """
 
 from __future__ import annotations
 
+import re
+
+from app.data.env_standards import WATER_GRADES
 from app.services.section_planner import SectionDefinition
 from app.services.standard_checker import (
     CheckStatus,
@@ -14,6 +19,26 @@ from app.services.standard_checker import (
     SectionCheckResult,
 )
 from app.services.statistics import IndicatorStats, SectionStats, TextIndicatorInfo
+
+# ────────────────────────────────────────────
+# 섹션별 법적 근거 서술문 접두어
+# ────────────────────────────────────────────
+
+_AIR_LEGAL_PREFIX = "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준"
+_WATER_LEGAL_PREFIX = "환경정책기본법 시행령 별표 제1호에 따른 하천 수질 및 수생태계 생활환경기준"
+_NOISE_LEGAL_PREFIX = "환경정책기본법 시행령 별표 제1호에 따른 소음환경기준"
+
+# 법적 근거 문자열 → 서술문용 텍스트 변환 매핑
+_LEGAL_REF_NARRATIVE: dict[str, str] = {
+    "환경정책기본법 시행령 별표 제1호 (대기환경기준)":
+        _AIR_LEGAL_PREFIX,
+    "환경정책기본법 시행령 별표 제1호 (수질 및 수생태계 환경기준) — 하천 생활환경기준":
+        _WATER_LEGAL_PREFIX,
+    "환경정책기본법 시행령 별표 제1호 (소음환경기준)":
+        _NOISE_LEGAL_PREFIX,
+    "토양환경보전법 시행규칙 별표 제3호 (토양오염우려기준)":
+        "토양환경보전법 시행규칙 별표 제3호에 따른 토양오염우려기준",
+}
 
 
 def _fmt(value: float | None, precision: int = 2) -> str:
@@ -44,6 +69,27 @@ def _status_text(status: str) -> str:
     elif status == CheckStatus.FAIL:
         return "초과"
     return "-"
+
+
+def _format_legal_ref(legal_basis: str) -> str:
+    """법적 근거를 서술문에 삽입 가능한 형태로 변환한다."""
+    if not legal_basis:
+        return "환경기준"
+    return _LEGAL_REF_NARRATIVE.get(legal_basis, legal_basis)
+
+
+def _get_water_grade_bod(grade: str) -> float | None:
+    """수질등급 코드로 BOD 상한값을 조회한다."""
+    for wg in WATER_GRADES:
+        if wg.grade == grade:
+            return wg.bod
+    return None
+
+
+def _extract_area_from_description(description: str) -> str:
+    """기준 설명에서 지역구분을 추출한다 (예: '1지역')."""
+    m = re.search(r"(\d+지역)", description)
+    return m.group(1) if m else ""
 
 
 # ────────────────────────────────────────────
@@ -89,9 +135,10 @@ def generate_air_quality_narrative(
         if cr and cr.standard_value is not None:
             std_val = _fmt(cr.standard_value)
             status = _status_text(cr.status)
+            time_basis = cr.time_basis or "연평균"
             lines.append(
                 f"{indicator} 평균 {avg} {unit}으로 "
-                f"환경기준({std_val} {unit}) {status} 수준이다."
+                f"{_AIR_LEGAL_PREFIX}({time_basis} {std_val} {unit}) {status} 수준이다."
             )
         else:
             lines.append(f"{indicator} 평균 {avg} {unit}이다.")
@@ -158,9 +205,13 @@ def generate_water_quality_narrative(
         if section_check and section_check.water_grade:
             grade = section_check.water_grade
             grade_name = section_check.water_grade_name or ""
+            # BOD 등급 기준값 조회
+            grade_bod = _get_water_grade_bod(grade)
+            grade_detail = f", BOD {_fmt(grade_bod)} {unit} 이하" if grade_bod else ""
             lines.append(
                 f"BOD 평균 {bod_avg} {unit}, COD 평균 {cod_avg} {unit}로 "
-                f"하천 생활환경기준 {grade}등급({grade_name}) 수준에 해당한다."
+                f"{_WATER_LEGAL_PREFIX} {grade}등급"
+                f"({grade_name}{grade_detail}) 수준에 해당한다."
             )
         else:
             lines.append(
@@ -234,7 +285,7 @@ def generate_noise_vibration_narrative(
     else:
         lines.append("본 사업지역의 소음 현황을 조사하였다.")
 
-    # 판정 서술
+    # 판정 서술 (법적 근거 포함)
     if section_check:
         for ind_key, label in [("소음_Leq_주간", "주간"), ("소음_Leq_야간", "야간")]:
             cr = check_map.get(ind_key)
@@ -243,12 +294,14 @@ def generate_noise_vibration_narrative(
                 unit = cr.standard_unit or "dB(A)"
                 if cr.status == CheckStatus.PASS:
                     lines.append(
-                        f"{label} 소음은 환경기준({std_val} {unit}) 이내로 적합하다."
+                        f'{label} 소음은 {_NOISE_LEGAL_PREFIX}'
+                        f'(일반지역 "나" {label} {std_val} {unit}) 이내로 적합하다.'
                     )
                 elif cr.status == CheckStatus.FAIL:
                     lines.append(
-                        f"{label} 소음은 환경기준({std_val} {unit})을 초과하므로 "
-                        f"방음대책 수립이 필요하다."
+                        f'{label} 소음은 {_NOISE_LEGAL_PREFIX}'
+                        f'(일반지역 "나" {label} {std_val} {unit})을 초과하므로 '
+                        f'방음대책 수립이 필요하다.'
                     )
 
     # 진동 서술
@@ -435,7 +488,10 @@ def generate_generic_narrative(
     section_stats: SectionStats,
     section_check: SectionCheckResult | None,
 ) -> str:
-    """환경기준 비교 대상이 아닌 범용 섹션의 서술문을 생성한다."""
+    """환경기준 비교 대상이 아닌 범용 섹션의 서술문을 생성한다.
+
+    환경기준이 있는 지표에 대해서는 법적 근거를 포함하여 서술한다.
+    """
     if not _has_any_data(section_stats):
         return _no_data_narrative()
 
@@ -455,13 +511,31 @@ def generate_generic_narrative(
             f"총 {total}건의 데이터를 수집하였다."
         )
 
-    # 수치형 지표별 서술
+    # 환경기준 비교 맵 구성
+    check_map: dict[str, IndicatorCheckResult] = {}
+    if section_check:
+        check_map = {r.indicator: r for r in section_check.indicators}
+
+    # 수치형 지표별 서술 (법적 근거 포함)
     for stat in section_stats.indicator_stats:
         if stat.count == 0:
             continue
-        unit = f" {stat.unit}" if stat.unit else ""
+        unit_str = f" {stat.unit}" if stat.unit else ""
         avg = _fmt(stat.mean)
-        lines.append(f"{stat.indicator} 평균 {avg}{unit}로 조사되었다.")
+
+        cr = check_map.get(stat.indicator)
+        if cr and cr.standard_value is not None and cr.status != CheckStatus.NA and cr.legal_basis:
+            std_val = _fmt(cr.standard_value)
+            legal_ref = _format_legal_ref(cr.legal_basis)
+            status = _status_text(cr.status)
+            area = _extract_area_from_description(cr.description)
+            detail = f"{area} " if area else ""
+            lines.append(
+                f"{stat.indicator} 평균 {avg}{unit_str}로 "
+                f"{legal_ref}({detail}{std_val}{unit_str}) {status} 수준이다."
+            )
+        else:
+            lines.append(f"{stat.indicator} 평균 {avg}{unit_str}로 조사되었다.")
 
     # 비수치형 지표 서술 (값 목록 형태)
     for ti in section_stats.text_indicators:

@@ -902,3 +902,113 @@
   - `export_service.py`: preview 유사사례 수 산출에도 중복 제거 적용
 - 테스트 9개 추가 (256개 전체 통과)
   - 토지이용 서술문 4개, 문화재 서술문 4개, 범용 비수치 1개
+
+### 커밋
+- `5603382` — fix: 비수치형 서술문 불일치 + 부록 B 유사사례 중복 수정 (Post-11)
+
+---
+
+## Reg-1: 법령 데이터 구축 ✅
+
+### 완료 항목
+
+#### 1. 법령 데이터 폴더 생성
+- `backend/app/data/regulations/` 폴더 및 `__init__.py` 생성
+
+#### 2. legal_references.py — 환경기준별 법적 근거 매핑
+- `LegalReference` 데이터클래스: 법률명, 조문, 법적 근거 문자열, 설명
+- `IndicatorLegalInfo` 데이터클래스: 지표명, 기준값, 단위, 법적 근거
+- 매체별 법적 근거 상수: `AIR_LEGAL_REF`, `WATER_LEGAL_REF`, `NOISE_LEGAL_REF`, `SOIL_LEGAL_REF`
+- 카테고리→법적 근거 매핑: `CATEGORY_LEGAL_REFS`
+- 지표별 법적 근거 매핑: `AIR_INDICATOR_REFS`, `WATER_INDICATOR_REFS`, `NOISE_INDICATOR_REFS`, `SOIL_INDICATOR_REFS`
+- 통합 매핑: `ALL_INDICATOR_REFS` (전체 지표 → 법적 근거)
+- 조회 함수: `get_legal_reference()`, `get_category_legal_reference()`
+
+#### 3. required_items.py — 사업유형별 필수 평가 항목
+- `RequiredSection`, `ProjectTypeRequirement` 데이터클래스
+- 12개 사업유형 정의: power_plant, road, housing, industrial, tourism, port, military, railway, airport, dam, reclamation, other
+- 각 유형별 필수 섹션 + 섹션별 필수 지표 목록
+- military는 전 항목(11개 섹션) 필수
+- 미등록 유형은 'other' 기준 적용
+- 조회 함수: `get_required_sections()`, `get_required_indicators()`, `get_project_type_requirement()`
+
+#### 4. area_classifications.py — 지역구분별 기준 차등
+- `NoiseStandardByArea` 데이터클래스
+- 소음환경기준 4개 지역구분 ("가", "나", "다", "라")
+- 일반지역/도로변지역 × 주간/야간 = 4개 기준값씩
+- 간편 조회용 딕셔너리: `NOISE_AREA_GENERAL`, `NOISE_AREA_ROADSIDE`
+- 조회 함수: `get_noise_standard()`, `get_noise_area_info()`
+
+#### 5. env_standards.py 확장
+- `Standard` 데이터클래스에 `legal_basis: str = ""` 필드 추가 (하위 호환)
+- 대기 16개, 수질 6개, 소음 2개, 토양 6개 기준 모두 법적 근거 값 설정
+- 기존 로직(`get_standard_for_indicator`, `get_standards_for_category`, `determine_water_grade` 등) 동작 유지
+
+### 테스트
+- `backend/tests/test_regulations.py`: 53개 신규 테스트
+  - TestLegalReferences (12개): 법적 근거 매핑 무결성 — 모든 기준에 법적 근거 매핑, 필드 채움, 기준값 일치
+  - TestRequiredItems (20개): 사업유형별 필수 항목 완전성 — 12개 유형 정의, 섹션/지표 비어있지 않음, 개별 유형 검증
+  - TestAreaClassifications (17개): 지역구분 구조 — 4개 지역, 주간/야간 값, 도로변>일반, 주간>야간
+  - TestEnvStandardsCompat (6개): 하위 호환성 — legal_basis 속성, 기존 필드 유지, 기존 함수 정상 동작
+- 기존 256개 + 신규 53개 = 309개 전체 통과
+
+### 주요 파일
+- `backend/app/data/regulations/__init__.py` — 패키지 초기화 (신규)
+- `backend/app/data/regulations/legal_references.py` — 법적 근거 매핑 (신규)
+- `backend/app/data/regulations/required_items.py` — 사업유형별 필수 항목 (신규)
+- `backend/app/data/regulations/area_classifications.py` — 지역구분별 기준 차등 (신규)
+- `backend/app/data/env_standards.py` — legal_basis 필드 추가 (수정)
+- `backend/tests/test_regulations.py` — 법령 데이터 테스트 53개 (신규)
+
+---
+
+## Reg-2: 서술문 법적 근거 반영 ✅
+
+### 완료 항목
+
+#### 1. standard_checker.py — IndicatorCheckResult에 legal_basis 필드 추가
+- `IndicatorCheckResult` 데이터클래스에 `legal_basis: str = ""` 필드 추가
+- `_check_indicator()`: `Standard.legal_basis`를 결과에 복사
+- 기준은 있지만 측정 데이터 없는 지표에도 `legal_basis` 설정
+- `_format_legal_ref()` 헬퍼: 법적 근거 문자열을 서술문 삽입 형태로 변환
+- `_generate_section_summary()`: 지표별 판정 서술에 법적 근거 접두어 삽입
+
+#### 2. narrative_generator.py — 서술문에 법적 근거 자동 삽입
+- 섹션별 법적 근거 접두어 상수 정의:
+  - `_AIR_LEGAL_PREFIX`: "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준"
+  - `_WATER_LEGAL_PREFIX`: "환경정책기본법 시행령 별표 제1호에 따른 하천 수질 및 수생태계 생활환경기준"
+  - `_NOISE_LEGAL_PREFIX`: "환경정책기본법 시행령 별표 제1호에 따른 소음환경기준"
+- `_LEGAL_REF_NARRATIVE` 매핑: 법적 근거 원문 → 서술문용 텍스트
+- 대기질: "환경기준(50 ug/m3)" → "대기환경기준(연평균 50 ug/m3)" + 법적 근거
+- 수질: "하천 생활환경기준 Ib등급(좋음)" → "하천 수질 및 수생태계 생활환경기준 Ib등급(좋음, BOD 2 mg/L 이하)" + 법적 근거
+- 소음: "환경기준(55 dB(A))" → '소음환경기준(일반지역 "나" 주간 55 dB(A))' + 법적 근거
+- 범용(토양): 법적 근거가 있으면 "토양오염우려기준(1지역 4 mg/kg) 이내" 형태로 서술
+- `_get_water_grade_bod()`: 수질등급 BOD 상한값 조회 헬퍼
+- `_extract_area_from_description()`: 기준 설명에서 지역구분 추출 헬퍼
+
+#### 3. draft_scaffold.py — 환경기준 비교 테이블에 "법적 근거" 열 추가
+- `_format_stats_summary()`: 테이블 헤더에 "법적 근거" 열 추가
+- `_short_legal_ref()` 헬퍼: 간략 형태 변환 ("환경정책기본법 별표1", "토양환경보전법 별표3")
+- 각 데이터 행에 간략 법적 근거 표시
+
+#### 4. export_service.py — DOCX/PDF 환경기준 비교 테이블 법적 근거 열 반영
+- `_docx_add_standards_table()`: 5열→6열 (+ "법적 근거"), 열 너비 재조정
+- `_pdf_add_standards_table()`: 5열→6열 (+ "법적 근거"), 열 너비 재조정
+- `_short_legal_ref()` 헬퍼 추가
+
+#### 5. 프론트엔드
+- scaffold-section-view.tsx의 `summary_text`가 `<pre>` 태그로 렌더링되어 법적 근거 열 자동 표시
+- 서술문의 법적 근거 텍스트도 narrative 필드에 포함되어 그대로 출력
+
+### 테스트
+- 14개 신규 테스트 (기존 309 + 신규 14 = 323개 전체 통과)
+  - TestLegalBasisInNarrative (8개): 대기/수질/소음/토양 서술문 법적 근거 포함 검증
+  - TestLegalBasisInScaffold (2개): scaffold 테이블 법적 근거 열 포함/미포함 검증
+  - TestLegalBasisInStandardChecker (4개): IndicatorCheckResult 필드, _format_legal_ref 변환 검증
+
+### 주요 파일
+- `backend/app/services/standard_checker.py` — legal_basis 필드 추가, 법적 근거 변환 (수정)
+- `backend/app/services/narrative_generator.py` — 서술문 법적 근거 삽입 (수정)
+- `backend/app/services/draft_scaffold.py` — scaffold 테이블 법적 근거 열 (수정)
+- `backend/app/services/export_service.py` — DOCX/PDF 테이블 법적 근거 열 (수정)
+- `backend/tests/test_narrative_generator.py` — 14개 신규 테스트 (수정)
