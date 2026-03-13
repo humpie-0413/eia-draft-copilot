@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.crud import project as project_crud
+from app.crud import draft_narrative as draft_narrative_crud
 from app.db import get_db
 from app.llm import get_llm_adapter
 from app.llm.base import EnhanceInput
@@ -144,6 +145,17 @@ async def enhance_section_narrative(
     )
 
     result = await adapter.enhance_narrative(enhance_input)
+
+    # 보강 결과가 fallback이 아니면 DB에 저장하여 export 시 사용
+    if not result.is_fallback:
+        await draft_narrative_crud.upsert_narrative(
+            db,
+            project_id=project_id,
+            section_key=body.section_key,
+            narrative_text=result.enhanced_text,
+            adapter_used=result.adapter_used,
+        )
+        await db.commit()
 
     return EnhanceResponse(
         section_key=body.section_key,

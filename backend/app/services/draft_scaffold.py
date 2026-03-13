@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crud import draft_narrative as draft_narrative_crud
 from app.models.evidence import Evidence
 from app.services.narrative_generator import generate_narrative
 from app.services.section_planner import (
@@ -247,8 +248,14 @@ async def generate_section_scaffold(
     section_check = await check_section_standards(db, project_id, section_key)
     check_results = section_check.indicators if section_check else None
 
-    # 서술문 생성 (Post-3 신규)
-    narrative = generate_narrative(section_def, section_stats, section_check)
+    # 서술문 생성: LLM 보강 서술문이 있으면 우선 사용, 없으면 템플릿 생성 (Post-3)
+    saved_narrative = await draft_narrative_crud.get_narrative(
+        db, project_id, section_key
+    )
+    if saved_narrative:
+        narrative = saved_narrative.narrative_text
+    else:
+        narrative = generate_narrative(section_def, section_stats, section_check)
 
     # 통계 요약 테이블 + 상세 데이터 샘플
     summary = _format_stats_summary(
