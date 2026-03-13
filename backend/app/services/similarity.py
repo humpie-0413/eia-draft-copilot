@@ -224,7 +224,16 @@ async def find_similar_cases(
 
     # 종합 점수 기준 내림차순 정렬
     results.sort(key=lambda r: r.overall_score, reverse=True)
-    results = results[:top_k]
+
+    # 이름 기준 중복 제거 (점수 높은 것 우선 — 정렬 후이므로 첫 번째가 최고점)
+    seen_names: set[str] = set()
+    unique_results: list[SimilarCaseMatchResult] = []
+    for r in results:
+        if r.similar_case.name in seen_names:
+            continue
+        seen_names.add(r.similar_case.name)
+        unique_results.append(r)
+    results = unique_results[:top_k]
 
     return SimilarCaseMatchList(
         project_id=project_id,

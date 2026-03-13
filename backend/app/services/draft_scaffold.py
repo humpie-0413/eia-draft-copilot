@@ -261,14 +261,22 @@ async def generate_section_scaffold(
     section_check = await check_section_standards(db, project_id, section_key)
     check_results = section_check.indicators if section_check else None
 
-    # 서술문 생성: LLM 보강 서술문이 있으면 우선 사용, 없으면 템플릿 생성 (Post-3)
+    # 서술문 생성: 항상 템플릿 서술문(법적 근거 포함) 생성 후,
+    # LLM 보강 서술문이 법적 근거를 포함하는 경우에만 대체 사용
+    template_narrative = generate_narrative(section_def, section_stats, section_check)
+
     saved_narrative = await draft_narrative_crud.get_narrative(
         db, project_id, section_key
     )
     if saved_narrative:
-        narrative = saved_narrative.narrative_text
+        _LEGAL_KEYWORDS = ("환경정책기본법", "토양환경보전법", "환경영향평가법")
+        if any(kw in saved_narrative.narrative_text for kw in _LEGAL_KEYWORDS):
+            narrative = saved_narrative.narrative_text
+        else:
+            # LLM 서술문에 법적 근거가 없으면 템플릿 서술문 사용
+            narrative = template_narrative
     else:
-        narrative = generate_narrative(section_def, section_stats, section_check)
+        narrative = template_narrative
 
     # 통계 요약 테이블 + 상세 데이터 샘플
     summary = _format_stats_summary(
