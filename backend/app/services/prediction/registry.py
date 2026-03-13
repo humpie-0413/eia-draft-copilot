@@ -8,16 +8,22 @@ from __future__ import annotations
 
 from app.services.prediction.air_dispersion import AirDispersionModel
 from app.services.prediction.base import BasePredictionModel, ModelInfo
+from app.services.prediction.noise_propagation import NoisePropagationModel
+from app.services.prediction.water_mixing import WaterMixingModel
 
 
 # 모델 인스턴스 레지스트리 (모델명 → 인스턴스)
 _MODEL_REGISTRY: dict[str, BasePredictionModel] = {
     "gaussian_plume": AirDispersionModel(),
+    "noise_propagation": NoisePropagationModel(),
+    "water_mixing": WaterMixingModel(),
 }
 
 # 섹션 키 → 사용 가능한 모델명 목록
 _SECTION_MODELS: dict[str, list[str]] = {
     "air_quality": ["gaussian_plume"],
+    "noise_vibration": ["noise_propagation"],
+    "water_quality": ["water_mixing"],
 }
 
 

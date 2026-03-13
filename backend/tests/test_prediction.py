@@ -536,7 +536,7 @@ class TestPredictionAPI:
 
         프로젝트가 없으면 404가 먼저 나오므로, 레지스트리 수준에서 확인.
         """
-        model = get_default_model_for_section("water_quality")
+        model = get_default_model_for_section("ecology")
         assert model is None
 
 

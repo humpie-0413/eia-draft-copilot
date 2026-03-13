@@ -117,6 +117,82 @@ async def _get_wind_speed_from_evidence(
     return sum(values) / len(values)
 
 
+async def _get_background_noise_data(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+) -> dict[str, float]:
+    """프로젝트의 소음 현황 데이터에서 배경 소음도를 추출한다.
+
+    소음측정 데이터의 주간/야간 Leq 평균을 배경 소음으로 사용한다.
+    """
+    indicator_map = {
+        "소음_Leq_주간": "소음_Leq_주간",
+        "소음_Leq_야간": "소음_Leq_야간",
+    }
+
+    result = await db.execute(
+        select(Evidence).where(
+            and_(
+                Evidence.project_id == project_id,
+                Evidence.category == "noise_vibration",
+                Evidence.screening_only.is_(False),
+                Evidence.numeric_value.isnot(None),
+                Evidence.indicator.in_(list(indicator_map.keys())),
+            )
+        )
+    )
+    evidences = result.scalars().all()
+
+    values_by_indicator: dict[str, list[float]] = {}
+    for ev in evidences:
+        key = indicator_map.get(ev.indicator)
+        if key and ev.numeric_value is not None:
+            values_by_indicator.setdefault(key, []).append(ev.numeric_value)
+
+    background: dict[str, float] = {}
+    for key, values in values_by_indicator.items():
+        if values:
+            background[key] = sum(values) / len(values)
+
+    return background
+
+
+async def _get_background_water_data(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+) -> dict[str, float]:
+    """프로젝트의 수질 현황 데이터에서 배경 농도를 추출한다.
+
+    수질측정망 데이터의 평균값을 기존 하천 수질로 사용한다.
+    """
+    target_indicators = ["BOD", "COD", "SS", "T-N", "T-P"]
+
+    result = await db.execute(
+        select(Evidence).where(
+            and_(
+                Evidence.project_id == project_id,
+                Evidence.category == "water_quality",
+                Evidence.screening_only.is_(False),
+                Evidence.numeric_value.isnot(None),
+                Evidence.indicator.in_(target_indicators),
+            )
+        )
+    )
+    evidences = result.scalars().all()
+
+    values_by_indicator: dict[str, list[float]] = {}
+    for ev in evidences:
+        if ev.numeric_value is not None:
+            values_by_indicator.setdefault(ev.indicator, []).append(ev.numeric_value)
+
+    background: dict[str, float] = {}
+    for key, values in values_by_indicator.items():
+        if values:
+            background[key] = sum(values) / len(values)
+
+    return background
+
+
 def _result_to_read(result) -> PredictionResultRead:
     """PredictionResult 데이터클래스를 Pydantic 모델로 변환."""
     return PredictionResultRead(
@@ -195,10 +271,15 @@ async def run_prediction(
         if ws is not None:
             params["wind_speed"] = ws
 
-    # 배경 농도 데이터
+    # 배경 농도/소음 데이터
     background: dict[str, float] | None = None
-    if req.use_background_data and section_key == "air_quality":
-        background = await _get_background_air_data(db, project_id)
+    if req.use_background_data:
+        if section_key == "air_quality":
+            background = await _get_background_air_data(db, project_id)
+        elif section_key == "noise_vibration":
+            background = await _get_background_noise_data(db, project_id)
+        elif section_key == "water_quality":
+            background = await _get_background_water_data(db, project_id)
 
     # 예측 실행
     result = model.predict(parameters=params, background_data=background)

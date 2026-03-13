@@ -1225,6 +1225,60 @@
 
 ---
 
+## Pred-2: 소음 전파 + 수질 혼합 모델 ✅
+
+### 완료 항목
+
+#### 1. 소음 전파 모델
+- `backend/app/services/prediction/noise_propagation.py`
+- 점음원 거리감쇠: L(r) = Lw - 20·log10(r) - 11
+- 선음원(도로) 감쇠: L(r) = Lw/m - 10·log10(r) - 8
+- 보정 요소: 지면 반사(+3dB), 대기 흡수(-α·r), Maekawa 차음벽 회절
+- 에너지 합산: L_total = 10·log10(10^(L1/10) + 10^(L2/10))
+- 예측 거리: 10m, 20m, 50m, 100m, 200m, 500m (주간/야간 각각)
+- 환경기준 비교: 주간 55dB(A), 야간 45dB(A)
+- 사업유형별 기본값: power_plant=95dB, road=75dB/m(선음원), housing=90dB, industrial=100dB
+
+#### 2. 수질 혼합 모델
+- `backend/app/services/prediction/water_mixing.py`
+- 완전혼합 희석: C_mix = (Q_river·C_river + Q_discharge·C_discharge) / (Q_river + Q_discharge)
+- 대상 물질: BOD, COD, SS, T-N, T-P
+- 방류수 수질기준 적용: BOD 30, COD 40, SS 30, T-N 60, T-P 8 (mg/L, 물환경보전법)
+- 하천 환경기준(III등급) 비교: BOD 5, COD 7, SS 25, T-P 0.2 (mg/L)
+- 사업유형별 기본 방류량: power_plant=0.01, industrial=0.1, housing=0.05 (m³/s)
+
+#### 3. 레지스트리 및 API 확장
+- `prediction/registry.py` — noise_propagation, water_mixing 모델 등록
+- 섹션 매핑: noise_vibration → noise_propagation, water_quality → water_mixing
+- API 배경 데이터 자동 추출: 소음(주간/야간 Leq), 수질(BOD, COD, SS, T-N, T-P)
+- 기존 API 엔드포인트 재사용: POST /predict/{section_key}, GET /prediction-models
+
+#### 4. 테스트 (82개)
+- TestPointSourceAttenuation: 점음원 감쇠 (9개, 수동 계산 검증 포함)
+- TestLineSourceAttenuation: 선음원 감쇠 (4개)
+- TestBarrierAttenuation: Maekawa 차음벽 (7개)
+- TestEnergySum: 에너지 합산 (6개, +3dB 법칙 등)
+- TestNoisePropagationModel: 모델 통합 (12개)
+- TestCompleteMixing: 혼합 계산 (8개)
+- TestWaterMixingModel: 모델 통합 (14개)
+- TestNoiseDefaults / TestWaterDefaults: 기본값 (10개)
+- TestRegistryExtended: 레지스트리 확장 (7개)
+- TestPredictionAPIExtended: API (5개)
+
+### 전체 테스트
+- 526개 전체 통과 (기존 444 + 신규 82)
+
+### 주요 파일
+- `backend/app/services/prediction/noise_propagation.py` (신규)
+- `backend/app/services/prediction/water_mixing.py` (신규)
+- `backend/app/services/prediction/registry.py` (수정 — 2개 모델 추가)
+- `backend/app/services/prediction/__init__.py` (수정)
+- `backend/app/api/v1/predictions.py` (수정 — 소음/수질 배경 데이터 함수)
+- `backend/tests/test_prediction.py` (수정 — ecology 섹션으로 변경)
+- `backend/tests/test_prediction_noise_water.py` (신규 — 82개 테스트)
+
+---
+
 ## Pred-1: 예측 모듈 기반 구조 + 대기 확산 모델 ✅
 
 ### 완료 항목
