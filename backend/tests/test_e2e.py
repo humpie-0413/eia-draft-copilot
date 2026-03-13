@@ -235,9 +235,14 @@ async def test_e2e_full_workflow(client: AsyncClient):
     assert section_map["noise_vibration"]["coverage_ratio"] < 1.0
     assert section_map["noise_vibration"]["fulfilled_count"] == 2
 
-    # 생태: 0건 → empty
-    assert section_map["ecology"]["status"] == "empty"
+    # 생태: 0건, industrial에서 선택 섹션 → not_applicable
+    assert section_map["ecology"]["status"] == "not_applicable"
     assert section_map["ecology"]["total_evidence_count"] == 0
+    assert section_map["ecology"]["scope"] == "optional"
+
+    # 토양: 필수 섹션인데 비어있음 → expert_required
+    assert section_map["soil"]["status"] == "expert_required"
+    assert section_map["soil"]["scope"] == "required"
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 단계 7: 초안 뼈대 생성 확인 (evidence 기반 근거 텍스트 배치)

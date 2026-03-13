@@ -85,9 +85,11 @@ async def get_all_sections_status(
     db: AsyncSession = Depends(get_db),
 ):
     """프로젝트의 전체 섹션 증거 충족 상태를 반환한다."""
-    await _verify_project(db, project_id)
+    project = await _verify_project(db, project_id)
 
-    statuses = await calculate_all_sections_status(db, project_id)
+    statuses = await calculate_all_sections_status(
+        db, project_id, project_type=project.project_type,
+    )
     return SectionStatusList(
         project_id=str(project_id),
         sections=[
@@ -111,6 +113,7 @@ async def get_all_sections_status(
                 status=s.status,
                 auto_filled=s.auto_filled,
                 missing_indicators=s.missing_indicators,
+                scope=s.scope,
             )
             for s in statuses
         ],
@@ -129,9 +132,12 @@ async def get_section_status(
     db: AsyncSession = Depends(get_db),
 ):
     """특정 섹션의 증거 충족 상태를 반환한다."""
-    await _verify_project(db, project_id)
+    project = await _verify_project(db, project_id)
 
-    section_status = await calculate_section_status(db, project_id, section_key)
+    section_status = await calculate_section_status(
+        db, project_id, section_key,
+        project_type=project.project_type,
+    )
     if section_status is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -158,6 +164,7 @@ async def get_section_status(
         status=section_status.status,
         auto_filled=section_status.auto_filled,
         missing_indicators=section_status.missing_indicators,
+        scope=section_status.scope,
     )
 
 

@@ -1,5 +1,6 @@
 import { api } from "./api-client";
 import type {
+  AssessmentScope,
   DraftScaffold,
   ScaffoldSection,
   SectionDefinition,
@@ -31,6 +32,15 @@ export async function getSectionStatus(
   sectionKey: string,
 ): Promise<SectionStatus> {
   return api.get(`/api/v1/projects/${projectId}/sections/status/${sectionKey}`);
+}
+
+// ─── 평가 범위 ───
+
+/** 프로젝트의 사업유형 기반 평가 범위 조회 */
+export async function getAssessmentScope(
+  projectId: string,
+): Promise<AssessmentScope> {
+  return api.get(`/api/v1/projects/${projectId}/assessment-scope`);
 }
 
 // ─── 초안 뼈대 ───

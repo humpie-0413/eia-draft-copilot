@@ -1,7 +1,7 @@
 "use client";
 
 import type { SectionStatus, SectionStatusValue } from "@/types/section";
-import { SECTION_STATUS_LABELS } from "@/types/section";
+import { SECTION_STATUS_LABELS, SECTION_SCOPE_LABELS } from "@/types/section";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -20,6 +20,12 @@ const STATUS_COLORS: Record<SectionStatusValue, string> = {
   not_applicable: "bg-gray-100 text-gray-500",
 };
 
+const SCOPE_COLORS: Record<string, string> = {
+  required: "bg-red-50 text-red-700 border-red-200",
+  recommended: "bg-amber-50 text-amber-700 border-amber-200",
+  optional: "bg-gray-50 text-gray-500 border-gray-200",
+};
+
 interface SectionStatusCardProps {
   section: SectionStatus;
   onClick?: () => void;
@@ -27,22 +33,33 @@ interface SectionStatusCardProps {
 
 export function SectionStatusCard({ section, onClick }: SectionStatusCardProps) {
   const pct = Math.round(section.coverage_ratio * 100);
+  const scopeLabel = SECTION_SCOPE_LABELS[section.scope];
 
   return (
     <Card
       className={`cursor-pointer transition-shadow hover:shadow-md ${
         onClick ? "hover:ring-2 hover:ring-primary/20" : ""
-      }`}
+      }${section.scope === "required" && section.status === "expert_required" ? " ring-1 ring-red-300" : ""}`}
       onClick={onClick}
     >
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-sm font-medium">
-            {section.title}
-          </CardTitle>
+        <div className="flex items-start justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            <CardTitle className="text-sm font-medium">
+              {section.title}
+            </CardTitle>
+            {scopeLabel && (
+              <Badge
+                variant="outline"
+                className={`text-[10px] px-1.5 py-0 leading-4 ${SCOPE_COLORS[section.scope] ?? ""}`}
+              >
+                {scopeLabel}
+              </Badge>
+            )}
+          </div>
           <Badge
             variant="secondary"
-            className={`text-xs ${STATUS_COLORS[section.status]}`}
+            className={`text-xs shrink-0 ${STATUS_COLORS[section.status]}`}
           >
             {SECTION_STATUS_LABELS[section.status]}
           </Badge>

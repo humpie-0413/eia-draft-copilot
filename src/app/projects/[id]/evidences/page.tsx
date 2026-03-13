@@ -7,20 +7,23 @@ import type {
   EvidenceCategory,
   EvidenceFormData,
 } from "@/types/evidence";
+import type { AssessmentScope, SectionScope } from "@/types/section";
 import {
   listEvidences,
   createEvidence,
   updateEvidence,
   deleteEvidence,
 } from "@/lib/evidence-api";
+import { getAssessmentScope } from "@/lib/section-api";
 import { EvidenceFilters } from "@/components/evidence/evidence-filters";
 import { EvidenceTable } from "@/components/evidence/evidence-table";
 import { EvidenceDetailSheet } from "@/components/evidence/evidence-detail-sheet";
 import { EvidenceFormDialog } from "@/components/evidence/evidence-form-dialog";
 import { CollectDataDialog } from "@/components/evidence/collect-data-dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ArrowLeft, Download } from "lucide-react";
+import { Plus, ArrowLeft, Download, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 export default function EvidenceWorkbenchPage() {
@@ -50,6 +53,9 @@ export default function EvidenceWorkbenchPage() {
   // 데이터 수집 다이얼로그
   const [collectOpen, setCollectOpen] = useState(false);
 
+  // 평가 범위 (필수 미수집 지표 표시)
+  const [scope, setScope] = useState<AssessmentScope | null>(null);
+
   // ─── 데이터 로딩 ───
   const fetchEvidences = useCallback(async () => {
     setLoading(true);
@@ -71,6 +77,28 @@ export default function EvidenceWorkbenchPage() {
   useEffect(() => {
     fetchEvidences();
   }, [fetchEvidences]);
+
+  // 평가 범위 조회
+  useEffect(() => {
+    getAssessmentScope(projectId)
+      .then(setScope)
+      .catch(() => setScope(null));
+  }, [projectId]);
+
+  // 필수 섹션 중 미수집 지표 계산
+  const requiredMissing: { section: SectionScope; missing: string[] }[] = [];
+  if (scope) {
+    const collectedIndicators = new Set(evidences.map((e) => e.indicator));
+    for (const sec of scope.sections) {
+      if (sec.scope !== "required") continue;
+      const missing = sec.required_indicators.filter(
+        (ind) => !collectedIndicators.has(ind),
+      );
+      if (missing.length > 0) {
+        requiredMissing.push({ section: sec, missing });
+      }
+    }
+  }
 
   // ─── 핸들러 ───
   const handleView = (ev: Evidence) => {
@@ -178,6 +206,28 @@ export default function EvidenceWorkbenchPage() {
           />
         </CardContent>
       </Card>
+
+      {/* 필수 미수집 지표 안내 */}
+      {requiredMissing.length > 0 && (
+        <Card className="border-red-200 bg-red-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-red-700">
+              <AlertTriangle className="h-4 w-4" />
+              필수 섹션 미수집 지표 ({requiredMissing.reduce((s, r) => s + r.missing.length, 0)}건)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {requiredMissing.map(({ section, missing }) => (
+              <div key={section.section_key} className="text-xs">
+                <span className="font-medium text-red-800">{section.title}</span>
+                <span className="text-red-600 ml-2">
+                  {missing.join(", ")}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 증거 테이블 */}
       <EvidenceTable

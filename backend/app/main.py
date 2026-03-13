@@ -8,6 +8,7 @@ from app.api.v1.export import router as export_router
 from app.api.v1.llm import router as llm_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.qa import router as qa_router
+from app.api.v1.scope import router as scope_router
 from app.api.v1.sections import router as sections_router
 from app.api.v1.similar_cases import router as similar_cases_router
 from app.api.v1.snapshots import router as snapshots_router
@@ -40,6 +41,7 @@ app.include_router(connectors_router, prefix="/api/v1")
 app.include_router(similar_cases_router, prefix="/api/v1")
 app.include_router(sections_router, prefix="/api/v1")
 app.include_router(qa_router, prefix="/api/v1")
+app.include_router(scope_router, prefix="/api/v1")
 app.include_router(statistics_router, prefix="/api/v1")
 app.include_router(standards_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")

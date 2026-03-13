@@ -7,6 +7,7 @@ import type { SectionStatus } from "@/types/section";
 import { getSectionsStatus } from "@/lib/section-api";
 import { SectionStatusCard } from "@/components/section/section-status-card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, FileText } from "lucide-react";
 
@@ -39,12 +40,19 @@ export default function SectionPlannerPage() {
     0,
   );
   const completeSections = sections.filter(
-    (s) => s.status === "complete",
+    (s) => s.status === "complete" || s.status === "auto_filled",
   ).length;
   const partialSections = sections.filter(
     (s) => s.status === "partial",
   ).length;
-  const emptySections = sections.filter((s) => s.status === "empty").length;
+
+  // 평가 범위 통계
+  const requiredSections = sections.filter((s) => s.scope === "required");
+  const requiredCount = requiredSections.length;
+  const requiredFulfilled = requiredSections.filter(
+    (s) => s.status === "complete" || s.status === "auto_filled",
+  ).length;
+  const hasScope = sections.some((s) => s.scope !== "");
 
   return (
     <div className="space-y-6">
@@ -72,6 +80,31 @@ export default function SectionPlannerPage() {
           </Button>
         </Link>
       </div>
+
+      {/* 평가 범위 안내 (사업유형 설정 시) */}
+      {hasScope && (
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="font-medium">평가 범위</span>
+              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                필수 {requiredFulfilled}/{requiredCount}
+              </Badge>
+              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                권장 {sections.filter((s) => s.scope === "recommended").length}
+              </Badge>
+              <Badge variant="outline" className="bg-gray-50 text-gray-500 border-gray-200">
+                선택 {sections.filter((s) => s.scope === "optional").length}
+              </Badge>
+              {requiredCount > 0 && requiredFulfilled < requiredCount && (
+                <span className="text-xs text-red-600">
+                  필수 섹션 {requiredCount - requiredFulfilled}건 미충족
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 요약 통계 */}
       <div className="grid gap-4 sm:grid-cols-4">
@@ -112,12 +145,13 @@ export default function SectionPlannerPage() {
         <Card>
           <CardHeader className="pb-1">
             <CardTitle className="text-xs text-muted-foreground">
-              미수집
+              {hasScope ? "전문가 필요" : "미수집"}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-gray-400">
-              {emptySections}
+            <p className="text-2xl font-bold text-red-500">
+              {sections.filter((s) => s.status === "expert_required").length ||
+                sections.filter((s) => s.status === "empty").length}
             </p>
           </CardContent>
         </Card>

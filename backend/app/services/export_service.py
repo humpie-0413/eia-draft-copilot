@@ -46,6 +46,7 @@ from reportlab.platypus import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.data.regulations.required_items import get_required_sections
 from app.models.project import Project
 from app.services.draft_scaffold import (
     DraftScaffold,
@@ -126,6 +127,7 @@ class ExportContext:
     qa_result: QaResult | None
     options: ExportOptions
     generated_at: str                        # ISO 문자열
+    required_section_keys: set[str] = field(default_factory=set)  # Reg-4: 법적 필수 섹션 키
 
 
 # ── 공통 유틸 ──
@@ -221,6 +223,11 @@ async def _build_export_context(
     # geometry centroid
     centroid = _get_centroid_coords(project.geometry)
 
+    # Reg-4: 필수 섹션 키 계산
+    required_keys: set[str] = set()
+    if project.project_type:
+        required_keys = set(get_required_sections(project.project_type))
+
     return ExportContext(
         scaffold=scaffold,
         project_name=project.name,
@@ -231,6 +238,7 @@ async def _build_export_context(
         qa_result=qa_result,
         options=opts,
         generated_at=scaffold.generated_at,
+        required_section_keys=required_keys,
     )
 
 
@@ -313,7 +321,7 @@ def _build_docx(ctx: ExportContext) -> Document:
         stats, check = ctx.section_data.get(
             section.section_key, (None, None)
         )
-        _docx_add_section(doc, section, stats, check)
+        _docx_add_section(doc, section, stats, check, ctx=ctx)
 
     # ── 부록 ──
     if ctx.options.include_appendix_a:
@@ -517,12 +525,16 @@ def _docx_add_toc(doc: Document, ctx: ExportContext) -> None:
     doc.add_paragraph("")
 
     # 목차 테이블 형태로 구성
-    table = doc.add_table(rows=1, cols=3)
+    has_scope = bool(ctx.required_section_keys)
+    col_count = 4 if has_scope else 3
+    table = doc.add_table(rows=1, cols=col_count)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
     # 헤더
     headers = ["번호", "섹션명", "상태"]
+    if has_scope:
+        headers.insert(2, "구분")
     for i, h_text in enumerate(headers):
         cell = table.rows[0].cells[i]
         cell.text = h_text
@@ -534,26 +546,48 @@ def _docx_add_toc(doc: Document, ctx: ExportContext) -> None:
             run.font.size = Pt(10)
 
     for section in ctx.scaffold.sections:
+        is_required = section.section_key in ctx.required_section_keys
         row = table.add_row()
         row.cells[0].text = f"제{section.order}장"
         row.cells[1].text = section.title
+
+        if has_scope:
+            row.cells[2].text = "필수" if is_required else "선택"
+            state_col = 3
+        else:
+            state_col = 2
+
         state = _state_label(section.state)
         entry_count = len(section.evidence_entries)
-        row.cells[2].text = f"{state} ({entry_count}건)"
+        row.cells[state_col].text = f"{state} ({entry_count}건)"
 
-        # 상태에 따라 색상 설정
-        for cell_idx in range(3):
+        # 폰트 크기 설정
+        for cell_idx in range(col_count):
             para = row.cells[cell_idx].paragraphs[0]
             for run in para.runs:
                 run.font.size = Pt(10)
 
-        # 미수집이면 붉은 텍스트
-        if section.state == "empty":
+        # 필수 섹션 구분 열: 빨간 강조
+        if has_scope and is_required:
             for run in row.cells[2].paragraphs[0].runs:
+                run.bold = True
+                run.font.color.rgb = RGBColor(180, 0, 0)
+
+        # 미수집 필수 섹션: 빨간 텍스트
+        is_empty = section.state in ("empty", "expert_required")
+        if is_empty and is_required:
+            for run in row.cells[state_col].paragraphs[0].runs:
+                run.font.color.rgb = RGBColor(180, 0, 0)
+            _docx_set_cell_shading(row.cells[state_col], _EXCEED_BG)
+        elif is_empty:
+            for run in row.cells[state_col].paragraphs[0].runs:
                 run.font.color.rgb = RGBColor(180, 0, 0)
 
     # 열 너비 설정
-    widths = [Cm(3), Cm(9), Cm(4)]
+    if has_scope:
+        widths = [Cm(2.5), Cm(7), Cm(2.5), Cm(4)]
+    else:
+        widths = [Cm(3), Cm(9), Cm(4)]
     for row in table.rows:
         for i, width in enumerate(widths):
             row.cells[i].width = width
@@ -581,14 +615,31 @@ def _docx_add_section(
     section: ScaffoldSection,
     stats,
     check,
+    *,
+    ctx: ExportContext | None = None,
 ) -> None:
     """개별 섹션을 DOCX에 추가한다. 계층 번호 체계 적용."""
     chapter = section.order
+    is_required = (
+        ctx is not None
+        and section.section_key in ctx.required_section_keys
+    )
 
     # 제N장 제목
     doc.add_heading(f"제{chapter}장 {section.title}", level=1)
     desc_para = doc.add_paragraph(section.description)
     desc_para.italic = True
+
+    # Reg-4: 필수 섹션 안내 문구
+    if is_required and ctx and ctx.project_type:
+        type_name = _project_type_korean(ctx.project_type)
+        intro = doc.add_paragraph(
+            f"본 사업({type_name})에서 {section.title} 항목은 "
+            f"환경영향평가법 시행령에 따라 필수 평가 항목에 해당한다."
+        )
+        if intro.runs:
+            intro.runs[0].bold = True
+            intro.runs[0].font.size = Pt(10)
 
     if not section.evidence_entries:
         para = doc.add_paragraph(
@@ -1229,7 +1280,7 @@ def _build_pdf(ctx: ExportContext) -> io.BytesIO:
         stats, check = ctx.section_data.get(
             section.section_key, (None, None)
         )
-        _pdf_add_section(story, styles, font_name, section, stats, check)
+        _pdf_add_section(story, styles, font_name, section, stats, check, ctx=ctx)
 
     # 부록
     if ctx.options.include_appendix_a:
@@ -1290,25 +1341,54 @@ def _pdf_add_toc(story, styles, font_name, ctx: ExportContext):
     # 목차 테이블
     header_s = _make_header_style(font_name)
     cell_s = _make_cell_style(font_name, size=10)
+    red_s = _make_cell_style(font_name, size=10)
+    red_s.textColor = colors.HexColor("#B40000")
 
-    data = [[
-        Paragraph("번호", header_s),
-        Paragraph("섹션명", header_s),
-        Paragraph("상태", header_s),
-    ]]
+    has_scope = bool(ctx.required_section_keys)
+
+    if has_scope:
+        data = [[
+            Paragraph("번호", header_s),
+            Paragraph("섹션명", header_s),
+            Paragraph("구분", header_s),
+            Paragraph("상태", header_s),
+        ]]
+    else:
+        data = [[
+            Paragraph("번호", header_s),
+            Paragraph("섹션명", header_s),
+            Paragraph("상태", header_s),
+        ]]
 
     for section in ctx.scaffold.sections:
+        is_required = section.section_key in ctx.required_section_keys
         state = _state_label(section.state)
         entry_count = len(section.evidence_entries)
         state_text = f"{state} ({entry_count}건)"
 
-        data.append([
-            Paragraph(f"제{section.order}장", cell_s),
-            Paragraph(section.title, cell_s),
-            Paragraph(state_text, cell_s),
-        ])
+        is_empty = section.state in ("empty", "expert_required")
+        state_style = red_s if (is_empty and is_required) else cell_s
+        scope_style = red_s if is_required else cell_s
 
-    col_widths = [2.5 * cm, 8 * cm, 4 * cm]
+        if has_scope:
+            scope_text = "필수" if is_required else "선택"
+            data.append([
+                Paragraph(f"제{section.order}장", cell_s),
+                Paragraph(section.title, cell_s),
+                Paragraph(scope_text, scope_style),
+                Paragraph(state_text, state_style),
+            ])
+        else:
+            data.append([
+                Paragraph(f"제{section.order}장", cell_s),
+                Paragraph(section.title, cell_s),
+                Paragraph(state_text, state_style if is_empty else cell_s),
+            ])
+
+    if has_scope:
+        col_widths = [2 * cm, 6.5 * cm, 2.5 * cm, 3.5 * cm]
+    else:
+        col_widths = [2.5 * cm, 8 * cm, 4 * cm]
     table = Table(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(_PDF_TABLE_STYLE)
     story.append(table)
@@ -1327,12 +1407,25 @@ def _pdf_add_toc(story, styles, font_name, ctx: ExportContext):
     story.append(PageBreak())
 
 
-def _pdf_add_section(story, styles, font_name, section, stats, check):
+def _pdf_add_section(story, styles, font_name, section, stats, check, *, ctx=None):
     """개별 섹션을 PDF에 추가한다. 계층 번호 체계."""
     chapter = section.order
+    is_required = (
+        ctx is not None
+        and section.section_key in ctx.required_section_keys
+    )
 
     story.append(Paragraph(f"제{chapter}장 {section.title}", styles["heading1"]))
     story.append(Paragraph(section.description, styles["italic_desc"]))
+
+    # Reg-4: 필수 섹션 안내 문구
+    if is_required and ctx and ctx.project_type:
+        type_name = _project_type_korean(ctx.project_type)
+        intro_text = (
+            f"<b>본 사업({type_name})에서 {section.title} 항목은 "
+            f"환경영향평가법 시행령에 따라 필수 평가 항목에 해당한다.</b>"
+        )
+        story.append(Paragraph(intro_text, styles["body"]))
 
     if not section.evidence_entries:
         story.append(Paragraph(

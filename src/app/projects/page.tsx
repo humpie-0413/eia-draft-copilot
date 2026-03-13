@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { Project } from "@/types/project";
+import type { Project, ProjectType } from "@/types/project";
+import { PROJECT_TYPE_LABELS } from "@/types/project";
 import type { PaginatedList } from "@/types/api";
 import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,11 @@ export default function ProjectsPage() {
                 </div>
               </CardHeader>
               <CardContent>
+                {project.project_type && (
+                  <p className="mb-1 text-xs text-muted-foreground">
+                    사업유형: {PROJECT_TYPE_LABELS[project.project_type as ProjectType] ?? project.project_type}
+                  </p>
+                )}
                 {project.description && (
                   <p className="mb-3 text-sm text-muted-foreground line-clamp-2">
                     {project.description}

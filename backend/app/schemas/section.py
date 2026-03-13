@@ -75,6 +75,10 @@ class SectionStatusRead(BaseModel):
     missing_indicators: list[str] = Field(
         default_factory=list, description="누락된 필수 지표명 목록"
     )
+    # Reg-4: 평가 범위 분류
+    scope: str = Field(
+        "", description="평가 범위 분류 (required/recommended/optional, 빈 문자열이면 미설정)"
+    )
 
 
 class SectionStatusList(BaseModel):

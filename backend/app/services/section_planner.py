@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.data.regulations.required_items import get_required_sections
 from app.models.evidence import Evidence
 
 
@@ -192,17 +193,25 @@ class SectionStatus:
     auto_filled: bool = False               # 모든 evidence가 자동 수집(snapshot_id 보유)
     all_have_snapshot: bool = False          # snapshot_id 보유 비율 확인용
     missing_indicators: list[str] = field(default_factory=list)  # 누락된 필수 지표명 목록
+    # Reg-4: 평가 범위 분류
+    scope: str = ""                         # "required" | "recommended" | "optional" | "" (미설정)
 
 
 async def calculate_section_status(
     db: AsyncSession,
     project_id: uuid.UUID,
     section_key: str,
+    *,
+    project_type: str | None = None,
 ) -> SectionStatus | None:
     """단일 섹션의 증거 충족 상태를 계산한다.
 
     screening_only=False인 본 평가 데이터만 대상으로 한다.
     확장 상태(auto_filled 등)도 함께 판정한다.
+
+    project_type이 주어지면 평가 범위 기반으로 상태를 보정한다:
+    - 필수 섹션이 empty → expert_required
+    - 선택 섹션이 empty → not_applicable
     """
     section_def = get_section_definition(section_key)
     if section_def is None:
@@ -269,6 +278,21 @@ async def calculate_section_status(
     all_have_snapshot = total_count > 0 and manual_count == 0
     is_auto_filled = status_label == "complete" and all_have_snapshot
 
+    # Reg-4: 평가 범위 기반 상태 보정
+    scope = ""
+    if project_type:
+        required_keys = set(get_required_sections(project_type))
+        if section_def.key in required_keys:
+            scope = "required"
+            # 필수 섹션이 empty → expert_required (필수인데 비어있음)
+            if status_label == "empty":
+                status_label = "expert_required"
+        else:
+            scope = "optional"
+            # 선택 섹션이 empty → not_applicable
+            if status_label == "empty":
+                status_label = "not_applicable"
+
     return SectionStatus(
         section_key=section_def.key,
         title=section_def.title,
@@ -283,18 +307,22 @@ async def calculate_section_status(
         auto_filled=is_auto_filled,
         all_have_snapshot=all_have_snapshot,
         missing_indicators=missing,
+        scope=scope,
     )
 
 
 async def calculate_all_sections_status(
     db: AsyncSession,
     project_id: uuid.UUID,
+    *,
+    project_type: str | None = None,
 ) -> list[SectionStatus]:
     """프로젝트의 전체 섹션 충족 상태를 계산한다."""
     results = []
     for section_def in EIA_SECTIONS:
         section_status = await calculate_section_status(
-            db, project_id, section_def.key
+            db, project_id, section_def.key,
+            project_type=project_type,
         )
         if section_status is not None:
             results.append(section_status)

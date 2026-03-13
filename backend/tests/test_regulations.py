@@ -806,3 +806,414 @@ class TestQaExportLegalBasisColumn:
         data_row = last_table.rows[1]
         data_texts = [cell.text for cell in data_row.cells]
         assert "환경영향평가법 시행령 별표 3" in data_texts
+
+
+# ────────────────────────────────────────────
+# 4. Reg-4: 사업유형별 평가 범위 자동 판단 테스트
+# ────────────────────────────────────────────
+
+
+class TestScopeService:
+    """평가 범위 서비스 테스트 (scope_service.py)."""
+
+    def test_industrial_scope_sections(self):
+        """산업단지: 필수 5섹션 (air_quality, water_quality, soil, noise_vibration, waste)."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("industrial")
+        assert scope.project_type == "industrial"
+        assert scope.type_name == "산업단지"
+
+        required = [s for s in scope.sections if s.scope == "required"]
+        required_keys = {s.section_key for s in required}
+        assert required_keys == {
+            "air_quality", "water_quality", "soil", "noise_vibration", "waste"
+        }
+        assert scope.required_count == 5
+
+    def test_road_scope_sections(self):
+        """도로: 필수 5섹션 (air, noise, ecology, land_use, traffic)."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("road")
+        required_keys = {s.section_key for s in scope.sections if s.scope == "required"}
+        assert required_keys == {
+            "air_quality", "noise_vibration", "ecology", "land_use", "traffic"
+        }
+
+    def test_tourism_scope_sections(self):
+        """관광: 필수 4섹션 (ecology, landscape, cultural_heritage, land_use)."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("tourism")
+        required_keys = {s.section_key for s in scope.sections if s.scope == "required"}
+        assert required_keys == {
+            "ecology", "landscape", "cultural_heritage", "land_use"
+        }
+
+    def test_unknown_type_falls_back_to_other(self):
+        """미등록 사업유형 → 'other' 기준."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("unknown_type_xyz")
+        assert scope.project_type == "other"
+        assert scope.type_name == "기타"
+
+    def test_scope_required_indicators(self):
+        """필수 섹션의 필수 지표 목록이 반환된다."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("power_plant")
+        air = next(s for s in scope.sections if s.section_key == "air_quality")
+        assert air.scope == "required"
+        assert "PM10_연평균" in air.required_indicators
+        assert "NO2_연평균" in air.required_indicators
+
+    def test_optional_section_no_indicators(self):
+        """선택 섹션의 필수 지표 목록은 비어있다."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("industrial")
+        ecology = next(s for s in scope.sections if s.section_key == "ecology")
+        assert ecology.scope != "required"
+        assert ecology.required_indicators == []
+
+    def test_scope_counts(self):
+        """필수/권장/선택 합이 전체 섹션 수와 일치."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("military")
+        total = scope.required_count + scope.recommended_count + scope.optional_count
+        assert total == len(scope.sections)
+
+    def test_scope_legal_basis_on_required(self):
+        """필수 섹션에는 법적 근거가 포함된다."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("dam")
+        required = [s for s in scope.sections if s.scope == "required"]
+        for s in required:
+            assert s.legal_basis != "", f"{s.section_key} 법적 근거 누락"
+
+    def test_scope_legal_basis_empty_on_optional(self):
+        """선택 섹션에는 법적 근거가 비어있다."""
+        from app.services.scope_service import get_assessment_scope
+
+        scope = get_assessment_scope("dam")
+        optional = [s for s in scope.sections if s.scope == "optional"]
+        for s in optional:
+            assert s.legal_basis == "", f"{s.section_key}에 불필요한 법적 근거"
+
+    def test_all_12_types_have_scope(self):
+        """12개 사업유형 모두 정상적으로 scope 반환."""
+        from app.services.scope_service import get_assessment_scope
+
+        types = [
+            "power_plant", "road", "housing", "industrial", "tourism",
+            "port", "military", "railway", "airport", "dam", "reclamation", "other",
+        ]
+        for pt in types:
+            scope = get_assessment_scope(pt)
+            assert scope.required_count >= 1, f"{pt}에 필수 섹션 없음"
+            assert len(scope.sections) == 11, f"{pt} 섹션 수 불일치"
+
+
+class TestSectionPlannerScopeIntegration:
+    """섹션 플래너 × 평가 범위 연동 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_required_empty_becomes_expert_required(self, db_session):
+        """필수 섹션이 empty면 expert_required로 표시."""
+        from app.services.section_planner import calculate_section_status
+
+        # 프로젝트 없이 직접 호출 (evidence 0건 → empty 기본)
+        # industrial: soil은 필수
+        result = await calculate_section_status(
+            db_session,
+            "00000000-0000-0000-0000-000000000001",
+            "soil",
+            project_type="industrial",
+        )
+        assert result is not None
+        assert result.status == "expert_required"
+        assert result.scope == "required"
+
+    @pytest.mark.asyncio
+    async def test_optional_empty_becomes_not_applicable(self, db_session):
+        """선택 섹션이 empty면 not_applicable로 표시."""
+        from app.services.section_planner import calculate_section_status
+
+        # industrial: ecology는 선택
+        result = await calculate_section_status(
+            db_session,
+            "00000000-0000-0000-0000-000000000001",
+            "ecology",
+            project_type="industrial",
+        )
+        assert result is not None
+        assert result.status == "not_applicable"
+        assert result.scope == "optional"
+
+    @pytest.mark.asyncio
+    async def test_no_project_type_keeps_empty(self, db_session):
+        """project_type 미설정 시 empty 상태 유지."""
+        from app.services.section_planner import calculate_section_status
+
+        result = await calculate_section_status(
+            db_session,
+            "00000000-0000-0000-0000-000000000001",
+            "ecology",
+        )
+        assert result is not None
+        assert result.status == "empty"
+        assert result.scope == ""
+
+    @pytest.mark.asyncio
+    async def test_all_sections_status_with_project_type(self, db_session):
+        """전체 섹션 상태에 scope가 반영된다."""
+        from app.services.section_planner import calculate_all_sections_status
+
+        results = await calculate_all_sections_status(
+            db_session,
+            "00000000-0000-0000-0000-000000000001",
+            project_type="road",
+        )
+        assert len(results) == 11
+
+        required = [r for r in results if r.scope == "required"]
+        assert len(required) == 5  # road: air, noise, ecology, land_use, traffic
+
+        # 필수 empty → expert_required
+        for r in required:
+            assert r.status == "expert_required"
+
+        # 선택 empty → not_applicable
+        optional = [r for r in results if r.scope == "optional"]
+        for r in optional:
+            assert r.status == "not_applicable"
+
+
+class TestScopeAPI:
+    """평가 범위 API 엔드포인트 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_get_assessment_scope_api(self, client):
+        """GET /api/v1/projects/{id}/assessment-scope 정상 응답."""
+        from httpx import AsyncClient
+
+        # 프로젝트 생성
+        resp = await client.post(
+            "/api/v1/projects",
+            json={
+                "name": "Scope API 테스트",
+                "project_type": "road",
+            },
+        )
+        assert resp.status_code == 201
+        project_id = resp.json()["id"]
+
+        # 평가 범위 조회
+        resp = await client.get(f"/api/v1/projects/{project_id}/assessment-scope")
+        assert resp.status_code == 200
+        scope = resp.json()
+        assert scope["project_type"] == "road"
+        assert scope["type_name"] == "도로"
+        assert scope["required_count"] == 5
+        required_keys = {
+            s["section_key"] for s in scope["sections"] if s["scope"] == "required"
+        }
+        assert "air_quality" in required_keys
+        assert "traffic" in required_keys
+
+    @pytest.mark.asyncio
+    async def test_scope_api_no_project_type(self, client):
+        """project_type 미설정 → other 기준."""
+        resp = await client.post(
+            "/api/v1/projects",
+            json={"name": "타입 미설정 프로젝트"},
+        )
+        assert resp.status_code == 201
+        project_id = resp.json()["id"]
+
+        resp = await client.get(f"/api/v1/projects/{project_id}/assessment-scope")
+        assert resp.status_code == 200
+        assert resp.json()["project_type"] == "other"
+
+    @pytest.mark.asyncio
+    async def test_sections_status_has_scope(self, client):
+        """섹션 상태 응답에 scope 필드가 포함된다."""
+        resp = await client.post(
+            "/api/v1/projects",
+            json={"name": "Scope 필드 테스트", "project_type": "housing"},
+        )
+        project_id = resp.json()["id"]
+
+        resp = await client.get(f"/api/v1/projects/{project_id}/sections/status")
+        assert resp.status_code == 200
+        sections = resp.json()["sections"]
+        air = next(s for s in sections if s["section_key"] == "air_quality")
+        assert air["scope"] == "required"
+        # housing에서 ecology는 선택
+        eco = next(s for s in sections if s["section_key"] == "ecology")
+        assert eco["scope"] == "optional"
+        assert eco["status"] == "not_applicable"
+
+
+class TestExportScopeTOC:
+    """Export 목차에 필수 섹션 표시 테스트."""
+
+    def test_docx_toc_has_scope_column(self):
+        """DOCX 목차에 '구분' 열이 추가된다 (필수 섹션 키 있을 때)."""
+        from app.services.export_service import (
+            ExportContext,
+            ExportOptions,
+            _build_docx,
+        )
+        from app.services.draft_scaffold import DraftScaffold, ScaffoldSection
+
+        sections = [
+            ScaffoldSection(
+                section_key="air_quality",
+                title="대기질",
+                description="대기",
+                order=1,
+                state="complete",
+            ),
+            ScaffoldSection(
+                section_key="ecology",
+                title="생태",
+                description="생태",
+                order=5,
+                state="not_applicable",
+            ),
+        ]
+        scaffold = DraftScaffold(
+            project_id="test-id",
+            generated_at="2025-06-01T00:00:00",
+            sections=sections,
+            total_evidence_count=0,
+        )
+        ctx = ExportContext(
+            scaffold=scaffold,
+            project_name="테스트",
+            project_type="power_plant",
+            centroid=None,
+            section_data={
+                "air_quality": (None, None),
+                "ecology": (None, None),
+            },
+            similar_cases=[],
+            qa_result=None,
+            options=ExportOptions(
+                include_appendix_a=False,
+                include_appendix_b=False,
+                include_appendix_c=False,
+            ),
+            generated_at="2025-06-01T00:00:00",
+            required_section_keys={"air_quality", "water_quality", "noise_vibration", "ecology", "land_use"},
+        )
+        doc = _build_docx(ctx)
+
+        # 목차 테이블 찾기 (첫 번째 테이블)
+        toc_table = doc.tables[0]
+        header_texts = [cell.text for cell in toc_table.rows[0].cells]
+        assert "구분" in header_texts
+
+        # 대기질 행: '필수' 표시
+        air_row = toc_table.rows[1]
+        air_texts = [cell.text for cell in air_row.cells]
+        assert "필수" in air_texts
+
+        # 생태 행: '필수' 표시 (ecology는 power_plant에서 필수)
+        eco_row = toc_table.rows[2]
+        eco_texts = [cell.text for cell in eco_row.cells]
+        assert "필수" in eco_texts
+
+    def test_docx_toc_no_scope_column_without_required(self):
+        """필수 섹션 키가 없으면 구분 열이 없다."""
+        from app.services.export_service import (
+            ExportContext,
+            ExportOptions,
+            _build_docx,
+        )
+        from app.services.draft_scaffold import DraftScaffold, ScaffoldSection
+
+        sections = [
+            ScaffoldSection(
+                section_key="air_quality",
+                title="대기질",
+                description="대기",
+                order=1,
+                state="complete",
+            ),
+        ]
+        scaffold = DraftScaffold(
+            project_id="test-id",
+            generated_at="2025-06-01T00:00:00",
+            sections=sections,
+            total_evidence_count=0,
+        )
+        ctx = ExportContext(
+            scaffold=scaffold,
+            project_name="테스트",
+            project_type=None,
+            centroid=None,
+            section_data={"air_quality": (None, None)},
+            similar_cases=[],
+            qa_result=None,
+            options=ExportOptions(
+                include_appendix_a=False,
+                include_appendix_b=False,
+                include_appendix_c=False,
+            ),
+            generated_at="2025-06-01T00:00:00",
+            required_section_keys=set(),
+        )
+        doc = _build_docx(ctx)
+        toc_table = doc.tables[0]
+        header_texts = [cell.text for cell in toc_table.rows[0].cells]
+        assert "구분" not in header_texts
+
+    def test_docx_section_has_required_intro(self):
+        """필수 섹션에 법적 필수 안내 문구가 삽입된다."""
+        from app.services.export_service import (
+            ExportContext,
+            ExportOptions,
+            _build_docx,
+        )
+        from app.services.draft_scaffold import DraftScaffold, ScaffoldSection
+
+        sections = [
+            ScaffoldSection(
+                section_key="air_quality",
+                title="대기질",
+                description="대기오염물질 현황 및 영향 예측",
+                order=1,
+                state="complete",
+            ),
+        ]
+        scaffold = DraftScaffold(
+            project_id="test-id",
+            generated_at="2025-06-01T00:00:00",
+            sections=sections,
+            total_evidence_count=0,
+        )
+        ctx = ExportContext(
+            scaffold=scaffold,
+            project_name="테스트",
+            project_type="road",
+            centroid=None,
+            section_data={"air_quality": (None, None)},
+            similar_cases=[],
+            qa_result=None,
+            options=ExportOptions(
+                include_appendix_a=False,
+                include_appendix_b=False,
+                include_appendix_c=False,
+            ),
+            generated_at="2025-06-01T00:00:00",
+            required_section_keys={"air_quality"},
+        )
+        doc = _build_docx(ctx)
+        all_text = " ".join(p.text for p in doc.paragraphs)
+        assert "본 사업(도로)에서 대기질 항목은 환경영향평가법 시행령에 따라 필수 평가 항목에 해당한다" in all_text

@@ -8,6 +8,9 @@ export type SectionStatusValue =
   | "expert_required"
   | "not_applicable";
 
+/** 섹션 평가 범위 분류 */
+export type SectionScopeValue = "required" | "recommended" | "optional" | "";
+
 /** 개별 지표 충족 상태 */
 export interface IndicatorStatus {
   name: string;
@@ -39,6 +42,7 @@ export interface SectionStatus {
   status: SectionStatusValue;
   auto_filled: boolean;
   missing_indicators: string[];
+  scope: SectionScopeValue;
 }
 
 /** 전체 섹션 상태 목록 */
@@ -91,3 +95,31 @@ export const SECTION_STATUS_LABELS: Record<SectionStatusValue, string> = {
   expert_required: "전문가 필요",
   not_applicable: "해당 없음",
 };
+
+/** 섹션 범위별 한글 라벨 */
+export const SECTION_SCOPE_LABELS: Record<string, string> = {
+  required: "필수",
+  recommended: "권장",
+  optional: "선택",
+  "": "",
+};
+
+/** 평가 범위 — 개별 섹션 */
+export interface SectionScope {
+  section_key: string;
+  title: string;
+  scope: SectionScopeValue;
+  required_indicators: string[];
+  legal_basis: string;
+}
+
+/** 평가 범위 — 전체 */
+export interface AssessmentScope {
+  project_type: string;
+  type_name: string;
+  legal_basis: string;
+  sections: SectionScope[];
+  required_count: number;
+  recommended_count: number;
+  optional_count: number;
+}
