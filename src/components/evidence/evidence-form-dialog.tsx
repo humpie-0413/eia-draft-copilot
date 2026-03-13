@@ -31,8 +31,8 @@ const RECOMMENDED_INDICATORS: Partial<
   Record<EvidenceCategory, { indicators: string[]; hint: string }>
 > = {
   land_use: {
-    indicators: ["용도지역", "토지피복", "개발면적"],
-    hint: "국토이용정보 또는 토지이용현황도에서 확인",
+    indicators: ["용도지역구분", "용도지구", "지목"],
+    hint: "V-world 토지이용 커넥터 자동 수집 가능. 수동 시 국토이용정보 참조",
   },
   traffic: {
     indicators: ["교통량_현황", "서비스수준"],
@@ -47,8 +47,8 @@ const RECOMMENDED_INDICATORS: Partial<
     hint: "경관영향 검토서 또는 현장조사 사진 자료",
   },
   cultural_heritage: {
-    indicators: ["문화재_목록", "이격거리"],
-    hint: "문화재청 문화재 검색 또는 현장 실측 자료",
+    indicators: ["문화재명", "이격거리"],
+    hint: "국가유산청 문화재 커넥터 자동 수집 가능. 수동 시 문화재청 검색 참조",
   },
   soil: {
     indicators: ["Cd", "Cu", "Pb", "Zn", "Ni", "Cr6+", "pH", "유기물함량"],
