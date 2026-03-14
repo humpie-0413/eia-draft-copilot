@@ -27,6 +27,8 @@ def _register_all() -> None:
     from app.connectors.kma_weather import KmaWeatherConnector
     from app.connectors.land_use import LandUseConnector
     from app.connectors.soil_info import SoilInfoConnector
+    from app.connectors.traffic_volume import TrafficVolumeConnector
+    from app.connectors.waste_stats import WasteStatsConnector
     from app.connectors.water_info import WaterInfoConnector
 
     register_connector(KecoAirConnector())
@@ -35,6 +37,8 @@ def _register_all() -> None:
     register_connector(KmaWeatherConnector())
     register_connector(LandUseConnector())
     register_connector(CulturalHeritageConnector())
+    register_connector(TrafficVolumeConnector())
+    register_connector(WasteStatsConnector())
 
 
 # 모듈 로드 시 자동 등록

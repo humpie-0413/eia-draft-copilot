@@ -115,6 +115,42 @@ const CONNECTOR_PARAMS: Record<
       required: true,
     },
   ],
+  traffic_volume: [
+    {
+      key: "year",
+      label: "조회 연도",
+      placeholder: "예: 2023",
+      required: true,
+    },
+    {
+      key: "dtype",
+      label: "도로유형",
+      placeholder: "1=고속도로, 2=일반국도(기본), 3=지방도",
+    },
+    {
+      key: "spot_id",
+      label: "지점 ID",
+      placeholder: "all(전체, 기본) 또는 특정 지점 ID",
+    },
+  ],
+  waste_stats: [
+    {
+      key: "region",
+      label: "시군구명",
+      placeholder: "예: 강남구, 서울 (LIKE 검색)",
+      required: true,
+    },
+    {
+      key: "start_date",
+      label: "시작일",
+      placeholder: "YYYYMMDD (선택)",
+    },
+    {
+      key: "end_date",
+      label: "종료일",
+      placeholder: "YYYYMMDD (선택)",
+    },
+  ],
 };
 
 interface CollectDataDialogProps {

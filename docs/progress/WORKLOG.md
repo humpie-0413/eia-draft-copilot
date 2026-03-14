@@ -1463,3 +1463,92 @@
 
 ### 전체 테스트
 - 551개 전체 통과 (기존 525 + 신규 26)
+
+---
+
+## Conn-1: 추가 커넥터 확장 (교통/폐기물) ✅
+
+### 완료 항목
+
+#### 1. 교통 커넥터 (부분 자동화)
+- 한국건설기술연구원 교통량 통계 데이터 정보조회서비스 (data.go.kr #15097077) 커넥터 구현
+- `TrafficVolumeConnector` (BaseConnector 상속)
+- 연도별/도로유형별 AADT(연평균일교통량) 수집
+- 수집 지표: 교통량_현황(대/일), 도로등급, 도로명
+- 다양한 응답 구조 대응 (traffic/response.body.items/items/data 패턴)
+- 쉼표 포함 교통량 값 파싱 지원
+
+#### 2. 폐기물 커넥터 (지역 통계)
+- 행정안전부 생활쓰레기배출정보 조회서비스 (data.go.kr #15155080) 커넥터 구현
+- `WasteStatsConnector` (BaseConnector 상속)
+- 시군구별 생활쓰레기 배출 현황 수집
+- 수집 지표: 생활폐기물_발생량, 음식물쓰레기_발생량, 재활용_발생량 (톤/일)
+- 기간 필터 (시작일/종료일) 지원
+
+#### 3. 경관 — 자동화 불가 확정
+- 현장 시각 조사 필수이므로 API 자동화 불가 확정
+- 수동 입력 가이드 강화: 주요 조망점, 스카이라인 영향, 경관 등급(1~5), 주요 경관 자원
+
+#### 4. 미수집 섹션 서술문 개선
+- `_no_data_narrative()` → 섹션별 맞춤 수동 입력 가이드 메시지 반환
+- 경관: "현장 시각 조사 및 전문가 판단이 필요한 항목" + 권장 지표 안내
+- 생태: "현장 생태 조사 및 전문가 판단이 필요한 항목" + 권장 지표 안내
+- 소음·진동: "현장 소음·진동 측정이 필요한 항목" + 권장 지표 안내
+- 기타 미수집 섹션: 기존 메시지 유지
+
+#### 5. 섹션 플래너 필수 지표 업데이트
+- traffic: 교통량_현황, 도로등급, 도로명 (기존: 교통량_현황, 서비스수준)
+- waste: 생활폐기물_발생량, 건설폐기물_발생량, 지정폐기물_여부 (기존: 폐기물_발생량, 폐기물_종류)
+- landscape: 주요_조망점, 스카이라인_영향, 경관_등급, 주요_경관자원 (기존: 주요_조망점, 경관_유형)
+
+#### 6. 교통/폐기물 전용 서술문 생성기
+- `generate_traffic_narrative()`: AADT + 도로명 + 도로등급 기반 교통 서술문
+- `generate_waste_narrative()`: 생활폐기물 + 음식물쓰레기 + 재활용 + 건설폐기물 서술문
+- `_SECTION_GENERATORS` 맵에 traffic, waste 등록
+
+#### 7. 레지스트리 및 프론트엔드 업데이트
+- `registry.py`에 TrafficVolumeConnector, WasteStatsConnector 등록 (총 8종)
+- `collect-data-dialog.tsx`에 교통량/폐기물 커넥터 파라미터 폼 추가
+
+#### 8. 테스트
+- 교통 커넥터: 11개 신규 (정규화, 값 검증, 도로명, 도로등급, 메타데이터, 빈 응답, screening_only, 응답구조 패턴2, 쉼표 파싱, fetch 3개)
+- 폐기물 커넥터: 11개 신규 (정규화, 발생량, 음식물, 재활용, 기준일, 메타데이터, 빈 응답, screening_only, 응답구조 패턴2, fetch 3개)
+- 레지스트리 테스트: 기존 4개 업데이트 (교통/폐기물 포함)
+- API 엔드포인트 테스트: 커넥터 목록 조회에 교통/폐기물 추가
+- E2E 테스트: 폐기물 증거 데이터 신규 지표명 반영
+- `scripts/test_connectors_live.py`: 교통량 + 폐기물 live 테스트 추가
+
+### 커넥터 현황 (8종)
+| 커넥터 키 | 대상 API | 수집 지표 |
+|-----------|----------|-----------|
+| `keco_air` | 에어코리아 대기오염정보 | PM10, PM2.5, O3, NO2, SO2, CO |
+| `water_info` | 국립환경과학원 수질 DB | BOD, COD, SS, DO, T-N, T-P |
+| `soil_info` | 국립환경과학원 토양측정망 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 |
+| `kma_weather` | 기상청 ASOS 일자료 | 평균기온, 최고/최저기온, 강수량, 풍속, 습도 |
+| `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
+| `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
+| `traffic_volume` | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급, 도로명 |
+| `waste_stats` | 행정안전부 생활쓰레기배출정보 | 생활폐기물_발생량, 음식물쓰레기_발생량, 재활용_발생량 |
+
+### 수동 입력 유지 확정 섹션
+| 섹션 | 사유 | 권장 수동 입력 지표 |
+|------|------|---------------------|
+| 경관 | 현장 시각 조사 필수 | 주요 조망점, 스카이라인 영향, 경관 등급, 주요 경관 자원 |
+| 생태 | 현장 생태 조사 필수 | 식물상 종수, 동물상 종수, 법정보호종, 비오톱 유형, 녹지자연도 |
+| 소음·진동 | 현장 측정 필수 | 소음 Leq 주간/야간, 진동 Lv 주간 |
+
+### 주요 파일 (신규)
+- `backend/app/connectors/traffic_volume.py` — 교통량 통계 커넥터
+- `backend/app/connectors/waste_stats.py` — 생활쓰레기배출정보 커넥터
+
+### 주요 파일 (수정)
+- `backend/app/connectors/registry.py` — 신규 커넥터 2종 등록
+- `backend/app/services/section_planner.py` — traffic/waste/landscape 필수 지표 업데이트
+- `backend/app/services/narrative_generator.py` — 미수집 서술문 개선 + 교통/폐기물 전용 서술문
+- `backend/tests/test_connectors.py` — 교통/폐기물 테스트 22개 추가
+- `backend/tests/test_e2e.py` — 폐기물 증거 데이터 갱신
+- `scripts/test_connectors_live.py` — 교통/폐기물 live 테스트 추가
+- `src/components/evidence/collect-data-dialog.tsx` — 교통/폐기물 파라미터 폼 추가
+
+### 전체 테스트
+- 605개 전체 통과 (기존 579개 + 신규 26개)

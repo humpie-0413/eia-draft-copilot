@@ -102,7 +102,7 @@ EIA_SECTIONS: list[SectionDefinition] = [
         description="교통량 현황 및 영향 분석",
         evidence_category="traffic",
         required_indicators=[
-            "교통량_현황", "서비스수준",
+            "교통량_현황", "도로등급", "도로명",
         ],
         order=7,
     ),
@@ -112,17 +112,17 @@ EIA_SECTIONS: list[SectionDefinition] = [
         description="폐기물 발생량 현황 및 관리 계획",
         evidence_category="waste",
         required_indicators=[
-            "폐기물_발생량", "폐기물_종류",
+            "생활폐기물_발생량", "건설폐기물_발생량", "지정폐기물_여부",
         ],
         order=8,
     ),
     SectionDefinition(
         key="landscape",
         title="경관",
-        description="경관 현황 및 시각적 영향 분석",
+        description="경관 현황 및 시각적 영향 분석 (현장조사 필수)",
         evidence_category="landscape",
         required_indicators=[
-            "주요_조망점", "경관_유형",
+            "주요_조망점", "스카이라인_영향", "경관_등급", "주요_경관자원",
         ],
         order=9,
     ),

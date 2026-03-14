@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Pred-3: 예측 결과 통합** ✅
+**Conn-1: 추가 커넥터 확장 (교통/폐기물)** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -10,25 +10,31 @@
 - Pred-1: 예측 모듈 + 대기 확산 모델 ✅
 - Pred-2: 소음 전파 + 수질 혼합 모델 ✅
 - Pred-3: 예측 결과 통합 — ScaffoldSection + Export + API 스키마 ✅
+- Conn-1: 추가 커넥터 확장 — 교통/폐기물 커넥터 + 미수집 서술문 개선 ✅
 
-## 완료된 작업 (Pred-3)
+## 완료된 작업 (Conn-1)
 
-### 핵심 변경 사항
-1. `ScaffoldSection` 데이터클래스에 `prediction_result`, `prediction_narrative` 필드 추가
-2. `generate_section_scaffold()`: evidence에서 배경 농도 추출 → 예측 모델 자동 실행 → prediction_result/narrative 저장
-3. `generate_draft_scaffold()`: Project 조회 → project_type을 각 섹션에 전달
-4. `generate_prediction_narrative()`: 대기질/소음/수질 예측 서술문 생성 (결정적)
-5. Export (DOCX/PDF): N.4 영향 예측 소챕터 삽입 (적용 모델 + 서술문 + 결과 테이블 + 전제 조건 + 모델 한계)
-6. `ScaffoldSectionRead` 스키마 + sections.py API 엔드포인트에 prediction 필드 포함
+### 신규 커넥터 (2종)
+1. `TrafficVolumeConnector` — 한국건설기술연구원 교통량 통계 (AADT, 도로등급, 도로명)
+2. `WasteStatsConnector` — 행정안전부 생활쓰레기배출정보 (생활폐기물, 음식물, 재활용)
 
-### 프론트엔드
-- `/projects/[id]/predictions` 페이지 신규
-- 섹션별 카드: 모델 선택, 파라미터 입력 폼, 기본값 자동 채움
-- 예측 실행 → 결과 테이블 + 판정 Badge
-- 초안 뼈대 페이지에 "영향 예측" 링크 추가
+### 수동 입력 확정 (3개 섹션)
+- 경관: 현장 시각 조사 필수 → API 자동화 불가
+- 생태: 현장 생태 조사 필수
+- 소음·진동: 현장 측정 필수
+
+### 서술문 개선
+- 미수집 섹션: "자동 수집 대상에 해당하지 않는다. 수동 입력이 필요하다" + 권장 지표 안내
+- 교통 전용 서술문: AADT + 도로명 + 도로등급 기반
+- 폐기물 전용 서술문: 생활/음식물/재활용/건설폐기물 기반
+
+### 섹션 플래너 필수 지표 갱신
+- traffic: 교통량_현황, 도로등급, 도로명
+- waste: 생활폐기물_발생량, 건설폐기물_발생량, 지정폐기물_여부
+- landscape: 주요_조망점, 스카이라인_영향, 경관_등급, 주요_경관자원
 
 ### 테스트
-- 53개 신규 테스트 (579개 전체 통과)
+- 26개 신규 테스트 (605개 전체 통과)
 
 ## 시스템 전체 현황
 
@@ -40,7 +46,7 @@
 | draft_scaffold.py | 초안 뼈대 생성 (법적 근거 포함 서술문 우선 → 템플릿 fallback) |
 | statistics.py | 지표별 기술 통계 (평균, 최대, 최소, 표준편차) |
 | standard_checker.py | 대기/수질/소음/토양 환경기준 비교 + 등급 판정 + 법적 근거 |
-| narrative_generator.py | 섹션별 서술문 템플릿 + 법적 근거 자동 삽입 |
+| narrative_generator.py | 섹션별 서술문 템플릿 + 법적 근거 자동 삽입 + 수동입력 가이드 |
 | similarity.py | 유사사례 가중 유사도 계산 |
 | qa_engine.py | 8개 QA 규칙 (R001~R008) + 사업유형 기반 동적 판단 |
 | export_service.py | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 |
@@ -72,7 +78,7 @@
 | regulations/required_items.py | 사업유형별 필수 평가 항목 (12개 유형) |
 | regulations/area_classifications.py | 소음 지역구분별 기준 차등 |
 
-### 커넥터 (6종)
+### 커넥터 (8종)
 | 커넥터 키 | 대상 API | 수집 지표 |
 |-----------|----------|-----------|
 | `keco_air` | 에어코리아 대기오염정보 | PM10, PM2.5, O3, NO2, SO2, CO |
@@ -81,11 +87,13 @@
 | `kma_weather` | 기상청 ASOS 일자료 | 평균기온, 최고/최저기온, 강수량, 풍속, 습도 |
 | `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
+| `traffic_volume` | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급, 도로명 |
+| `waste_stats` | 행정안전부 생활쓰레기배출정보 | 생활폐기물_발생량, 음식물쓰레기_발생량, 재활용_발생량 |
 
-### 테스트 (579개)
-- test_pred3_integration.py (27), test_prediction_narrative.py (26)
+### 테스트 (605개)
+- test_connectors.py (95), test_pred3_integration.py (27), test_prediction_narrative.py (26)
 - test_prediction_noise_water.py (82), test_prediction.py (74), test_regulations.py (95)
-- test_connectors.py (69), test_export_format.py (40+), test_narrative_generator.py (51)
+- test_export_format.py (40+), test_narrative_generator.py (51)
 - test_llm_adapter.py (29), test_standard_checker.py (27), test_spec_alignment.py (23)
 - test_statistics.py (16), test_projects.py (9), test_export_pdf.py (4), test_e2e.py (1)
 
@@ -114,7 +122,7 @@ uvicorn app.main:app --reload    # http://localhost:8000
 
 # 테스트
 cd backend
-pytest tests/ -v    # 579개 테스트
+pytest tests/ -v    # 605개 테스트
 
 # 통합 데모 (백엔드 서버 실행 후)
 python scripts/demo_full_scenario.py

@@ -485,7 +485,141 @@ def generate_cultural_heritage_narrative(
 
 
 # ────────────────────────────────────────────
-# 범용 서술문 (토양, 교통 등)
+# 교통 서술문
+# ────────────────────────────────────────────
+
+def generate_traffic_narrative(
+    section_stats: SectionStats,
+    section_check: SectionCheckResult | None,
+) -> str:
+    """교통 섹션 서술문을 생성한다.
+
+    교통량(AADT), 도로명, 도로등급 등 혼합 데이터를 처리한다.
+    """
+    if not _has_any_data(section_stats):
+        return _no_data_narrative("traffic")
+
+    text_map = _text_indicator_map(section_stats)
+    stats_map = {s.indicator: s for s in section_stats.indicator_stats}
+    lines: list[str] = []
+
+    # 도입부
+    road_names = text_map.get("도로명")
+    traffic_stat = stats_map.get("교통량_현황")
+
+    if traffic_stat and traffic_stat.count > 0:
+        unit = traffic_stat.unit or "대/일"
+        avg = _fmt(traffic_stat.mean, 0)
+        if road_names:
+            lines.append(
+                f"본 사업지역 인근 주요 도로({road_names})의 교통량 현황을 조사한 결과, "
+                f"연평균일교통량(AADT)은 평균 {avg} {unit}으로 조사되었다."
+            )
+        else:
+            lines.append(
+                f"본 사업지역 인근의 교통량 현황을 조사한 결과, "
+                f"연평균일교통량(AADT)은 평균 {avg} {unit}으로 조사되었다."
+            )
+
+        # 최대/최소 정보
+        if traffic_stat.max is not None and traffic_stat.min is not None:
+            lines.append(
+                f"조사 구간 내 교통량은 최소 {_fmt(traffic_stat.min, 0)} {unit}에서 "
+                f"최대 {_fmt(traffic_stat.max, 0)} {unit}의 범위이다."
+            )
+    else:
+        lines.append("본 사업지역 인근의 교통량 현황을 조사하였다.")
+
+    # 도로등급
+    road_grade = text_map.get("도로등급")
+    if road_grade:
+        lines.append(f"조사 대상 도로의 등급은 {road_grade}이다.")
+
+    # 기타 수치 지표
+    for stat in section_stats.indicator_stats:
+        if stat.indicator == "교통량_현황" or stat.count == 0:
+            continue
+        unit_str = f" {stat.unit}" if stat.unit else ""
+        avg = _fmt(stat.mean)
+        lines.append(f"{stat.indicator} 평균 {avg}{unit_str}로 조사되었다.")
+
+    # 기타 텍스트 지표
+    known_text = {"도로명", "도로등급"}
+    for ti in section_stats.text_indicators:
+        if ti.indicator not in known_text and ti.values:
+            values_str = ", ".join(ti.values[:5])
+            lines.append(f"{ti.indicator}: {values_str}")
+
+    return "\n".join(lines)
+
+
+# ────────────────────────────────────────────
+# 폐기물 서술문
+# ────────────────────────────────────────────
+
+def generate_waste_narrative(
+    section_stats: SectionStats,
+    section_check: SectionCheckResult | None,
+) -> str:
+    """폐기물 섹션 서술문을 생성한다."""
+    if not _has_any_data(section_stats):
+        return _no_data_narrative("waste")
+
+    stats_map = {s.indicator: s for s in section_stats.indicator_stats}
+    lines: list[str] = []
+
+    # 도입부
+    total = section_stats.total_numeric_count + section_stats.total_text_count
+    lines.append(
+        f"본 사업지역의 폐기물 발생 현황을 조사한 결과, "
+        f"총 {total}건의 데이터를 수집하였다."
+    )
+
+    # 생활폐기물
+    living_stat = stats_map.get("생활폐기물_발생량")
+    if living_stat and living_stat.count > 0:
+        unit = living_stat.unit or "톤/일"
+        avg = _fmt(living_stat.mean)
+        lines.append(
+            f"해당 지역의 생활폐기물 발생량은 평균 {avg} {unit}이다."
+        )
+
+    # 음식물쓰레기
+    food_stat = stats_map.get("음식물쓰레기_발생량")
+    if food_stat and food_stat.count > 0:
+        unit = food_stat.unit or "톤/일"
+        avg = _fmt(food_stat.mean)
+        lines.append(f"음식물쓰레기 발생량은 평균 {avg} {unit}이다.")
+
+    # 재활용
+    recycle_stat = stats_map.get("재활용_발생량")
+    if recycle_stat and recycle_stat.count > 0:
+        unit = recycle_stat.unit or "톤/일"
+        avg = _fmt(recycle_stat.mean)
+        lines.append(f"재활용품 발생량은 평균 {avg} {unit}이다.")
+
+    # 건설폐기물 (수동 입력 항목)
+    construction_stat = stats_map.get("건설폐기물_발생량")
+    if construction_stat and construction_stat.count > 0:
+        unit = construction_stat.unit or "m³/일"
+        avg = _fmt(construction_stat.mean)
+        lines.append(f"건설폐기물 예상 발생량은 {avg} {unit}이다.")
+    else:
+        lines.append(
+            "건설폐기물 예상 발생량은 사업 계획에 따라 별도 산정이 필요하다."
+        )
+
+    # 기타 텍스트 지표
+    for ti in section_stats.text_indicators:
+        if ti.values:
+            values_str = ", ".join(ti.values[:5])
+            lines.append(f"{ti.indicator}: {values_str}")
+
+    return "\n".join(lines)
+
+
+# ────────────────────────────────────────────
+# 범용 서술문 (토양 등)
 # ────────────────────────────────────────────
 
 def generate_generic_narrative(
@@ -568,9 +702,52 @@ def generate_generic_narrative(
 # 미수집 서술문 및 공통 헬퍼
 # ────────────────────────────────────────────
 
-def _no_data_narrative() -> str:
-    """데이터가 수집되지 않은 섹션의 서술문을 반환한다."""
+def _no_data_narrative(section_key: str = "") -> str:
+    """데이터가 수집되지 않은 섹션의 서술문을 반환한다.
+
+    수동 입력이 필요한 섹션에 대해서는 권장 지표 목록을 안내한다.
+    """
+    guide = _MANUAL_INPUT_GUIDES.get(section_key)
+    if guide:
+        indicators = ", ".join(guide["indicators"])
+        return (
+            f"본 분야는 {guide['reason']}으로, "
+            f"자동 수집 대상에 해당하지 않는다. "
+            f"아래 항목에 대한 수동 입력이 필요하다: {indicators}"
+        )
     return "본 분야에 대한 현황 데이터가 수집되지 않았다. 현장조사 및 자료 수집이 필요하다."
+
+
+# 수동 입력 섹션별 안내 가이드
+_MANUAL_INPUT_GUIDES: dict[str, dict] = {
+    "landscape": {
+        "reason": "현장 시각 조사 및 전문가 판단이 필요한 항목",
+        "indicators": [
+            "주요 조망점 유무",
+            "스카이라인 영향 여부",
+            "경관 등급(1~5등급)",
+            "주요 경관 자원(산, 하천, 역사경관 등)",
+        ],
+    },
+    "ecology": {
+        "reason": "현장 생태 조사 및 전문가 판단이 필요한 항목",
+        "indicators": [
+            "식물상 종수",
+            "동물상 종수",
+            "법정보호종",
+            "비오톱 유형",
+            "녹지자연도",
+        ],
+    },
+    "noise_vibration": {
+        "reason": "현장 소음·진동 측정이 필요한 항목",
+        "indicators": [
+            "소음 Leq 주간(dB(A))",
+            "소음 Leq 야간(dB(A))",
+            "진동 Lv 주간(dB(V))",
+        ],
+    },
+}
 
 
 def _has_any_data(section_stats: SectionStats) -> bool:
@@ -784,6 +961,8 @@ _SECTION_GENERATORS: dict[str, callable] = {
     "ecology": generate_ecology_narrative,
     "land_use": generate_land_use_narrative,
     "cultural_heritage": generate_cultural_heritage_narrative,
+    "traffic": generate_traffic_narrative,
+    "waste": generate_waste_narrative,
 }
 
 
@@ -800,7 +979,7 @@ def generate_narrative(
     3. 없으면 범용 서술문 생성
     """
     if section_stats is None or not _has_any_data(section_stats):
-        return _no_data_narrative()
+        return _no_data_narrative(section_def.key)
 
     generator = _SECTION_GENERATORS.get(section_def.key)
     if generator is not None:

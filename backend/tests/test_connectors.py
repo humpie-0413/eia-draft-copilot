@@ -16,6 +16,8 @@ from app.config import settings
 from app.connectors.keco_air import KecoAirConnector
 from app.connectors.kma_weather import KmaWeatherConnector
 from app.connectors.soil_info import SoilInfoConnector
+from app.connectors.traffic_volume import TrafficVolumeConnector
+from app.connectors.waste_stats import WasteStatsConnector
 from app.connectors.water_info import WaterInfoConnector
 from app.connectors.registry import get_connector, connector_registry
 from app.schemas.evidence import EvidenceCategory
@@ -1212,6 +1214,423 @@ class TestCulturalHeritageConnector:
 
 
 # ──────────────────────────────────────────────────
+# 한국건설기술연구원 교통량 통계 커넥터 테스트
+# ──────────────────────────────────────────────────
+
+
+class TestTrafficVolumeConnector:
+    """한국건설기술연구원 교통량 통계 커넥터 단위 테스트."""
+
+    def setup_method(self):
+        self.connector = TrafficVolumeConnector()
+        self.project_id = uuid.uuid4()
+        self.data_source_id = uuid.uuid4()
+        self.snapshot_id = uuid.uuid4()
+
+    # 교통량 통계 샘플 응답 — traffic 배열 형태
+    SAMPLE_RESPONSE = {
+        "resultCode": "0",
+        "resultMsg": "OK",
+        "year": 2023,
+        "dtype": 2,
+        "count": 3,
+        "traffic": [
+            {
+                "spot_id": "A001",
+                "spot_nm": "서울-수원 구간",
+                "aadt": "25000",
+                "road_grade": "일반국도",
+            },
+            {
+                "spot_id": "A002",
+                "spot_nm": "수원-평택 구간",
+                "aadt": "18500",
+                "road_grade": "일반국도",
+            },
+            {
+                "spot_id": "A003",
+                "spot_nm": "평택-천안 구간",
+                "aadt": None,
+                "road_grade": "일반국도",
+            },
+        ],
+    }
+
+    def test_normalize_정상_응답(self):
+        """정상 응답에서 올바른 수의 증거가 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        # 첫 번째: 교통량_현황 + 도로등급 + 도로명 = 3
+        # 두 번째: 교통량_현황 + 도로등급 + 도로명 = 3
+        # 세 번째: aadt=None → 건너뜀, 도로등급 + 도로명 = 2
+        assert len(evidences) == 8
+
+    def test_normalize_교통량_값_검증(self):
+        """교통량 지표 값과 단위가 올바르게 매핑되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        traffic = next(e for e in evidences if e.indicator == "교통량_현황")
+        assert traffic.value == "25000"
+        assert traffic.numeric_value == 25000.0
+        assert traffic.unit == "대/일"
+        assert traffic.category == EvidenceCategory.TRAFFIC
+
+    def test_normalize_도로명_추출(self):
+        """도로명 지표가 올바르게 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        road_names = [e for e in evidences if e.indicator == "도로명"]
+        assert len(road_names) == 3
+        assert road_names[0].value == "서울-수원 구간"
+
+    def test_normalize_도로등급_추출(self):
+        """도로등급 지표가 올바르게 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        grades = [e for e in evidences if e.indicator == "도로등급"]
+        assert len(grades) == 3
+        assert grades[0].value == "일반국도"
+
+    def test_normalize_메타데이터_포함(self):
+        """메타데이터에 지점명과 도로유형이 포함되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        traffic = next(e for e in evidences if e.indicator == "교통량_현황")
+        assert traffic.metadata_json["spot_name"] == "서울-수원 구간"
+        assert traffic.metadata_json["road_type"] == "일반국도"
+
+    def test_normalize_빈_응답(self):
+        """데이터가 없을 때 빈 리스트를 반환하는지 확인."""
+        empty_payload = {"resultCode": "0", "traffic": []}
+        evidences = self.connector.normalize(
+            raw_payload=empty_payload,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        assert evidences == []
+
+    def test_normalize_screening_only_태깅(self):
+        """screening_only 플래그가 올바르게 전달되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+            screening_only=True,
+        )
+        assert all(e.screening_only for e in evidences)
+
+    def test_normalize_응답구조_패턴2(self):
+        """response.body.items 패턴도 처리하는지 확인."""
+        alt_payload = {
+            "response": {
+                "body": {
+                    "items": [
+                        {"spotNm": "구간1", "AADT": "12000"},
+                    ]
+                }
+            }
+        }
+        evidences = self.connector.normalize(
+            raw_payload=alt_payload,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        traffic = [e for e in evidences if e.indicator == "교통량_현황"]
+        assert len(traffic) == 1
+        assert traffic[0].numeric_value == 12000.0
+
+    def test_normalize_쉼표_교통량(self):
+        """쉼표가 포함된 교통량 값을 올바르게 파싱하는지 확인."""
+        payload = {
+            "traffic": [
+                {"spot_nm": "구간A", "aadt": "1,250,000"},
+            ]
+        }
+        evidences = self.connector.normalize(
+            raw_payload=payload,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        traffic = next(e for e in evidences if e.indicator == "교통량_현황")
+        assert traffic.numeric_value == 1250000.0
+
+    def test_커넥터_메타데이터(self):
+        """커넥터 키와 표시명이 올바른지 확인."""
+        assert self.connector.connector_key == "traffic_volume"
+        assert "교통량" in self.connector.display_name
+
+    @pytest.mark.asyncio
+    async def test_fetch_API키_미설정(self):
+        """API 키가 없을 때 ValueError가 발생하는지 확인."""
+        with patch("app.connectors.traffic_volume.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = ""
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with pytest.raises(ValueError, match="DATA_GO_KR_API_KEY"):
+                await self.connector.fetch({"year": "2023"})
+
+    @pytest.mark.asyncio
+    async def test_fetch_필수_파라미터_누락(self):
+        """year가 없을 때 ValueError가 발생하는지 확인."""
+        with patch("app.connectors.traffic_volume.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = "test_key"
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with pytest.raises(ValueError, match="year"):
+                await self.connector.fetch({})
+
+    @pytest.mark.asyncio
+    async def test_fetch_정상_호출(self):
+        """외부 API가 정상 응답을 반환할 때 데이터가 올바르게 반환되는지 확인."""
+        mock_response = Response(
+            status_code=200,
+            json=self.SAMPLE_RESPONSE,
+            request=Request("GET", "http://test"),
+        )
+
+        with patch("app.connectors.traffic_volume.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = "test_key"
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.get.return_value = mock_response
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client_cls.return_value = mock_client
+
+                result = await self.connector.fetch({"year": "2023", "dtype": "2"})
+                assert result == self.SAMPLE_RESPONSE
+                mock_client.get.assert_called_once()
+
+
+# ──────────────────────────────────────────────────
+# 행정안전부 생활쓰레기배출정보 커넥터 테스트
+# ──────────────────────────────────────────────────
+
+
+class TestWasteStatsConnector:
+    """행정안전부 생활쓰레기배출정보 커넥터 단위 테스트."""
+
+    def setup_method(self):
+        self.connector = WasteStatsConnector()
+        self.project_id = uuid.uuid4()
+        self.data_source_id = uuid.uuid4()
+        self.snapshot_id = uuid.uuid4()
+
+    # 샘플 API 응답
+    SAMPLE_RESPONSE = {
+        "totalCount": 2,
+        "data": [
+            {
+                "SGG_NM": "강남구",
+                "DAT_CRTR_YMD": "20240315",
+                "TOT_DSCG_QTY": "125.5",
+                "FOOD_DSCG_QTY": "45.2",
+                "RCYCLNG_QTY": "38.0",
+            },
+            {
+                "SGG_NM": "강남구",
+                "DAT_CRTR_YMD": "20240316",
+                "TOT_DSCG_QTY": "130.0",
+                "FOOD_DSCG_QTY": None,
+                "RCYCLNG_QTY": "40.5",
+            },
+        ],
+    }
+
+    def test_normalize_정상_응답(self):
+        """정상 응답에서 올바른 수의 증거가 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        # 첫 번째: 생활폐기물 + 음식물쓰레기 + 재활용 = 3
+        # 두 번째: 생활폐기물 + 재활용 = 2 (FOOD=None 건너뜀)
+        assert len(evidences) == 5
+
+    def test_normalize_폐기물_발생량_검증(self):
+        """폐기물 발생량 지표 값과 단위가 올바르게 매핑되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        waste = next(e for e in evidences if e.indicator == "생활폐기물_발생량")
+        assert waste.value == "125.5"
+        assert waste.numeric_value == 125.5
+        assert waste.unit == "톤/일"
+        assert waste.category == EvidenceCategory.WASTE
+
+    def test_normalize_음식물쓰레기(self):
+        """음식물쓰레기 발생량이 올바르게 추출되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        food = [e for e in evidences if e.indicator == "음식물쓰레기_발생량"]
+        assert len(food) == 1  # 두 번째 항목은 None이므로 건너뜀
+        assert food[0].numeric_value == 45.2
+
+    def test_normalize_재활용(self):
+        """재활용 발생량이 올바르게 추출되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        recycle = [e for e in evidences if e.indicator == "재활용_발생량"]
+        assert len(recycle) == 2
+
+    def test_normalize_기준일_파싱(self):
+        """YYYYMMDD 형식의 기준일이 올바르게 파싱되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        first = evidences[0]
+        assert first.observed_at == datetime(2024, 3, 15)
+
+    def test_normalize_메타데이터_포함(self):
+        """메타데이터에 지역명과 기준일이 포함되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        first = evidences[0]
+        assert first.metadata_json["region"] == "강남구"
+
+    def test_normalize_빈_응답(self):
+        """데이터가 없을 때 빈 리스트를 반환하는지 확인."""
+        empty_payload = {"totalCount": 0, "data": []}
+        evidences = self.connector.normalize(
+            raw_payload=empty_payload,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        assert evidences == []
+
+    def test_normalize_screening_only_태깅(self):
+        """screening_only 플래그가 올바르게 전달되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+            screening_only=True,
+        )
+        assert all(e.screening_only for e in evidences)
+
+    def test_normalize_응답구조_패턴2(self):
+        """response.body.items 패턴도 처리하는지 확인."""
+        alt_payload = {
+            "response": {
+                "body": {
+                    "items": [
+                        {
+                            "SGG_NM": "서초구",
+                            "TOT_DSCG_QTY": "80.0",
+                        },
+                    ]
+                }
+            }
+        }
+        evidences = self.connector.normalize(
+            raw_payload=alt_payload,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        waste = [e for e in evidences if e.indicator == "생활폐기물_발생량"]
+        assert len(waste) == 1
+        assert waste[0].numeric_value == 80.0
+
+    def test_커넥터_메타데이터(self):
+        """커넥터 키와 표시명이 올바른지 확인."""
+        assert self.connector.connector_key == "waste_stats"
+        assert "쓰레기" in self.connector.display_name
+
+    @pytest.mark.asyncio
+    async def test_fetch_API키_미설정(self):
+        """API 키가 없을 때 ValueError가 발생하는지 확인."""
+        with patch("app.connectors.waste_stats.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = ""
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with pytest.raises(ValueError, match="DATA_GO_KR_API_KEY"):
+                await self.connector.fetch({"region": "강남구"})
+
+    @pytest.mark.asyncio
+    async def test_fetch_필수_파라미터_누락(self):
+        """region이 없을 때 ValueError가 발생하는지 확인."""
+        with patch("app.connectors.waste_stats.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = "test_key"
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with pytest.raises(ValueError, match="region"):
+                await self.connector.fetch({})
+
+    @pytest.mark.asyncio
+    async def test_fetch_정상_호출(self):
+        """외부 API가 정상 응답을 반환할 때 데이터가 올바르게 반환되는지 확인."""
+        mock_response = Response(
+            status_code=200,
+            json=self.SAMPLE_RESPONSE,
+            request=Request("GET", "http://test"),
+        )
+
+        with patch("app.connectors.waste_stats.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = "test_key"
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.get.return_value = mock_response
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client_cls.return_value = mock_client
+
+                result = await self.connector.fetch({"region": "강남구"})
+                assert result == self.SAMPLE_RESPONSE
+                mock_client.get.assert_called_once()
+
+
+# ──────────────────────────────────────────────────
 # 커넥터 레지스트리 테스트
 # ──────────────────────────────────────────────────
 
@@ -1227,6 +1646,8 @@ class TestConnectorRegistry:
         assert "kma_weather" in connector_registry
         assert "vworld_land_use" in connector_registry
         assert "cultural_heritage" in connector_registry
+        assert "traffic_volume" in connector_registry
+        assert "waste_stats" in connector_registry
 
     def test_커넥터_조회(self):
         """get_connector로 커넥터를 올바르게 조회할 수 있는지 확인."""
@@ -1256,6 +1677,14 @@ class TestConnectorRegistry:
         heritage = get_connector("cultural_heritage")
         assert heritage is not None
         assert isinstance(heritage, CulturalHeritageConnector)
+
+        traffic = get_connector("traffic_volume")
+        assert traffic is not None
+        assert isinstance(traffic, TrafficVolumeConnector)
+
+        waste = get_connector("waste_stats")
+        assert waste is not None
+        assert isinstance(waste, WasteStatsConnector)
 
     def test_없는_커넥터_조회(self):
         """존재하지 않는 커넥터 키로 조회 시 None을 반환하는지 확인."""
@@ -1287,6 +1716,14 @@ class TestConnectorRegistry:
         assert heritage.connector_key == "cultural_heritage"
         assert "문화재" in heritage.display_name
 
+        traffic = get_connector("traffic_volume")
+        assert traffic.connector_key == "traffic_volume"
+        assert "교통량" in traffic.display_name
+
+        waste = get_connector("waste_stats")
+        assert waste.connector_key == "waste_stats"
+        assert "쓰레기" in waste.display_name
+
 
 # ──────────────────────────────────────────────────
 # 커넥터 수집 API 엔드포인트 테스트
@@ -1305,6 +1742,8 @@ async def test_connectors_목록_조회(client):
     assert "water_info" in keys
     assert "soil_info" in keys
     assert "kma_weather" in keys
+    assert "traffic_volume" in keys
+    assert "waste_stats" in keys
 
 
 @pytest.mark.asyncio

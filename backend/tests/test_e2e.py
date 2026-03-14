@@ -97,8 +97,9 @@ INDUSTRIAL_REQUIRED_EXTRA = [
     {"category": "soil", "indicator": "Cd", "value": "0.8", "numeric_value": 0.8, "unit": "mg/kg"},
     {"category": "soil", "indicator": "pH", "value": "6.5", "numeric_value": 6.5, "unit": ""},
     {"category": "soil", "indicator": "유기물함량", "value": "3.2", "numeric_value": 3.2, "unit": "%"},
-    {"category": "waste", "indicator": "폐기물_발생량", "value": "150", "numeric_value": 150.0, "unit": "톤/년"},
-    {"category": "waste", "indicator": "폐기물_종류", "value": "사업장일반폐기물"},
+    {"category": "waste", "indicator": "생활폐기물_발생량", "value": "150", "numeric_value": 150.0, "unit": "톤/일"},
+    {"category": "waste", "indicator": "건설폐기물_발생량", "value": "50", "numeric_value": 50.0, "unit": "m³/일"},
+    {"category": "waste", "indicator": "지정폐기물_여부", "value": "해당없음"},
 ]
 
 SIMILAR_CASE_DATA = {
@@ -263,8 +264,9 @@ async def test_e2e_full_workflow(client: AsyncClient):
 
     # 생태 뼈대: 0건 (미수집)
     assert len(scaffold_map["ecology"]["evidence_entries"]) == 0
-    # Post-3: 미수집 섹션의 서술문은 narrative 필드에 위치
-    assert "수집되지 않았다" in scaffold_map["ecology"]["narrative"]
+    # Conn-1: 미수집 섹션은 수동 입력 가이드 메시지 반환
+    eco_narrative = scaffold_map["ecology"]["narrative"]
+    assert "수동 입력이 필요하다" in eco_narrative or "수집되지 않았다" in eco_narrative
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 단계 8: QA 규칙 실행 및 이슈 목록 확인

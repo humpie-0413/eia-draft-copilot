@@ -620,6 +620,175 @@ async def test_cultural_heritage():
 
 
 # ──────────────────────────────────────────────────
+# 한국건설기술연구원 교통량 통계 커넥터 검증
+# ──────────────────────────────────────────────────
+
+TRAFFIC_URL = "http://apis.data.go.kr/1613000/KictTmsStat/yearlyTrafficVolume"
+
+
+async def test_traffic_volume():
+    """한국건설기술연구원 교통량 통계 API 실제 호출 검증."""
+    print()
+    print("=" * 60)
+    print("[한국건설기술연구원 교통량 통계 커넥터 검증]")
+    print("=" * 60)
+
+    if not API_KEY:
+        print("  ERROR: DATA_GO_KR_API_KEY 환경변수가 설정되지 않았습니다.")
+        return False
+
+    params = {
+        "serviceKey": API_KEY,
+        "output": "json",
+        "year": "2023",
+        "month": "1",
+        "dtype": "2",
+        "spot_id": "all",
+        "numOfRows": "5",
+        "pageNo": "0",
+    }
+
+    print(f"  요청 URL: {TRAFFIC_URL}")
+    print(f"  조회 연도: {params['year']}")
+    print(f"  도로유형: 일반국도 (dtype=2)")
+    print()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(TRAFFIC_URL, params=params)
+
+        print(f"  HTTP 상태코드: {response.status_code}")
+
+        if response.status_code != 200:
+            print("  ERROR: HTTP 오류 응답")
+            print(f"  응답 본문: {response.text[:500]}")
+            return False
+
+        data = response.json()
+
+        # 결과 코드 확인
+        result_code = data.get("resultCode", data.get("response", {}).get("header", {}).get("resultCode"))
+        print(f"  API 결과코드: {result_code}")
+
+        # 데이터 추출 시도
+        traffic = data.get("traffic", [])
+        if not traffic:
+            body = data.get("response", {}).get("body", {})
+            items = body.get("items", [])
+            if isinstance(items, dict):
+                traffic = items.get("item", [])
+            elif isinstance(items, list):
+                traffic = items
+
+        print(f"  수신 건수: {len(traffic)}")
+
+        if traffic:
+            print()
+            print("  [샘플 데이터 (첫 번째 항목)]")
+            sample = traffic[0]
+            for k, v in list(sample.items())[:8]:
+                print(f"    {k}: {v}")
+
+            print()
+            print("  SUCCESS: 교통량 통계 API 연동 성공")
+            return True
+        else:
+            print()
+            print("  [raw_payload 키 목록]")
+            print(f"    {list(data.keys())[:10]}")
+            print()
+            print("  WARNING: 교통량 데이터를 추출할 수 없음 — API 응답 구조 확인 필요")
+            return False
+
+    except Exception as e:
+        print(f"  ERROR: 예외 발생 -- {type(e).__name__}: {e}")
+        return False
+
+
+# ──────────────────────────────────────────────────
+# 행정안전부 생활쓰레기배출정보 커넥터 검증
+# ──────────────────────────────────────────────────
+
+WASTE_INFO_URL = "http://apis.data.go.kr/1741000/household_waste_info/info"
+
+
+async def test_waste_stats():
+    """행정안전부 생활쓰레기배출정보 API 실제 호출 검증."""
+    print()
+    print("=" * 60)
+    print("[행정안전부 생활쓰레기배출정보 커넥터 검증]")
+    print("=" * 60)
+
+    if not API_KEY:
+        print("  ERROR: DATA_GO_KR_API_KEY 환경변수가 설정되지 않았습니다.")
+        return False
+
+    params = {
+        "serviceKey": API_KEY,
+        "returnType": "json",
+        "pageNo": "1",
+        "numOfRows": "5",
+        "cond[SGG_NM::LIKE]": "강남",
+    }
+
+    print(f"  요청 URL: {WASTE_INFO_URL}")
+    print(f"  검색 조건: 강남 (LIKE)")
+    print()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(WASTE_INFO_URL, params=params)
+
+        print(f"  HTTP 상태코드: {response.status_code}")
+
+        if response.status_code != 200:
+            print("  ERROR: HTTP 오류 응답")
+            print(f"  응답 본문: {response.text[:500]}")
+            return False
+
+        data = response.json()
+
+        # 데이터 추출 시도
+        items = data.get("data", [])
+        if not items:
+            body = data.get("response", {}).get("body", {})
+            items = body.get("items", [])
+            if isinstance(items, dict):
+                items = items.get("item", [])
+
+        total = data.get("totalCount", data.get("matchCount", len(items)))
+
+        print(f"  총 데이터 건수: {total}")
+        print(f"  수신 건수: {len(items)}")
+
+        if items:
+            print()
+            print("  [샘플 데이터 (첫 번째 항목)]")
+            sample = items[0]
+            for k, v in list(sample.items())[:10]:
+                print(f"    {k}: {v}")
+
+            print()
+            print("  [raw_payload 키 목록]")
+            print(f"    {list(data.keys())[:10]}")
+
+            print()
+            print("  SUCCESS: 생활쓰레기배출정보 API 연동 성공")
+            return True
+        else:
+            print()
+            print("  [raw_payload 키 목록]")
+            print(f"    {list(data.keys())[:10]}")
+            print()
+            print("  WARNING: 데이터를 추출할 수 없음 — API 응답 구조 확인 필요")
+            return False
+
+    except Exception as e:
+        print(f"  ERROR: 예외 발생 -- {type(e).__name__}: {e}")
+        return False
+
+
+# ──────────────────────────────────────────────────
 # 메인
 # ──────────────────────────────────────────────────
 
@@ -634,6 +803,8 @@ async def main():
     kma_ok = await test_kma_asos()
     vworld_ok = await test_vworld_land_use()
     heritage_ok = await test_cultural_heritage()
+    traffic_ok = await test_traffic_volume()
+    waste_ok = await test_waste_stats()
 
     print()
     print("=" * 60)
@@ -645,11 +816,19 @@ async def main():
     print(f"  기상청 ASOS: {'SUCCESS' if kma_ok else 'FAILED'}")
     print(f"  V-world 토지이용: {'SUCCESS' if vworld_ok else 'FAILED'}")
     print(f"  국가유산청 문화재: {'SUCCESS' if heritage_ok else 'FAILED'}")
+    print(f"  한국건설기술연구원 교통량: {'SUCCESS' if traffic_ok else 'FAILED'}")
+    print(f"  행정안전부 생활쓰레기: {'SUCCESS' if waste_ok else 'FAILED'}")
     print()
 
-    all_ok = air_ok and water_ok and soil_ok and kma_ok and vworld_ok and heritage_ok
+    # 기존 6개 + 신규 2개
+    existing_ok = air_ok and water_ok and soil_ok and kma_ok and vworld_ok and heritage_ok
+    new_ok = traffic_ok and waste_ok
+    all_ok = existing_ok and new_ok
+
     if all_ok:
         print("  전체 검증 통과")
+    elif existing_ok:
+        print("  기존 커넥터 검증 통과, 신규 커넥터 확인 필요")
     else:
         print("  일부 검증 실패 -- 위 로그를 확인하세요")
         sys.exit(1)
