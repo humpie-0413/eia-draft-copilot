@@ -1,39 +1,38 @@
 # -*- coding: utf-8 -*-
-"""실사용 시나리오 전체 흐름 데모 (Final-1 최종판).
+"""배포 전 최종 통합 데모 — 실제 API 연동 전용 (Final-1).
 
 시나리오: "서울특별시 강남구 태양광 발전소 건설 프로젝트"
 
+원칙:
+  - 더미 데이터 절대 사용 금지
+  - 모든 커넥터 데이터는 실제 API 호출로 수신한 데이터만 사용
+  - API 실패 커넥터는 건너뛰고 실패 사유만 출력
+  - 수동 데이터는 소음·진동(현장 측정)/생태(현장 조사)만 허용
+
 전체 흐름:
   1. 프로젝트 생성
-  2. 데이터 수집
-     a. 에어코리아 대기질 커넥터
-     b. 수질 커넥터
-     c. 토양측정망 커넥터 (Post-4)
-     d. 기상청 ASOS 기후 커넥터 (Post-4)
-     e. V-world 토지이용 커넥터 (Post-9)
-     f. 국가유산청 문화재 커넥터 (Post-9)
-     g. 소음·진동 수동 데이터
-     h. 생태 수동 데이터
-     i. 교통량 통계 커넥터 (Conn-1)
-     j. 폐기물 통계 커넥터 (Conn-1)
+  2. 데이터 수집 (커넥터 8종 실제 API + 수동 2종)
+     a. 에어코리아 대기질 — 실제 API (강남구)
+     b. 수질 DB — 실제 API (한강 수계)
+     c. 토양측정망 — 실제 API 시도 (실패 시 건너뜀)
+     d. 기상청 ASOS — 실제 API 시도 (실패 시 건너뜀)
+     e. V-world 토지이용 — 실제 API 시도 (실패 시 건너뜀)
+     f. 국가유산청 문화재 — 실제 API (서울)
+     g. 교통량 통계 — 실제 API 시도 (실패 시 건너뜀)
+     h. 폐기물 통계 — 실제 API (강남구)
+     i. 소음·진동 — 수동 (현장 측정 데이터)
+     j. 생태 — 수동 (현장 조사 데이터)
   3. 유사사례 등록 및 매칭
   4. 섹션 플래너 충족도 확인
   4.5. 법령 반영 검증 (Reg-5)
-     a. 평가 범위 조회 (power_plant)
-     b. 필수 섹션 확인
-     c. 서술문 법적 근거 포함 확인
-     d. 환경기준 비교 법적 근거 열 확인
   5. 통계 엔진 실행 (Post-1)
   6. 환경기준 비교 실행 (Post-2)
   7. 초안 뼈대 + 서술문 생성 (Post-3, Pred-3 예측 포함)
   7.5. 영향 예측 실행 (Pred-1~2)
-     a. 대기 확산 예측 (가우시안 플룸)
-     b. 소음 전파 예측 (거리감쇠 + 차음벽)
-     c. 수질 혼합 예측 (완전혼합)
   8. LLM 보강 실행 (Post-6, 선택)
   9. QA 실행 + R007/R008 법적 필수 항목 검증 (Reg-3)
   10. DOCX + PDF export (부록 + 영향 예측 포함, Post-5)
-  11. 결과 요약 비교
+  11. 전체 현황 보고 (커넥터/섹션/예측/QA/문서 구조)
 
 사전 조건:
   - 백엔드 서버 실행 중: uvicorn app.main:app --reload (http://localhost:8000)
@@ -162,230 +161,126 @@ async def step1_create_project(client: httpx.AsyncClient) -> str | None:
 # ═══════════════════════════════════════════════════════════════
 
 async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict:
-    """10개 경로로 데이터 수집: 커넥터 8종 + 수동 2종."""
-    banner("단계 2: 데이터 수집 (커넥터 8종 + 수동 2종)")
+    """커넥터 8종 실제 API 호출 + 수동 2종(소음·진동, 생태)으로 데이터 수집.
 
-    stats = {"connectors": {}, "manual": {}}
+    원칙:
+    - 더미 데이터 절대 사용 금지
+    - 모든 커넥터 데이터는 실제 API 호출로 수신한 데이터만 사용
+    - API 실패 커넥터는 건너뛰고 실패 사유만 출력
+    - 수동 데이터는 소음·진동, 생태만 허용
+    """
+    banner("단계 2: 데이터 수집 (커넥터 8종 실제 API + 수동 2종)")
 
-    # 2-a. 에어코리아 커넥터
-    sub_banner("2-a. 에어코리아 대기질 커넥터 — 측정소: 강남구")
-    result = await api_call(
-        client, "POST", "/api/v1/connectors/keco_air/collect",
-        json={
-            "project_id": project_id,
-            "params": {"station_name": "강남구", "data_term": "DAILY"},
-            "screening_only": False,
-        },
-        expected=200, label="에어코리아 수집",
-    )
-    if result:
-        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
-        stats["connectors"]["keco_air"] = result["evidence_count"]
-        if result.get("error_message"):
-            print(f"    오류: {result['error_message']}")
+    # 수집 통계: 커넥터별 성공/실패/건수 추적
+    stats = {
+        "connectors": {},       # key → evidence_count (성공 시)
+        "connector_failed": {},  # key → failure_reason (실패 시)
+        "manual": {},           # key → count
+    }
 
-    # 대기질 필수 지표(연평균) 수동 보충
-    sub_banner("2-a2. 대기질 필수 지표(연평균) 수동 보충")
-    air_required = [
-        {"category": "air_quality", "indicator": "PM10_연평균", "value": "42", "numeric_value": 42.0, "unit": "ug/m3"},
-        {"category": "air_quality", "indicator": "PM2.5_연평균", "value": "21", "numeric_value": 21.0, "unit": "ug/m3"},
-        {"category": "air_quality", "indicator": "NO2_연평균", "value": "0.030", "numeric_value": 0.030, "unit": "ppm"},
-        {"category": "air_quality", "indicator": "SO2_연평균", "value": "0.003", "numeric_value": 0.003, "unit": "ppm"},
-        {"category": "air_quality", "indicator": "CO_연평균", "value": "0.4", "numeric_value": 0.4, "unit": "ppm"},
-        {"category": "air_quality", "indicator": "O3_연평균", "value": "0.028", "numeric_value": 0.028, "unit": "ppm"},
-    ]
-    for ev in air_required:
-        await api_call(
-            client, "POST", "/api/v1/evidences",
-            json={"project_id": project_id, "screening_only": False, **ev},
-            expected=201, label=f"대기질 보충: {ev['indicator']}",
+    # ── 커넥터 공통 수집 함수 ──
+    async def collect_connector(
+        key: str, label: str, params: dict, *,
+        failure_reason_hint: str = "",
+    ) -> int:
+        """커넥터를 호출하고 결과를 stats에 기록한다. 증거 건수를 반환."""
+        sub_banner(f"{label}")
+        result = await api_call(
+            client, "POST", f"/api/v1/connectors/{key}/collect",
+            json={
+                "project_id": project_id,
+                "params": params,
+                "screening_only": False,
+            },
+            expected=200, label=f"{key} 수집",
         )
-    print(f"    대기질 필수 지표 {len(air_required)}건 보충 완료")
+        if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
+            count = result["evidence_count"]
+            print(f"    [실제 API] 상태: 성공, 수집 건수: {count}")
+            stats["connectors"][key] = count
+            return count
+
+        # 실패 처리 — 건너뛰고 사유만 출력 (더미 데이터 주입 금지)
+        reason = ""
+        if result:
+            err = result.get("error_message", "")
+            status = result.get("status", "unknown")
+            count = result.get("evidence_count", 0)
+            print(f"    상태: {status}, 수집 건수: {count}")
+            if err:
+                reason = err
+                print(f"    오류: {err}")
+        if not reason:
+            reason = failure_reason_hint or "API 호출 실패 또는 데이터 없음"
+
+        stats["connector_failed"][key] = reason
+        print(f"    [건너뜀] {reason}")
+        print(f"    → 수동 데이터 주입 없음 (더미 데이터 사용 금지 원칙)")
+        return 0
+
+    # 2-a. 에어코리아 대기질 커넥터
+    await collect_connector(
+        "keco_air",
+        "2-a. 에어코리아 대기질 커넥터 — 측정소: 강남구",
+        {"station_name": "강남구", "data_term": "DAILY"},
+    )
 
     # 2-b. 수질 커넥터
-    sub_banner("2-b. 수질 커넥터 — 한강 수계 측정지점")
-    result = await api_call(
-        client, "POST", "/api/v1/connectors/water_info/collect",
-        json={
-            "project_id": project_id,
-            "params": {"year": "2024", "pt_no": "1018A60"},
-            "screening_only": False,
-        },
-        expected=200, label="수질 수집",
+    await collect_connector(
+        "water_info",
+        "2-b. 수질 커넥터 — 한강 수계 측정지점 (1018A60)",
+        {"year": "2024", "pt_no": "1018A60"},
     )
-    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
-        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
-        stats["connectors"]["water_info"] = result["evidence_count"]
-    else:
-        if result:
-            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
-        print("    [경고] 수질 수집 실패/부족 — 수동 수질 데이터로 보충합니다.")
 
-    # 2-b2. 수질 필수 지표 수동 보충 (커넥터 데이터가 오래된 경우 대비)
-    sub_banner("2-b2. 수질 필수 지표 수동 보충")
-    water_supplement = [
-        {"category": "water_quality", "indicator": "BOD", "value": "1.8", "numeric_value": 1.8, "unit": "mg/L"},
-        {"category": "water_quality", "indicator": "COD", "value": "3.5", "numeric_value": 3.5, "unit": "mg/L"},
-        {"category": "water_quality", "indicator": "SS", "value": "8.2", "numeric_value": 8.2, "unit": "mg/L"},
-        {"category": "water_quality", "indicator": "T-N", "value": "2.1", "numeric_value": 2.1, "unit": "mg/L"},
-        {"category": "water_quality", "indicator": "T-P", "value": "0.04", "numeric_value": 0.04, "unit": "mg/L"},
-        {"category": "water_quality", "indicator": "DO", "value": "9.2", "numeric_value": 9.2, "unit": "mg/L"},
-    ]
-    for ev in water_supplement:
-        await api_call(
-            client, "POST", "/api/v1/evidences",
-            json={"project_id": project_id, "screening_only": False, **ev},
-            expected=201, label=f"수질 보충: {ev['indicator']}",
-        )
-    stats["connectors"].setdefault("water_info", 0)
-    print(f"    수질 필수 지표 {len(water_supplement)}건 보충 완료")
-
-    # 2-c. 토양측정망 커넥터 (Post-4)
-    sub_banner("2-c. 토양측정망 커넥터 — 서울특별시")
-    result = await api_call(
-        client, "POST", "/api/v1/connectors/soil_info/collect",
-        json={
-            "project_id": project_id,
-            "params": {"year": "2023", "sido": "서울특별시"},
-            "screening_only": False,
-        },
-        expected=200, label="토양측정망 수집",
+    # 2-c. 토양측정망 커넥터
+    await collect_connector(
+        "soil_info",
+        "2-c. 토양측정망 커넥터 — 2023년도",
+        {"year": "2023"},
+        failure_reason_hint="API 서버 장애 (HTTP 500, 공공데이터포털 측 문제)",
     )
-    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
-        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
-        stats["connectors"]["soil_info"] = result["evidence_count"]
-    else:
-        if result:
-            msg = result.get("error_message", "")
-            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
-            if msg:
-                print(f"    오류: {msg}")
-        print("    [경고] 토양 커넥터 실패 — 수동 토양 데이터로 대체합니다.")
-        soil_manual = [
-            {"category": "soil", "indicator": "Pb", "value": "12.5", "numeric_value": 12.5, "unit": "mg/kg"},
-            {"category": "soil", "indicator": "Cd", "value": "0.8", "numeric_value": 0.8, "unit": "mg/kg"},
-            {"category": "soil", "indicator": "pH", "value": "6.5", "numeric_value": 6.5, "unit": ""},
-            {"category": "soil", "indicator": "유기물함량", "value": "3.2", "numeric_value": 3.2, "unit": "%"},
-        ]
-        for ev in soil_manual:
-            await api_call(
-                client, "POST", "/api/v1/evidences",
-                json={"project_id": project_id, "screening_only": False, **ev},
-                expected=201, label=f"수동 토양: {ev['indicator']}",
-            )
-        stats["connectors"]["soil_info"] = len(soil_manual)
-        print(f"    수동 토양 데이터 {len(soil_manual)}건 추가 완료")
 
-    # 2-d. 기상청 ASOS 기후 커넥터 (Post-4)
-    sub_banner("2-d. 기상청 ASOS 기후 커넥터 — 서울(108)")
-    result = await api_call(
-        client, "POST", "/api/v1/connectors/kma_weather/collect",
-        json={
-            "project_id": project_id,
-            "params": {
-                "stn_id": "108",
-                "start_dt": "20240101",
-                "end_dt": "20241231",
-            },
-            "screening_only": False,
-        },
-        expected=200, label="기상청 ASOS 수집",
+    # 2-d. 기상청 ASOS 기후 커넥터
+    await collect_connector(
+        "kma_weather",
+        "2-d. 기상청 ASOS 기후 커넥터 — 서울(108)",
+        {"stn_id": "108", "start_dt": "20240101", "end_dt": "20241231"},
+        failure_reason_hint="API 키 미승인 (기상청 ASOS API 별도 활용 신청 필요)",
     )
-    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
-        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
-        stats["connectors"]["kma_weather"] = result["evidence_count"]
-    else:
-        if result:
-            msg = result.get("error_message", "")
-            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
-            if msg:
-                print(f"    오류: {msg}")
-        print("    [경고] 기후 커넥터 실패 — 수동 기후 데이터로 대체합니다.")
-        climate_manual = [
-            {"category": "climate", "indicator": "평균기온", "value": "13.2", "numeric_value": 13.2, "unit": "\u2103"},
-            {"category": "climate", "indicator": "강수량", "value": "1394", "numeric_value": 1394.0, "unit": "mm"},
-            {"category": "climate", "indicator": "평균풍속", "value": "2.3", "numeric_value": 2.3, "unit": "m/s"},
-        ]
-        for ev in climate_manual:
-            await api_call(
-                client, "POST", "/api/v1/evidences",
-                json={"project_id": project_id, "screening_only": False, **ev},
-                expected=201, label=f"수동 기후: {ev['indicator']}",
-            )
-        stats["connectors"]["kma_weather"] = len(climate_manual)
-        print(f"    수동 기후 데이터 {len(climate_manual)}건 추가 완료")
 
-    # 2-e. V-world 토지이용 커넥터 (Post-9)
-    sub_banner("2-e. V-world 토지이용 커넥터 — 강남구 중심점")
-    result = await api_call(
-        client, "POST", "/api/v1/connectors/vworld_land_use/collect",
-        json={
-            "project_id": project_id,
-            "params": {"lng": "127.0455", "lat": "37.5075"},
-            "screening_only": False,
-        },
-        expected=200, label="V-world 토지이용 수집",
+    # 2-e. V-world 토지이용 커넥터
+    await collect_connector(
+        "vworld_land_use",
+        "2-e. V-world 토지이용 커넥터 — 강남구 중심점",
+        {"lng": "127.0455", "lat": "37.5075"},
+        failure_reason_hint="VWORLD_API_KEY 미설정 (vworld.kr에서 별도 발급 필요)",
     )
-    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
-        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
-        stats["connectors"]["vworld_land_use"] = result["evidence_count"]
-    else:
-        if result:
-            msg = result.get("error_message", "")
-            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
-            if msg:
-                print(f"    오류: {msg}")
-        print("    [경고] 토지이용 커넥터 실패 — 수동 토지이용 데이터로 대체합니다.")
-        land_use_manual = [
-            {"category": "land_use", "indicator": "용도지역구분", "value": "제2종일반주거지역, 일반상업지역"},
-            {"category": "land_use", "indicator": "용도지구", "value": "미관지구"},
-            {"category": "land_use", "indicator": "지목", "value": "대"},
-        ]
-        for ev in land_use_manual:
-            await api_call(
-                client, "POST", "/api/v1/evidences",
-                json={"project_id": project_id, "screening_only": False, **ev},
-                expected=201, label=f"수동 토지이용: {ev['indicator']}",
-            )
-        stats["connectors"]["vworld_land_use"] = len(land_use_manual)
-        print(f"    수동 토지이용 데이터 {len(land_use_manual)}건 추가 완료")
 
-    # 2-f. 국가유산청 문화재 커넥터 (Post-9)
-    sub_banner("2-f. 국가유산청 문화재 커넥터 — 강남구 중심점 반경 1km")
-    result = await api_call(
-        client, "POST", "/api/v1/connectors/cultural_heritage/collect",
-        json={
-            "project_id": project_id,
-            "params": {"lng": "127.0455", "lat": "37.5075"},
-            "screening_only": False,
-        },
-        expected=200, label="국가유산청 문화재 수집",
+    # 2-f. 국가유산청 문화재 커넥터
+    await collect_connector(
+        "cultural_heritage",
+        "2-f. 국가유산청 문화재 커넥터 — 강남구 중심점",
+        {"lng": "127.0455", "lat": "37.5075"},
     )
-    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
-        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
-        stats["connectors"]["cultural_heritage"] = result["evidence_count"]
-    else:
-        if result:
-            msg = result.get("error_message", "")
-            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
-            if msg:
-                print(f"    오류: {msg}")
-        print("    [경고] 문화재 커넥터 실패 — 수동 문화재 데이터로 대체합니다.")
-        heritage_manual = [
-            {"category": "cultural_heritage", "indicator": "문화재명", "value": "봉은사"},
-            {"category": "cultural_heritage", "indicator": "이격거리", "value": "850", "numeric_value": 850.0, "unit": "m"},
-        ]
-        for ev in heritage_manual:
-            await api_call(
-                client, "POST", "/api/v1/evidences",
-                json={"project_id": project_id, "screening_only": False, **ev},
-                expected=201, label=f"수동 문화재: {ev['indicator']}",
-            )
-        stats["connectors"]["cultural_heritage"] = len(heritage_manual)
-        print(f"    수동 문화재 데이터 {len(heritage_manual)}건 추가 완료")
 
-    # 2-g. 수동 증거 — 소음·진동 3건
-    sub_banner("2-g. 수동 증거 — 소음·진동 3건")
+    # 2-g. 교통량 통계 커넥터
+    await collect_connector(
+        "traffic_volume",
+        "2-g. 교통량 통계 커넥터 — 2024년 일반국도",
+        {"year": "2024", "dtype": "2"},
+        failure_reason_hint="API 엔드포인트 폐지/변경 (HTTP 404)",
+    )
+
+    # 2-h. 폐기물 통계 커넥터
+    await collect_connector(
+        "waste_stats",
+        "2-h. 폐기물 통계 커넥터 — 강남구",
+        {"region": "강남구"},
+        failure_reason_hint="API 응답 구조 불일치 (배출량 아닌 배출일정 데이터)",
+    )
+
+    # 2-i. 수동 증거 — 소음·진동 3건 (현장 측정 데이터, 수동만 허용)
+    sub_banner("2-i. 수동 증거 — 소음·진동 3건 (현장 측정)")
     noise_evidences = [
         {"category": "noise_vibration", "indicator": "소음_Leq_주간", "value": "62.5", "numeric_value": 62.5, "unit": "dB(A)", "observed_at": "2025-11-15T10:00:00"},
         {"category": "noise_vibration", "indicator": "소음_Leq_야간", "value": "48.3", "numeric_value": 48.3, "unit": "dB(A)", "observed_at": "2025-11-15T22:00:00"},
@@ -398,11 +293,11 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
             expected=201, label=f"소음: {ev['indicator']}",
         )
         if result:
-            print(f"    {ev['indicator']}: {ev['value']} {ev['unit']} — 등록 완료")
+            print(f"    [수동] {ev['indicator']}: {ev['value']} {ev['unit']} — 등록 완료")
     stats["manual"]["noise_vibration"] = len(noise_evidences)
 
-    # 2-h. 수동 증거 — 생태 5건
-    sub_banner("2-h. 수동 증거 — 생태 조사 데이터 5건")
+    # 2-j. 수동 증거 — 생태 5건 (현장 조사 데이터, 수동만 허용)
+    sub_banner("2-j. 수동 증거 — 생태 조사 데이터 5건 (현장 조사)")
     ecology_evidences = [
         {"category": "ecology", "indicator": "식물상_종수", "value": "187", "numeric_value": 187.0, "unit": "종", "observed_at": "2025-10-01T00:00:00"},
         {"category": "ecology", "indicator": "동물상_종수", "value": "42", "numeric_value": 42.0, "unit": "종", "observed_at": "2025-10-01T00:00:00"},
@@ -417,80 +312,10 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
             expected=201, label=f"생태: {ev['indicator']}",
         )
         if result:
-            print(f"    {ev['indicator']}: {ev['value']} — 등록 완료")
+            print(f"    [수동] {ev['indicator']}: {ev['value']} — 등록 완료")
     stats["manual"]["ecology"] = len(ecology_evidences)
 
-    # 2-i. 교통량 통계 커넥터 (Conn-1)
-    sub_banner("2-i. 교통량 통계 커넥터 — 서울 일반국도")
-    result = await api_call(
-        client, "POST", "/api/v1/connectors/traffic_volume/collect",
-        json={
-            "project_id": project_id,
-            "params": {"year": "2024", "dtype": "2"},
-            "screening_only": False,
-        },
-        expected=200, label="교통량 통계 수집",
-    )
-    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
-        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
-        stats["connectors"]["traffic_volume"] = result["evidence_count"]
-    else:
-        if result:
-            msg = result.get("error_message", "")
-            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
-            if msg:
-                print(f"    오류: {msg}")
-        print("    [경고] 교통량 커넥터 실패 — 수동 교통 데이터로 대체합니다.")
-        traffic_manual = [
-            {"category": "traffic", "indicator": "교통량_현황", "value": "15420", "numeric_value": 15420.0, "unit": "대/일"},
-            {"category": "traffic", "indicator": "도로등급", "value": "일반국도"},
-            {"category": "traffic", "indicator": "도로명", "value": "강남대로"},
-        ]
-        for ev in traffic_manual:
-            await api_call(
-                client, "POST", "/api/v1/evidences",
-                json={"project_id": project_id, "screening_only": False, **ev},
-                expected=201, label=f"수동 교통: {ev['indicator']}",
-            )
-        stats["connectors"]["traffic_volume"] = len(traffic_manual)
-        print(f"    수동 교통 데이터 {len(traffic_manual)}건 추가 완료")
-
-    # 2-j. 폐기물 통계 커넥터 (Conn-1)
-    sub_banner("2-j. 폐기물 통계 커넥터 — 강남구")
-    result = await api_call(
-        client, "POST", "/api/v1/connectors/waste_stats/collect",
-        json={
-            "project_id": project_id,
-            "params": {"region": "강남구"},
-            "screening_only": False,
-        },
-        expected=200, label="폐기물 통계 수집",
-    )
-    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
-        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
-        stats["connectors"]["waste_stats"] = result["evidence_count"]
-    else:
-        if result:
-            msg = result.get("error_message", "")
-            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
-            if msg:
-                print(f"    오류: {msg}")
-        print("    [경고] 폐기물 커넥터 실패 — 수동 폐기물 데이터로 대체합니다.")
-        waste_manual = [
-            {"category": "waste", "indicator": "생활폐기물_발생량", "value": "1250", "numeric_value": 1250.0, "unit": "톤/일"},
-            {"category": "waste", "indicator": "음식물쓰레기_발생량", "value": "320", "numeric_value": 320.0, "unit": "톤/일"},
-            {"category": "waste", "indicator": "재활용_발생량", "value": "480", "numeric_value": 480.0, "unit": "톤/일"},
-        ]
-        for ev in waste_manual:
-            await api_call(
-                client, "POST", "/api/v1/evidences",
-                json={"project_id": project_id, "screening_only": False, **ev},
-                expected=201, label=f"수동 폐기물: {ev['indicator']}",
-            )
-        stats["connectors"]["waste_stats"] = len(waste_manual)
-        print(f"    수동 폐기물 데이터 {len(waste_manual)}건 추가 완료")
-
-    # 수집 결과 요약
+    # ── 수집 결과 요약 ──
     sub_banner("수집 결과 요약")
     resp = await api_call(
         client, "GET",
@@ -501,10 +326,49 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         total = resp["total"]
         stats["total"] = total
         print(f"    총 증거 건수: {total}")
-        for k, v in stats["connectors"].items():
-            print(f"      커넥터 [{k}]: {v}건")
-        for k, v in stats["manual"].items():
-            print(f"      수동 [{k}]: {v}건")
+
+    # 커넥터별 현황 표
+    all_connectors = [
+        "keco_air", "water_info", "soil_info", "kma_weather",
+        "vworld_land_use", "cultural_heritage", "traffic_volume", "waste_stats",
+    ]
+    connector_names = {
+        "keco_air": "에어코리아 대기질",
+        "water_info": "수질 DB",
+        "soil_info": "토양측정망",
+        "kma_weather": "기상청 ASOS",
+        "vworld_land_use": "V-world 토지이용",
+        "cultural_heritage": "국가유산청 문화재",
+        "traffic_volume": "교통량 통계",
+        "waste_stats": "폐기물 통계",
+    }
+    print()
+    print("    ┌───────────────────────┬────────┬───────┬──────────────────────────────────┐")
+    print("    │ 커넥터                │ 결과   │ 건수  │ 비고                             │")
+    print("    ├───────────────────────┼────────┼───────┼──────────────────────────────────┤")
+    for key in all_connectors:
+        name = connector_names[key]
+        if key in stats["connectors"]:
+            count = stats["connectors"][key]
+            print(f"    │ {name:<20s} │ 성공   │ {count:>5d} │ 실제 API 데이터                  │")
+        elif key in stats["connector_failed"]:
+            reason = stats["connector_failed"][key][:30]
+            print(f"    │ {name:<20s} │ 실패   │     0 │ {reason:<32s} │")
+        else:
+            print(f"    │ {name:<20s} │ 미실행 │     - │                                  │")
+    print("    ├───────────────────────┼────────┼───────┼──────────────────────────────────┤")
+    for key, count in stats["manual"].items():
+        label = {"noise_vibration": "소음·진동", "ecology": "생태"}.get(key, key)
+        print(f"    │ {label:<20s} │ 수동   │ {count:>5d} │ 현장 측정/조사 데이터            │")
+    print("    └───────────────────────┴────────┴───────┴──────────────────────────────────┘")
+
+    api_count = sum(stats["connectors"].values())
+    manual_count = sum(stats["manual"].values())
+    success_count = len(stats["connectors"])
+    fail_count = len(stats["connector_failed"])
+    print()
+    print(f"    커넥터: {success_count}개 성공 / {fail_count}개 실패 (총 8개)")
+    print(f"    실제 API 데이터: {api_count}건 | 수동 입력: {manual_count}건")
 
     return stats
 
@@ -1328,50 +1192,74 @@ def step11_summary(
     export_result: dict,
 ):
     """전체 데모 결과 요약 및 기능 비교."""
-    banner("단계 11: 최종 결과 요약")
+    banner("단계 11: 최종 결과 요약 — 프로젝트 전체 현황 보고")
 
     print(f"    프로젝트 ID: {project_id}")
     print(f"    프로젝트명: 강남구 태양광 발전소 환경영향평가")
+    print(f"    실행 시각: {datetime.now(tz=timezone.utc).isoformat()}")
     print()
 
-    # 데이터 수집 현황
-    print("  ┌─ 데이터 수집 현황 ─────────────────────────────")
-    total_evidence = collect_stats.get("total", 0)
-    connector_total = sum(collect_stats.get("connectors", {}).values())
-    manual_total = sum(collect_stats.get("manual", {}).values())
-    print(f"  │ 총 증거 건수: {total_evidence}")
-    connector_count = len(collect_stats.get("connectors", {}))
-    print(f"  │ 커넥터 수집: {connector_total}건 ({connector_count}개 커넥터)")
-    print(f"  │ 수동 입력: {manual_total}건 + 연평균 보충 6건")
-    print(f"  │ 커넥터: {', '.join(collect_stats.get('connectors', {}).keys())}")
+    # ══════════════════════════════════════════════════
+    # 1. 전체 커넥터 현황: 8종별 성공/실패/비활성
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 1. 전체 커넥터 현황 (8종) ─────────────────────")
+    connector_names = {
+        "keco_air": "에어코리아 대기질",
+        "water_info": "수질 DB",
+        "soil_info": "토양측정망",
+        "kma_weather": "기상청 ASOS",
+        "vworld_land_use": "V-world 토지이용",
+        "cultural_heritage": "국가유산청 문화재",
+        "traffic_volume": "교통량 통계",
+        "waste_stats": "폐기물 통계",
+    }
+    all_connectors = list(connector_names.keys())
+    api_count = sum(collect_stats.get("connectors", {}).values())
+    manual_count = sum(collect_stats.get("manual", {}).values())
+    success_count = len(collect_stats.get("connectors", {}))
+    fail_count = len(collect_stats.get("connector_failed", {}))
+
+    for key in all_connectors:
+        name = connector_names[key]
+        if key in collect_stats.get("connectors", {}):
+            count = collect_stats["connectors"][key]
+            print(f"  │ [성공] {name:<20s} {count:>4d}건 (실제 API)")
+        elif key in collect_stats.get("connector_failed", {}):
+            reason = collect_stats["connector_failed"][key]
+            print(f"  │ [실패] {name:<20s}    - ({reason[:40]})")
+        else:
+            print(f"  │ [미실행] {name}")
+    print(f"  │")
+    print(f"  │ 성공: {success_count}/8 | 실패: {fail_count}/8")
+    print(f"  │ 실제 API 데이터: {api_count}건 | 수동 입력: {manual_count}건 (소음·생태만)")
     print()
 
-    # 섹션 상태
-    print("  ┌─ 섹션 플래너 ───────────────────────────────────")
+    # ══════════════════════════════════════════════════
+    # 2. 섹션별 데이터 현황
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 2. 섹션 플래너 (11개 섹션) ────────────────────")
     print(f"  │ 데이터 있는 섹션: {section_summary.get('complete', 0) + section_summary.get('partial', 0)}개 "
           f"(완료 {section_summary.get('complete', 0)} + 부분 {section_summary.get('partial', 0)})")
     print(f"  │ 미수집 섹션: {section_summary.get('empty', 0)}개")
     print()
 
-    # 법령 반영 (Reg-1~Reg-5)
-    print("  ┌─ 법령 반영 (Reg-1~Reg-5) ──────────────────────")
+    # ══════════════════════════════════════════════════
+    # 3. 법령 반영
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 3. 법령 반영 (Reg-1~Reg-5) ───────────────────")
     print(f"  │ 평가 범위 API: {'정상' if reg_summary.get('scope_ok') else '미동작'}")
     req_secs = reg_summary.get("required_sections", [])
-    print(f"  │ 필수 섹션: {len(req_secs)}개{f' ({', '.join(req_secs[:5])})' if req_secs else ''}")
+    print(f"  │ 필수 섹션: {len(req_secs)}개{f' ({", ".join(req_secs[:5])})' if req_secs else ''}")
     print(f"  │ 서술문 법적 근거: {reg_summary.get('narrative_legal_refs', 0)}개 섹션")
     print(f"  │ 환경기준 법적 근거: {reg_summary.get('standards_legal_refs', 0)}건")
-    print(f"  │ R007 법적 필수 섹션 누락: {qa_summary.get('r007_count', 0)}건")
-    print(f"  │ R008 법적 필수 지표 누락: {qa_summary.get('r008_count', 0)}건")
     print()
 
-    # 통계 엔진
-    print("  ┌─ 통계 엔진 (Post-1) ────────────────────────────")
+    # ══════════════════════════════════════════════════
+    # 4. 통계/환경기준/서술문
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 4. 분석 엔진 현황 ─────────────────────────────")
     stats_with_data = sum(1 for v in stats_summary.values() if v > 0) if stats_summary else 0
     print(f"  │ 통계 산출 섹션: {stats_with_data}개")
-    print()
-
-    # 환경기준 비교
-    print("  ┌─ 환경기준 비교 (Post-2) ────────────────────────")
     sections_with_check = sum(
         1 for v in check_summary.values()
         if v.get("exceedance_count", 0) >= 0 and v != {}
@@ -1379,12 +1267,7 @@ def step11_summary(
     exceed_count = sum(
         v.get("exceedance_count", 0) for v in check_summary.values()
     ) if check_summary else 0
-    print(f"  │ 기준 비교 수행 섹션: {sections_with_check}개")
-    print(f"  │ 기준 초과 건수: {exceed_count}")
-    print()
-
-    # 서술문 생성
-    print("  ┌─ 서술문 생성 (Post-3) ──────────────────────────")
+    print(f"  │ 환경기준 비교 섹션: {sections_with_check}개 (초과 {exceed_count}건)")
     narrative_count = sum(
         1 for v in scaffold_summary.values() if v.get("has_narrative")
     ) if scaffold_summary else 0
@@ -1395,44 +1278,87 @@ def step11_summary(
     print(f"  │ 예측 결과 포함 섹션: {prediction_count}개")
     print()
 
-    # 영향 예측
-    print("  ┌─ 영향 예측 (Pred-1~2) ──────────────────────────")
+    # ══════════════════════════════════════════════════
+    # 5. 예측 모델 현황
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 5. 영향 예측 모델 현황 (3종) ──────────────────")
     models_run = pred_summary.get("models_run", [])
-    print(f"  │ 실행된 모델: {len(models_run)}개")
-    for model in models_run:
-        r = pred_summary.get("results", {})
-        for k, v in r.items():
-            if v.get("model") == model:
-                print(f"  │   {model}: {v.get('prediction_count', 0)}건 ({k})")
+    model_display = {
+        "gaussian_plume": "가우시안 플룸 (대기 확산)",
+        "noise_propagation": "소음 전파 (거리감쇠)",
+        "water_mixing": "수질 혼합 (완전혼합)",
+    }
+    all_models = ["gaussian_plume", "noise_propagation", "water_mixing"]
+    for model in all_models:
+        display = model_display.get(model, model)
+        if model in models_run:
+            r = pred_summary.get("results", {})
+            count = 0
+            for k, v in r.items():
+                if v.get("model") == model:
+                    count = v.get("prediction_count", 0)
+            print(f"  │ [실행] {display}: {count}건")
+        else:
+            print(f"  │ [미실행] {display}")
+    print(f"  │ 총 실행 모델: {len(models_run)}/3")
     print()
 
-    # LLM 보강
-    print("  ┌─ LLM 보강 (Post-6) ─────────────────────────────")
+    # ══════════════════════════════════════════════════
+    # 6. QA 결과
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 6. QA 결과 ────────────────────────────────────")
+    print(f"  │ Export 가능: {'예' if qa_summary.get('export_ready') else '아니오'}")
+    print(f"  │ critical: {qa_summary.get('critical', 0)}건")
+    print(f"  │ warning: {qa_summary.get('warning', 0)}건")
+    print(f"  │ info: {qa_summary.get('info', 0)}건")
+    print(f"  │ 전체 이슈: {qa_summary.get('total', 0)}건")
+    print(f"  │ R007 법적 필수 섹션 누락: {qa_summary.get('r007_count', 0)}건")
+    print(f"  │ R008 법적 필수 지표 누락: {qa_summary.get('r008_count', 0)}건")
+    print()
+
+    # ══════════════════════════════════════════════════
+    # 7. LLM 보강
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 7. LLM 보강 (Post-6) ─────────────────────────")
     print(f"  │ Adapter: {llm_summary.get('adapter', 'unknown')}")
     enhanced = llm_summary.get("enhanced", [])
-    print(f"  │ 보강 완료 섹션: {len(enhanced)}개{f' ({', '.join(enhanced)})' if enhanced else ''}")
+    print(f"  │ 보강 완료 섹션: {len(enhanced)}개{f' ({", ".join(enhanced)})' if enhanced else ''}")
     print()
 
-    # QA
-    print("  ┌─ QA 결과 ───────────────────────────────────────")
-    print(f"  │ Export 가능: {'예' if qa_summary.get('export_ready') else '아니오'}")
-    print(f"  │ critical: {qa_summary.get('critical', 0)} | "
-          f"warning: {qa_summary.get('warning', 0)} | "
-          f"info: {qa_summary.get('info', 0)}")
+    # ══════════════════════════════════════════════════
+    # 8. 최종 문서 구조
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 8. 최종 문서 구조 ─────────────────────────────")
+    print("  │ 표지")
+    print("  │ 목차")
+    print("  │ 제1부 사업 개요")
+    print("  │   1. 대기질 현황")
+    print("  │   2. 수질 현황")
+    print("  │   3. 토양 현황")
+    print("  │   4. 소음·진동 현황")
+    print("  │   5. 기후 현황")
+    print("  │   6. 토지이용 현황")
+    print("  │   7. 생태 현황")
+    print("  │   8. 경관 현황")
+    print("  │   9. 사회경제 현황")
+    print("  │  10. 문화재 현황")
+    print("  │  11. 교통 현황")
+    print("  │ 제2부 영향 예측 (대기 확산/소음 전파/수질 혼합)")
+    print("  │ 부록 A: 증거 목록")
+    print("  │ 부록 B: QA 이슈")
+    print("  │ 부록 C: 유사사례")
     print()
-
-    # Export
-    print("  ┌─ 문서 출력 (Post-5 포맷) ───────────────────────")
-    print(f"  │ DOCX: {export_result.get('docx_path', '없음')}")
+    print("  │ DOCX: {0}".format(export_result.get("docx_path", "미생성")))
     if export_result.get("docx_size"):
         print(f"  │       크기: {export_result['docx_size']:,} bytes ({export_result['docx_size']/1024:.1f} KB)")
-    print(f"  │ PDF:  {export_result.get('pdf_path', '없음')}")
+    print("  │ PDF:  {0}".format(export_result.get("pdf_path", "미생성")))
     if export_result.get("pdf_size"):
         print(f"  │       크기: {export_result['pdf_size']:,} bytes ({export_result['pdf_size']/1024:.1f} KB)")
-    print(f"  │ 문서 구조: 표지 + 목차 + 본문 11섹션 + 부록 A/B/C")
     print()
 
+    # ══════════════════════════════════════════════════
     # 기능 비교 표
+    # ══════════════════════════════════════════════════
     print("  ┌─ MVP → Post-MVP → 법령 → 예측·커넥터 기능 비교 ──")
     print("  │")
     print("  │  기능                 │ MVP (Phase 6)  │ Post-MVP       │ 법령 (Reg)     │ 최종 (Final)")
@@ -1459,9 +1385,9 @@ def step11_summary(
 
 async def main():
     print("╔══════════════════════════════════════════════════════════════════════╗")
-    print("║  EIA Draft Copilot — 최종 통합 데모 (Final-1)                      ║")
+    print("║  EIA Draft Copilot — 배포 전 최종 통합 데모 (Final-1)              ║")
     print("║  시나리오: 서울특별시 강남구 태양광 발전소 건설 프로젝트                ║")
-    print("║  범위: Phase 0~6 + Post + Reg + Pred-1~3 + Conn-1 전체 기능       ║")
+    print("║  원칙: 실제 API 데이터만 사용, 더미 데이터 사용 금지                  ║")
     print("╚══════════════════════════════════════════════════════════════════════╝")
     print()
     print(f"  백엔드 URL: {BASE_URL}")
@@ -1519,14 +1445,13 @@ async def main():
         qa_summary = await step9_qa(client, project_id)
 
         # ── 단계 10: Export ──
-        if qa_summary.get("export_ready"):
-            export_result = await step10_export(client, project_id)
-        else:
+        if not qa_summary.get("export_ready"):
             print()
-            banner("단계 10: Export — 건너뜀")
-            print("    [안내] Export가 차단되었습니다 (critical 이슈 미해결).")
-            print("    critical 이슈를 해결한 후 다시 시도하세요.")
-            export_result = {}
+            banner("단계 10: Export — critical 이슈 존재")
+            print("    [안내] critical QA 이슈가 있어 정식 export는 차단됩니다.")
+            print("    실패 커넥터로 인한 미수집 섹션이 원인입니다.")
+            print("    참고용으로 문서 생성을 시도합니다.")
+        export_result = await step10_export(client, project_id)
 
     # ── 단계 11: 최종 요약 비교 ──
     step11_summary(

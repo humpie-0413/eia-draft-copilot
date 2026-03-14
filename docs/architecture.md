@@ -25,15 +25,15 @@
 │                                              │
 │  ┌──────────┐ ┌──────────────┐ ┌─────────────────────────────┐ │
 │  │ API      │ │  서비스 계층   │ │    커넥터 파이프라인          │ │
-│  │ 라우터   │─▶│              │ │ BaseConnector               │ │
-│  │ (13개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector         │ │
-│  └──────────┘ │ ├기준비교     │ │ ├─ WaterInfoConnector       │ │
-│               │ ├서술문생성   │ │ ├─ SoilInfoConnector        │ │
-│               │ ├QA 규칙     │ │ ├─ KmaWeatherConnector      │ │
-│               │ ├평가범위     │ │ ├─ LandUseConnector         │ │
-│               │ ├예측 엔진   │ │ ├─ CulturalHeritageConnector│ │
-│               │ ├Export      │ │ ├─ TrafficVolumeConnector   │ │
-│               │ └유사도 계산 │ │ └─ WasteStatsConnector      │ │
+│  │ 라우터   │─▶│              │ │ BaseConnector (8종 정의)     │ │
+│  │ (13개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector    ✅   │ │
+│  └──────────┘ │ ├기준비교     │ │ ├─ WaterInfoConnector  ✅   │ │
+│               │ ├서술문생성   │ │ ├─ SoilInfoConnector   ⚠️   │ │
+│               │ ├QA 규칙     │ │ ├─ KmaWeatherConnector ⚠️   │ │
+│               │ ├평가범위     │ │ ├─ LandUseConnector    ⚠️   │ │
+│               │ ├예측 엔진   │ │ ├─ CulturalHeritage    ✅   │ │
+│               │ ├Export      │ │ ├─ TrafficVolume       ⚠️   │ │
+│               │ └유사도 계산 │ │ └─ WasteStatsConnector ✅   │ │
 │               └──────┬───────┘ └─────────────────────────────┘ │
 │                      │          ┌────────────────────┐         │
 │                      │          │  LLM Adapter        │         │
@@ -113,7 +113,12 @@
 
 13. Export (Post-5)
     └─ export_ready 확인 (critical 0건)
-    └─ DOCX: 표지 + 목차 + 본문 11섹션(5부 구조, 영향 예측 포함) + 부록 A/B/C
+    └─ DOCX 5부 구조:
+        ├─ 1부: 표지 (사업명, 사업유형, 위치, 작성일)
+        ├─ 2부: 목차 (섹션별 상태 + 필수/선택 구분)
+        ├─ 3부: 본문 11섹션 (서술문 + 통계 + 기준비교 + 상세 데이터)
+        ├─ 4부: 영향 예측 (대기 확산, 소음 전파, 수질 혼합 — 해당 섹션만)
+        └─ 5부: 부록 A(상세 데이터) + B(유사사례) + C(QA 결과)
     └─ PDF: 동일 구조 (reportlab)
 ```
 
@@ -363,18 +368,21 @@ BaseConnector (추상 클래스)
         └── Evidence 벌크 INSERT
 ```
 
-### 구현된 커넥터 (8종)
+### 구현된 커넥터 (8종 정의, 4종 운영 중)
 
-| 커넥터 키 | 이름 | API | 수집 지표 |
-|-----------|------|-----|-----------|
-| `keco_air` | 에어코리아 대기질 | ArpltnInforInqireSvc | PM10, PM2.5, O3, NO2, SO2, CO |
-| `water_info` | 수질 DB | WaterQualityService | BOD, COD, SS, DO, T-N, T-P |
-| `soil_info` | 토양측정망 | 토양측정정보 조회 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 |
-| `kma_weather` | 기상청 ASOS | 지상일자료 조회 | 기온, 강수량, 풍속, 습도 |
-| `vworld_land_use` | V-world 토지이용 | 2D데이터 API (geomFilter) | 용도지역구분, 용도지구, 지목 |
-| `cultural_heritage` | 국가유산청 문화재 | Open API (XML) | 문화재명, 종별, 이격거리, 소재지 |
-| `traffic_volume` | 교통량 통계 | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급, 도로명 |
-| `waste_stats` | 폐기물 통계 | 행정안전부 생활쓰레기배출정보 | 생활폐기물_발생량, 음식물쓰레기_발생량, 재활용_발생량 |
+| 커넥터 키 | 이름 | API | 수집 지표 | 상태 |
+|-----------|------|-----|-----------|------|
+| `keco_air` | 에어코리아 대기질 | ArpltnInforInqireSvc | PM10, PM2.5, O3, NO2, SO2, CO | ✅ 운영 중 |
+| `water_info` | 수질 DB | WaterQualityService | BOD, COD, SS, DO, T-N, T-P | ✅ 운영 중 |
+| `soil_info` | 토양측정망 | 토양측정정보 조회 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 | ⚠️ 서버 오류 |
+| `kma_weather` | 기상청 ASOS | 지상일자료 조회 | 기온, 강수량, 풍속, 습도 | ⚠️ 키 미승인 |
+| `vworld_land_use` | V-world 토지이용 | 2D데이터 API (geomFilter) | 용도지역구분, 용도지구, 지목 | ⚠️ 키 미설정 |
+| `cultural_heritage` | 국가유산청 문화재 | Open API (XML) | 문화재명, 종별, 이격거리, 소재지 | ✅ 운영 중 |
+| `traffic_volume` | 교통량 통계 | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급, 도로명 | ⚠️ 엔드포인트 폐지 |
+| `waste_stats` | 폐기물 배출정보 | 행정안전부 생활쓰레기배출정보 | 폐기물 배출일정/관리정보 (배출요일, 배출방법, 관리부서) | ✅ 운영 중 |
+
+> **참고**: 폐기물 커넥터(`waste_stats`)는 폐기물 발생량이 아닌 배출 일정 및 관리 정보(배출요일, 배출방법, 관리부서 등)를 수집합니다.
+> 4종(soil_info, kma_weather, vworld_land_use, traffic_volume)은 코드 구현이 완료되어 있으나 외부 요인으로 일시적으로 사용 불가합니다.
 
 ## 통계 엔진 구조 (Post-1)
 

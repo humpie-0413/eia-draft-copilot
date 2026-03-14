@@ -1580,6 +1580,98 @@ class TestWasteStatsConnector:
         assert len(waste) == 1
         assert waste[0].numeric_value == 80.0
 
+    # ──────────────────────────────────────────────────
+    # 실제 행정안전부 API 응답 형식 — 배출 일정/관리 정보
+    # (발생량 수치 필드가 없고 요일/방법 필드가 있는 버전)
+    # ──────────────────────────────────────────────────
+    SAMPLE_SCHEDULE_RESPONSE = {
+        "totalCount": 2,
+        "matchCount": 2,
+        "data": [
+            {
+                "SGG_NM": "강남구",
+                "CTPV_NM": "서울특별시",
+                "MNG_DEPT_NM": "강남구청 자원순환과",
+                "EMSN_PLC": "문전수거",
+                "EMSN_PLC_TYPE": "단독주택",
+                "FOD_WST_EMSN_DOW": "일+월+화+수+목+금",
+                "FOD_WST_EMSN_MTHD": "전용봉투",
+                "RCYCL_EMSN_DOW": "월+수+금",
+                "RCYCL_EMSN_MTHD": "투명봉투/마대",
+                "LF_WST_EMSN_DOW": "매일",
+                "LF_WST_EMSN_MTHD": "종량제봉투",
+                "DAT_CRTR_YMD": "2023-12-18",
+                "MNG_ZONE_TRGT_RGN_NM": "강남구 전역",
+            },
+            {
+                "SGG_NM": "서초구",
+                "CTPV_NM": "서울특별시",
+                "MNG_DEPT_NM": "서초구청 청소행정과",
+                "EMSN_PLC": "거점수거",
+                "EMSN_PLC_TYPE": "공동주택",
+                "FOD_WST_EMSN_DOW": "월+화+수+목+금+토",
+                "FOD_WST_EMSN_MTHD": "전용용기",
+                "RCYCL_EMSN_DOW": "화+목",
+                "RCYCL_EMSN_MTHD": "분리배출함",
+                "LF_WST_EMSN_DOW": "",          # 빈 값 → 건너뜀
+                "LF_WST_EMSN_MTHD": "",
+                "DAT_CRTR_YMD": "2023-12-18",
+                "MNG_ZONE_TRGT_RGN_NM": "서초구 전역",
+            },
+        ],
+    }
+
+    def test_normalize_배출일정_응답(self):
+        """실제 행정안전부 API 형식(배출 일정/관리 정보)을 올바르게 정규화하는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_SCHEDULE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+
+        # 강남구 항목: 관리부서 + 배출방법 + 음식물요일 + 재활용요일 + 생활쓰레기요일 = 5
+        # 서초구 항목: 관리부서 + 배출방법 + 음식물요일 + 재활용요일 (LF_WST_EMSN_DOW="" → 건너뜀) = 4
+        assert len(evidences) == 9
+
+        # 지표명 목록 확인
+        indicators = [e.indicator for e in evidences]
+        assert indicators.count("폐기물_관리부서") == 2
+        assert indicators.count("폐기물_배출방법") == 2
+        assert indicators.count("음식물쓰레기_배출요일") == 2
+        assert indicators.count("재활용_배출요일") == 2
+        assert indicators.count("생활쓰레기_배출요일") == 1  # 서초구는 빈 값
+
+        # 강남구 관리부서 값 검증
+        gangnam_dept = next(
+            e for e in evidences
+            if e.indicator == "폐기물_관리부서"
+            and e.metadata_json.get("region") == "강남구"
+        )
+        assert gangnam_dept.value == "강남구청 자원순환과"
+        assert gangnam_dept.numeric_value is None
+        assert gangnam_dept.unit == ""
+        from app.schemas.evidence import EvidenceCategory
+        assert gangnam_dept.category == EvidenceCategory.WASTE
+
+        # 강남구 음식물쓰레기 배출요일 검증
+        fod_dow = next(
+            e for e in evidences
+            if e.indicator == "음식물쓰레기_배출요일"
+            and e.metadata_json.get("region") == "강남구"
+        )
+        assert fod_dow.value == "일+월+화+수+목+금"
+
+        # 기준일 파싱 검증 (YYYY-MM-DD 형식)
+        assert gangnam_dept.observed_at is not None
+        assert gangnam_dept.observed_at == datetime(2023, 12, 18)
+
+        # 시도명이 메타데이터에 포함되는지 확인
+        assert gangnam_dept.metadata_json["sido"] == "서울특별시"
+
+        # screening_only 기본값은 False
+        assert not gangnam_dept.screening_only
+
     def test_커넥터_메타데이터(self):
         """커넥터 키와 표시명이 올바른지 확인."""
         assert self.connector.connector_key == "waste_stats"

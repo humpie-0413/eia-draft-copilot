@@ -112,7 +112,7 @@ npm run dev  # http://localhost:3000
 
 ```bash
 cd backend
-pytest tests/ -v                         # 전체 테스트 (605개)
+pytest tests/ -v                         # 전체 테스트 (606개)
 pytest tests/test_projects.py -v         # 프로젝트 테스트만
 pytest tests/test_connectors.py -v       # 커넥터 테스트만
 pytest tests/test_e2e.py -v              # E2E 테스트만
@@ -151,7 +151,9 @@ async def test_something(client: AsyncClient):
 python scripts/test_connectors_live.py
 ```
 
-이 스크립트는 8개 커넥터(에어코리아, 수질, 토양, 기후, V-world 토지이용, 국가유산청 문화재, 교통량 통계, 폐기물 통계)의 실제 API 호출을 검증합니다.
+이 스크립트는 8개 커넥터의 실제 API 호출을 검증합니다.
+현재 4종(keco_air, water_info, cultural_heritage, waste_stats)이 정상 운영 중이며,
+4종(soil_info=서버 오류, kma_weather=키 미승인, vworld_land_use=키 미설정, traffic_volume=엔드포인트 폐지)은 일시적으로 사용 불가합니다.
 
 ### 통합 데모
 
@@ -160,7 +162,8 @@ python scripts/test_connectors_live.py
 python scripts/demo_full_scenario.py
 ```
 
-12단계 전체 흐름(8종 커넥터 수집 + 영향 예측 3종 포함)을 자동 실행하고 결과를 `output/` 폴더에 저장합니다.
+12단계 전체 흐름을 자동 실행하고 결과를 `output/` 폴더에 저장합니다.
+더미 데이터를 사용하지 않으며, 실제 공공데이터 API 응답 기반으로 동작합니다 (소음/생태 분야만 수동 입력).
 
 ### 프론트엔드 테스트
 
@@ -197,6 +200,19 @@ alembic history             # 마이그레이션 이력 조회
 ---
 
 ## 새 커넥터 추가 방법
+
+### 현재 커넥터 현황 (8종 정의, 4종 운영 중)
+
+| 커넥터 | 상태 | 비고 |
+|--------|------|------|
+| `keco_air` | ✅ 운영 중 | 공공데이터포털 API 키 |
+| `water_info` | ✅ 운영 중 | 공공데이터포털 API 키 |
+| `cultural_heritage` | ✅ 운영 중 | API 키 불필요 |
+| `waste_stats` | ✅ 운영 중 | 공공데이터포털 API 키. 배출일정/관리 정보 수집 |
+| `soil_info` | ⚠️ 일시 불가 | API 서버 오류 (500) |
+| `kma_weather` | ⚠️ 일시 불가 | API 키 승인 대기 |
+| `vworld_land_use` | ⚠️ 일시 불가 | VWORLD_API_KEY 미설정 |
+| `traffic_volume` | ⚠️ 일시 불가 | API 엔드포인트 폐지 |
 
 ### 1. 커넥터 클래스 작성
 

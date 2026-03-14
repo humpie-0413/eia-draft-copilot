@@ -149,7 +149,7 @@ ReDoc: http://localhost:8000/redoc
 
 ### GET /connectors
 
-사용 가능한 커넥터 목록을 조회합니다 (8종).
+사용 가능한 커넥터 목록을 조회합니다 (8종 정의, 4종 운영 중).
 
 **응답 (200)**:
 ```json
@@ -164,6 +164,18 @@ ReDoc: http://localhost:8000/redoc
   { "connector_key": "waste_stats", "display_name": "행정안전부 생활쓰레기배출정보" }
 ]
 ```
+
+**커넥터 가용 현황**:
+| 커넥터 | 상태 | 비고 |
+|--------|------|------|
+| `keco_air` | ✅ 운영 중 | 공공데이터포털 API 키 필요 |
+| `water_info` | ✅ 운영 중 | 공공데이터포털 API 키 필요 |
+| `cultural_heritage` | ✅ 운영 중 | API 키 불필요 (공개 API) |
+| `waste_stats` | ✅ 운영 중 | 공공데이터포털 API 키 필요. 배출 일정/관리 정보 수집 (발생량 아님) |
+| `soil_info` | ⚠️ 일시 불가 | API 서버 오류 (500) |
+| `kma_weather` | ⚠️ 일시 불가 | API 키 승인 대기 |
+| `vworld_land_use` | ⚠️ 일시 불가 | VWORLD_API_KEY 미설정 |
+| `traffic_volume` | ⚠️ 일시 불가 | API 엔드포인트 폐지 |
 
 ### POST /connectors/{connector_key}/collect
 
@@ -220,12 +232,14 @@ ReDoc: http://localhost:8000/redoc
 | dtype | X | 도로유형 코드 (1=고속도로, 2=일반국도, 3=지방도, 기본: 2) |
 | month | X | 조회 월 (기본: 1) |
 
-#### waste_stats (폐기물 통계)
+#### waste_stats (폐기물 배출정보)
 | 파라미터 | 필수 | 설명 |
 |----------|------|------|
 | region | O | 시군구명 (예: "강남구") |
 | start_date | X | 기준일 시작 (YYYYMMDD) |
 | end_date | X | 기준일 종료 (YYYYMMDD) |
+
+> 폐기물 커넥터는 폐기물 발생량이 아닌 배출 일정/관리 정보(배출요일, 배출방법, 관리부서 등)를 수집합니다.
 
 **응답 (200)**:
 ```json

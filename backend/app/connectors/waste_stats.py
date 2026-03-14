@@ -223,6 +223,120 @@ class WasteStatsConnector(BaseConnector):
                     )
                 )
 
+            # ──────────────────────────────────────────────────────────
+            # 배출 일정/관리 정보 — 실제 행정안전부 API 응답 필드
+            # (TOT_DSCG_QTY 등 발생량 필드가 없는 API 버전에서 반환됨)
+            # ──────────────────────────────────────────────────────────
+
+            # 시도명 추출 (메타데이터용)
+            sido_name = (
+                item.get("CTPV_NM")
+                or item.get("ctpv_nm")
+                or ""
+            )
+
+            # 공통 메타데이터 — 지역 정보 포함
+            schedule_meta = {
+                "region": region_name,
+                "sido": sido_name,
+                "date": str(date_str) if date_str else "",
+            }
+
+            # 관리부서 (MNG_DEPT_NM)
+            mng_dept = item.get("MNG_DEPT_NM") or item.get("mng_dept_nm")
+            if mng_dept and str(mng_dept).strip():
+                evidences.append(
+                    EvidenceCreate(
+                        project_id=project_id,
+                        snapshot_id=snapshot_id,
+                        data_source_id=data_source_id,
+                        category=EvidenceCategory.WASTE,
+                        indicator="폐기물_관리부서",
+                        value=str(mng_dept).strip(),
+                        numeric_value=None,
+                        unit="",
+                        observed_at=observed_at,
+                        screening_only=screening_only,
+                        metadata_json=schedule_meta,
+                    )
+                )
+
+            # 배출장소 (EMSN_PLC)
+            emsn_plc = item.get("EMSN_PLC") or item.get("emsn_plc")
+            if emsn_plc and str(emsn_plc).strip():
+                evidences.append(
+                    EvidenceCreate(
+                        project_id=project_id,
+                        snapshot_id=snapshot_id,
+                        data_source_id=data_source_id,
+                        category=EvidenceCategory.WASTE,
+                        indicator="폐기물_배출방법",
+                        value=str(emsn_plc).strip(),
+                        numeric_value=None,
+                        unit="",
+                        observed_at=observed_at,
+                        screening_only=screening_only,
+                        metadata_json=schedule_meta,
+                    )
+                )
+
+            # 음식물쓰레기 배출요일 (FOD_WST_EMSN_DOW)
+            fod_dow = item.get("FOD_WST_EMSN_DOW") or item.get("fod_wst_emsn_dow")
+            if fod_dow and str(fod_dow).strip():
+                evidences.append(
+                    EvidenceCreate(
+                        project_id=project_id,
+                        snapshot_id=snapshot_id,
+                        data_source_id=data_source_id,
+                        category=EvidenceCategory.WASTE,
+                        indicator="음식물쓰레기_배출요일",
+                        value=str(fod_dow).strip(),
+                        numeric_value=None,
+                        unit="",
+                        observed_at=observed_at,
+                        screening_only=screening_only,
+                        metadata_json=schedule_meta,
+                    )
+                )
+
+            # 재활용 배출요일 (RCYCL_EMSN_DOW)
+            rcycl_dow = item.get("RCYCL_EMSN_DOW") or item.get("rcycl_emsn_dow")
+            if rcycl_dow and str(rcycl_dow).strip():
+                evidences.append(
+                    EvidenceCreate(
+                        project_id=project_id,
+                        snapshot_id=snapshot_id,
+                        data_source_id=data_source_id,
+                        category=EvidenceCategory.WASTE,
+                        indicator="재활용_배출요일",
+                        value=str(rcycl_dow).strip(),
+                        numeric_value=None,
+                        unit="",
+                        observed_at=observed_at,
+                        screening_only=screening_only,
+                        metadata_json=schedule_meta,
+                    )
+                )
+
+            # 생활쓰레기 배출요일 (LF_WST_EMSN_DOW)
+            lf_dow = item.get("LF_WST_EMSN_DOW") or item.get("lf_wst_emsn_dow")
+            if lf_dow and str(lf_dow).strip():
+                evidences.append(
+                    EvidenceCreate(
+                        project_id=project_id,
+                        snapshot_id=snapshot_id,
+                        data_source_id=data_source_id,
+                        category=EvidenceCategory.WASTE,
+                        indicator="생활쓰레기_배출요일",
+                        value=str(lf_dow).strip(),
+                        numeric_value=None,
+                        unit="",
+                        observed_at=observed_at,
+                        screening_only=screening_only,
+                        metadata_json=schedule_meta,
+                    )
+                )
+
         logger.info(
             "생활쓰레기배출정보 정규화 완료: %d건 증거 생성", len(evidences)
         )

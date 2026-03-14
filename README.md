@@ -32,12 +32,12 @@
 | 5 | 생태 | 식물상 종수, 동물상 종수, 법정보호종, 비오톱 유형, 녹지자연도 |
 | 6 | 토지이용 | 용도지역구분, 용도지구, 지목 |
 | 7 | 교통 | 교통량 현황, 서비스수준 |
-| 8 | 폐기물 | 폐기물 발생량, 폐기물 종류 |
+| 8 | 폐기물 | 폐기물 배출일정, 배출방법, 관리부서 |
 | 9 | 경관 | 주요 조망점, 경관 유형 |
 | 10 | 문화재 | 문화재명, 이격거리 |
 | 11 | 기후 | 평균기온, 강수량, 평균풍속 |
 
-### 공공데이터 커넥터 (8종)
+### 공공데이터 커넥터 (8종 정의, 4종 운영 중)
 
 | 커넥터 | 대상 API | 수집 지표 |
 |--------|----------|-----------|
@@ -48,7 +48,23 @@
 | `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
 | `traffic_volume` | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급, 도로명 |
-| `waste_stats` | 행정안전부 생활쓰레기배출정보 | 생활폐기물_발생량, 음식물쓰레기_발생량, 재활용_발생량 |
+| `waste_stats` | 행정안전부 생활쓰레기배출정보 | 폐기물 배출일정/관리정보 (배출요일, 배출방법, 관리부서) |
+
+### 커넥터 가용 현황
+
+| 커넥터 | 상태 | 비고 |
+|--------|------|------|
+| `keco_air` | ✅ 운영 중 | 공공데이터포털 API 키 필요 |
+| `water_info` | ✅ 운영 중 | 공공데이터포털 API 키 필요 |
+| `cultural_heritage` | ✅ 운영 중 | API 키 불필요 (공개 API) |
+| `waste_stats` | ✅ 운영 중 | 공공데이터포털 API 키 필요 |
+| `soil_info` | ⚠️ 일시 불가 | API 서버 오류 (500) — 공공데이터포털 측 서버 장애 |
+| `kma_weather` | ⚠️ 일시 불가 | API 키 승인 대기 — 활용 신청 후 승인 완료 시 사용 가능 |
+| `vworld_land_use` | ⚠️ 일시 불가 | VWORLD_API_KEY 미설정 — V-world 별도 키 발급 필요 |
+| `traffic_volume` | ⚠️ 일시 불가 | API 엔드포인트 폐지 — 대체 API 확인 필요 |
+
+> 4종 커넥터(keco_air, water_info, cultural_heritage, waste_stats)는 실제 API 검증 완료 상태입니다.
+> 나머지 4종은 코드 구현 완료이나 외부 요인으로 일시적으로 사용 불가합니다.
 
 ### 영향 예측 모델 (3종)
 
@@ -122,7 +138,7 @@
 - **문서 생성**: python-docx (DOCX), reportlab (PDF)
 - **LLM**: openai SDK + httpx (Gemini REST)
 - **예측 모델**: 대기 확산(가우시안 플룸) + 소음 전파 + 수질 혼합
-- **테스트**: pytest + httpx (ASGI 테스트, 605개)
+- **테스트**: pytest + httpx (ASGI 테스트, 606개)
 
 ## 로컬 개발 환경 설정
 
@@ -182,8 +198,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
    - **기상청 ASOS 일자료**: https://www.data.go.kr/data/15059093/openapi.do
 3. 발급받은 **인코딩 키**를 `backend/.env`의 `DATA_GO_KR_API_KEY`에 설정
 
-> 5개 커넥터(keco_air, water_info, soil_info, kma_weather, traffic_volume)가 동일한 공공데이터포털 키를 사용합니다.
-> waste_stats(폐기물) 커넥터도 공공데이터포털 키를 사용합니다.
+> 6개 커넥터(keco_air, water_info, soil_info, kma_weather, traffic_volume, waste_stats)가 동일한 공공데이터포털 키를 사용합니다.
+> 현재 4종(keco_air, water_info, cultural_heritage, waste_stats)이 실제 운영 중이며, soil_info(서버 오류), kma_weather(키 미승인), traffic_volume(엔드포인트 폐지)은 일시적으로 사용 불가합니다.
 
 ### 4. V-world API 키 발급 (토지이용 커넥터)
 
@@ -221,11 +237,12 @@ npm run dev                   # http://localhost:3000
 python scripts/demo_full_scenario.py
 ```
 
-전체 워크플로우를 자동 실행합니다: 프로젝트 생성 → 8종 커넥터 수집 → 유사사례 매칭 → 통계 → 기준비교 → 서술문 → 영향 예측(3종) → LLM 보강 → QA → DOCX/PDF Export.
+전체 워크플로우를 자동 실행합니다: 프로젝트 생성 → 실제 API 데이터 수집(소음/생태만 수동 입력) → 유사사례 매칭 → 통계 → 기준비교 → 서술문 → 영향 예측(3종) → LLM 보강 → QA → DOCX/PDF Export.
+더미 데이터를 사용하지 않으며, 실제 공공데이터 API 응답 기반으로 동작합니다.
 
 ## 테스트
 
-### 백엔드 테스트 (pytest, 605개)
+### 백엔드 테스트 (pytest, 606개)
 
 ```bash
 cd backend
@@ -290,7 +307,7 @@ eia-draft-copilot/
 ├── backend/                      # FastAPI 백엔드
 │   ├── app/
 │   │   ├── api/v1/               # REST API 엔드포인트 (11개 라우터)
-│   │   ├── connectors/           # 공공데이터 커넥터 (8종)
+│   │   ├── connectors/           # 공공데이터 커넥터 (8종 정의, 4종 운영 중)
 │   │   ├── crud/                 # DB CRUD 함수
 │   │   ├── data/                 # 환경기준 데이터 + 법령 데이터
 │   │   │   └── regulations/     # 법령 데이터 (법적 근거, 필수 항목, 지역구분)
@@ -303,10 +320,10 @@ eia-draft-copilot/
 │   │   ├── config.py             # 환경 설정
 │   │   └── db.py                 # DB 세션 관리
 │   ├── alembic/                  # DB 마이그레이션 (4개)
-│   ├── tests/                    # 백엔드 테스트 (605개)
+│   ├── tests/                    # 백엔드 테스트 (606개)
 │   └── requirements.txt          # Python 의존성
 ├── scripts/                      # 유틸리티 스크립트
-│   ├── demo_full_scenario.py     # 통합 데모 (12단계, 예측 포함)
+│   ├── demo_full_scenario.py     # 통합 데모 (실제 API 기반, 소음/생태만 수동)
 │   └── test_connectors_live.py   # 커넥터 실제 API 검증 (8종)
 ├── docs/                         # 문서
 │   ├── architecture.md           # 시스템 아키텍처

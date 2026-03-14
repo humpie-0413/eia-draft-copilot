@@ -1570,16 +1570,52 @@
 - 기능 비교 표: MVP → Post-MVP → 법령 → 최종(Final) 4단계 비교
 
 #### 2. 전체 테스트 실행
-- pytest 605개 전체 통과 확인
+- pytest 605개 전체 통과 확인 (이후 Final-2에서 606개로 증가)
 
 #### 3. 문서 최종 업데이트
-- **README.md**: 8종 커넥터 + 3종 예측 모델 + 605개 테스트 반영
+- **README.md**: 8종 커넥터 + 3종 예측 모델 + 605개 테스트 반영 (이후 Final-2에서 606개로 갱신)
 - **docs/architecture.md**: 예측 엔진 구조 + 8종 커넥터 + 예측 API + Export 5부 구조
 - **docs/user-guide.md**: 영향 예측 사용법 (3종 모델 상세 입출력) + 8종 커넥터
 - **docs/api-reference.md**: 예측 API 엔드포인트 + 교통/폐기물 커넥터 파라미터
 - **docs/development.md**: 새 예측 모델 추가 방법 + 서비스 목록 업데이트
 
 #### 4. 프로젝트 전체 현황 정리
+
+---
+
+## Final-2: 배포 전 최종 검증 ✅
+
+**일자**: 2026-03-14
+
+### 완료 항목
+
+#### 1. 커넥터 실제 API 검증
+- 8종 커넥터 중 4종 정상 운영 확인: keco_air(에어코리아), water_info(수질), cultural_heritage(문화재), waste_stats(폐기물)
+- 4종 일시 사용 불가 확인:
+  - `soil_info`: API 서버 오류 (500) — 공공데이터포털 측 서버 장애
+  - `kma_weather`: API 키 승인 대기 — 활용 신청 후 승인 완료 시 사용 가능
+  - `vworld_land_use`: VWORLD_API_KEY 미설정 — V-world 별도 키 발급 필요
+  - `traffic_volume`: API 엔드포인트 폐지 — 대체 API 확인 필요
+
+#### 2. 더미 데이터 제거
+- 데모 스크립트에서 더미 데이터 사용 완전 제거
+- 실제 공공데이터 API 응답 기반으로만 동작
+- 소음/생태 분야만 수동 입력 (해당 분야는 현장조사 필요)
+
+#### 3. 폐기물 커넥터 normalize 수정
+- 폐기물 커넥터가 실제 API에서 반환하는 배출 일정/관리 정보 정규화 구현
+- 배출요일, 배출방법, 관리부서 등 수집 지표 반영
+- 발생량 데이터가 아닌 배출 일정/관리 정보임을 문서에 명확히 기재
+
+#### 4. 테스트 606개 통과
+- pytest 606개 전체 통과 확인 (기존 605개 + 1개 추가)
+
+#### 5. 문서 최종 업데이트
+- **README.md**: 테스트 606개, 커넥터 가용 현황 표 추가, 폐기물 커넥터 설명 수정
+- **docs/architecture.md**: 커넥터 상태 표시, Export 5부 구조 상세화
+- **docs/user-guide.md**: 커넥터 가용 현황 + API 키 등록 안내 추가
+- **docs/api-reference.md**: 커넥터 가용 현황 표 + 폐기물 커넥터 설명 보완
+- **docs/development.md**: 테스트 606개, 커넥터 현황 표 추가, 데모 스크립트 설명 갱신
 
 ### 시스템 구성 최종 현황
 
@@ -1593,7 +1629,7 @@
 | 사업유형 | 12종 | power_plant, road, railway, housing, industrial, tourism 등 |
 | EIA 섹션 | 11개 | 대기질~기후 |
 | DB 테이블 | 6개 | projects, data_sources, source_snapshots, evidences, similar_cases, draft_narratives |
-| 백엔드 테스트 | 605개 | 전체 통과 |
+| 백엔드 테스트 | 606개 | 전체 통과 |
 
 ### 전체 Phase 이력
 | Phase | 설명 | 상태 |
@@ -1623,6 +1659,7 @@
 | Pred-3 | 예측 결과 통합 (Scaffold + Export + API) | ✅ |
 | Conn-1 | 교통/폐기물 커넥터 확장 | ✅ |
 | Final-1 | 통합 검증 + 문서화 | ✅ |
+| Final-2 | 배포 전 최종 검증 + 문서 갱신 | ✅ |
 
 ### 알려진 제한사항 및 향후 과제
 - 프론트엔드 프로젝트 생성 폼 미구현 (API를 통해서만 생성 가능)
