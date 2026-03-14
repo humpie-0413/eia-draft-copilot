@@ -25,15 +25,16 @@
 │                                              │
 │  ┌──────────┐ ┌──────────────┐ ┌─────────────────────────────┐ │
 │  │ API      │ │  서비스 계층   │ │    커넥터 파이프라인          │ │
-│  │ 라우터   │─▶│              │ │ BaseConnector (8종 정의)     │ │
+│  │ 라우터   │─▶│              │ │ BaseConnector (9종 정의)     │ │
 │  │ (13개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector    ✅   │ │
 │  └──────────┘ │ ├기준비교     │ │ ├─ WaterInfoConnector  ✅   │ │
 │               │ ├서술문생성   │ │ ├─ SoilInfoConnector   ⚠️   │ │
-│               │ ├QA 규칙     │ │ ├─ KmaWeatherConnector ⚠️   │ │
-│               │ ├평가범위     │ │ ├─ LandUseConnector    ⚠️   │ │
-│               │ ├예측 엔진   │ │ ├─ CulturalHeritage    ✅   │ │
-│               │ ├Export      │ │ ├─ TrafficVolume       ⚠️   │ │
-│               │ └유사도 계산 │ │ └─ WasteStatsConnector ✅   │ │
+│               │ ├QA 규칙     │ │ ├─ KmaWeatherConnector ✅   │ │
+│               │ ├평가범위     │ │ ├─ LandUseConnector    ✅   │ │
+│               │ ├예측 엔진   │ │ ├─ LandUseRegulation   ✅   │ │
+│               │ ├Export      │ │ ├─ CulturalHeritage    ✅   │ │
+│               │ └유사도 계산 │ │ ├─ TrafficVolume       ✅   │ │
+│               └──────┬───────┘ │ └─ WasteStatsConnector ✅   │ │
 │               └──────┬───────┘ └─────────────────────────────┘ │
 │                      │          ┌────────────────────┐         │
 │                      │          │  LLM Adapter        │         │

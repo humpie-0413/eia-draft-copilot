@@ -1583,6 +1583,58 @@
 
 ---
 
+## Conn-2: 비활성 커넥터 복구 + 토지이용규제정보 커넥터 추가 ✅
+
+**일자**: 2026-03-14
+
+### 완료 항목
+
+#### 1. 비활성 커넥터 4종 복구
+- **교통량(traffic_volume)**: API 엔드포인트를 `/yearlyTrafficVolume` → `/vt_yearly`로 변경. 응답 구조 변경 대응 (spot_id, direction, total_count 기반 AADT 계산)
+- **V-world 토지이용(vworld_land_use)**: 데이터 타입을 `LT_C_LHBLPN` → `LT_C_UQ111`(용도지역)으로 변경 + 기존 LHBLPN fallback. VWORLD_API_KEY 환경변수 설정 필요
+- **기상청 ASOS(kma_weather)**: API 키 승인 완료 확인, 정상 동작
+- **토양측정망(soil_info)**: 공공데이터포털 측 서버 장애(HTTP 500) 지속 확인 — 복구 불가
+
+#### 2. 토지이용규제정보 커넥터 신규 추가 (land_use_regulation)
+- 국토교통부 토지이용규제정보서비스 API 연동
+- 시군구 코드(area_cd) + 용도지역 코드(ucodes) 기반 행위제한 정보 조회
+- XML 응답 파싱 (EUC-KR 인코딩 처리)
+- 수집 지표: 행위제한_용도지역, 행위제한_내용
+- registry.py에 등록 (총 9종 커넥터)
+
+#### 3. 커넥터 실제 API 검증 (8/9 성공)
+- scripts/test_connectors_live.py 업데이트 (9종 커넥터 검증)
+- 정상: keco_air, water_info, kma_weather, vworld_land_use, land_use_regulation, cultural_heritage, traffic_volume, waste_stats
+- 실패: soil_info (서버 장애 HTTP 500)
+
+#### 4. 테스트 612개 전체 통과
+- 기존 606개 + 신규 6개 (land_use_regulation 테스트 8개, 교통/토지이용 테스트 수정)
+- test_connectors.py: 102개 (9종 커넥터)
+
+### 주요 파일
+- `backend/app/connectors/traffic_volume.py` — 엔드포인트 + 응답 구조 전면 수정
+- `backend/app/connectors/land_use.py` — LT_C_UQ111 + LHBLPN 이중 조회 방식
+- `backend/app/connectors/land_use_regulation.py` — 토지이용규제정보 커넥터 (신규)
+- `backend/app/connectors/registry.py` — 9종 커넥터 등록 (수정)
+- `backend/tests/test_connectors.py` — 테스트 수정 + 신규 추가
+- `scripts/test_connectors_live.py` — 9종 커넥터 검증 업데이트
+- `scripts/demo_full_scenario.py` — 토지이용규제 수집 단계 추가 + 9종 반영
+
+### 커넥터 현황 (9종)
+| 커넥터 키 | 대상 API | 상태 |
+|-----------|----------|------|
+| `keco_air` | 에어코리아 대기오염정보 | ✅ |
+| `water_info` | 국립환경과학원 수질 DB | ✅ |
+| `soil_info` | 국립환경과학원 토양측정망 | ⚠️ 서버 장애 |
+| `kma_weather` | 기상청 ASOS 일자료 | ✅ |
+| `vworld_land_use` | V-world 2D데이터 | ✅ |
+| `land_use_regulation` | 국토교통부 토지이용규제정보서비스 | ✅ |
+| `cultural_heritage` | 국가유산청 Open API | ✅ |
+| `traffic_volume` | 한국건설기술연구원 교통량 통계 | ✅ |
+| `waste_stats` | 행정안전부 생활쓰레기배출정보 | ✅ |
+
+---
+
 ## Final-2: 배포 전 최종 검증 ✅
 
 **일자**: 2026-03-14
@@ -1621,7 +1673,7 @@
 
 | 구성 요소 | 수량 | 상세 |
 |-----------|------|------|
-| 커넥터 | 8종 | keco_air, water_info, soil_info, kma_weather, vworld_land_use, cultural_heritage, traffic_volume, waste_stats |
+| 커넥터 | 9종 | keco_air, water_info, soil_info, kma_weather, vworld_land_use, land_use_regulation, cultural_heritage, traffic_volume, waste_stats |
 | 예측 모델 | 3종 | gaussian_plume (대기), noise_propagation (소음), water_mixing (수질) |
 | QA 규칙 | 8개 | R001~R008 (사업유형 기반 동적 심각도 + 법적 필수 항목 검증) |
 | LLM 어댑터 | 3종 | none (기본), openai_paid, gemini_free |
@@ -1629,7 +1681,7 @@
 | 사업유형 | 12종 | power_plant, road, railway, housing, industrial, tourism 등 |
 | EIA 섹션 | 11개 | 대기질~기후 |
 | DB 테이블 | 6개 | projects, data_sources, source_snapshots, evidences, similar_cases, draft_narratives |
-| 백엔드 테스트 | 606개 | 전체 통과 |
+| 백엔드 테스트 | 612개 | 전체 통과 |
 
 ### 전체 Phase 이력
 | Phase | 설명 | 상태 |
@@ -1660,6 +1712,7 @@
 | Conn-1 | 교통/폐기물 커넥터 확장 | ✅ |
 | Final-1 | 통합 검증 + 문서화 | ✅ |
 | Final-2 | 배포 전 최종 검증 + 문서 갱신 | ✅ |
+| Conn-2 | 비활성 커넥터 복구 + 토지이용규제 추가 | ✅ |
 
 ### 알려진 제한사항 및 향후 과제
 - 프론트엔드 프로젝트 생성 폼 미구현 (API를 통해서만 생성 가능)

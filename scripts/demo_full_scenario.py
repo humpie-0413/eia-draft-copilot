@@ -245,7 +245,6 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         "kma_weather",
         "2-d. 기상청 ASOS 기후 커넥터 — 서울(108)",
         {"stn_id": "108", "start_dt": "20240101", "end_dt": "20241231"},
-        failure_reason_hint="API 키 미승인 (기상청 ASOS API 별도 활용 신청 필요)",
     )
 
     # 2-e. V-world 토지이용 커넥터
@@ -253,7 +252,6 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         "vworld_land_use",
         "2-e. V-world 토지이용 커넥터 — 강남구 중심점",
         {"lng": "127.0455", "lat": "37.5075"},
-        failure_reason_hint="VWORLD_API_KEY 미설정 (vworld.kr에서 별도 발급 필요)",
     )
 
     # 2-f. 국가유산청 문화재 커넥터
@@ -266,9 +264,8 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
     # 2-g. 교통량 통계 커넥터
     await collect_connector(
         "traffic_volume",
-        "2-g. 교통량 통계 커넥터 — 2024년 일반국도",
-        {"year": "2024", "dtype": "2"},
-        failure_reason_hint="API 엔드포인트 폐지/변경 (HTTP 404)",
+        "2-g. 교통량 통계 커넥터 — 2023년 일반국도",
+        {"year": "2023", "dtype": "2"},
     )
 
     # 2-h. 폐기물 통계 커넥터
@@ -276,7 +273,13 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         "waste_stats",
         "2-h. 폐기물 통계 커넥터 — 강남구",
         {"region": "강남구"},
-        failure_reason_hint="API 응답 구조 불일치 (배출량 아닌 배출일정 데이터)",
+    )
+
+    # 2-h2. 토지이용규제정보 커넥터
+    await collect_connector(
+        "land_use_regulation",
+        "2-h2. 토지이용규제정보 커넥터 — 강남구 주거지역",
+        {"area_cd": "11680", "ucodes": ["UQA100"], "land_use_nm": "건축"},
     )
 
     # 2-i. 수동 증거 — 소음·진동 3건 (현장 측정 데이터, 수동만 허용)
@@ -330,7 +333,8 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
     # 커넥터별 현황 표
     all_connectors = [
         "keco_air", "water_info", "soil_info", "kma_weather",
-        "vworld_land_use", "cultural_heritage", "traffic_volume", "waste_stats",
+        "vworld_land_use", "land_use_regulation", "cultural_heritage",
+        "traffic_volume", "waste_stats",
     ]
     connector_names = {
         "keco_air": "에어코리아 대기질",
@@ -338,6 +342,7 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         "soil_info": "토양측정망",
         "kma_weather": "기상청 ASOS",
         "vworld_land_use": "V-world 토지이용",
+        "land_use_regulation": "토지이용규제정보",
         "cultural_heritage": "국가유산청 문화재",
         "traffic_volume": "교통량 통계",
         "waste_stats": "폐기물 통계",
@@ -1202,13 +1207,14 @@ def step11_summary(
     # ══════════════════════════════════════════════════
     # 1. 전체 커넥터 현황: 8종별 성공/실패/비활성
     # ══════════════════════════════════════════════════
-    print("  ┌─ 1. 전체 커넥터 현황 (8종) ─────────────────────")
+    print("  ┌─ 1. 전체 커넥터 현황 (9종) ─────────────────────")
     connector_names = {
         "keco_air": "에어코리아 대기질",
         "water_info": "수질 DB",
         "soil_info": "토양측정망",
         "kma_weather": "기상청 ASOS",
         "vworld_land_use": "V-world 토지이용",
+        "land_use_regulation": "토지이용규제정보",
         "cultural_heritage": "국가유산청 문화재",
         "traffic_volume": "교통량 통계",
         "waste_stats": "폐기물 통계",
@@ -1230,7 +1236,7 @@ def step11_summary(
         else:
             print(f"  │ [미실행] {name}")
     print(f"  │")
-    print(f"  │ 성공: {success_count}/8 | 실패: {fail_count}/8")
+    print(f"  │ 성공: {success_count}/9 | 실패: {fail_count}/9")
     print(f"  │ 실제 API 데이터: {api_count}건 | 수동 입력: {manual_count}건 (소음·생태만)")
     print()
 
@@ -1394,7 +1400,7 @@ async def main():
     print(f"  실행 시각: {datetime.now(tz=timezone.utc).isoformat()}")
 
     # 서버 연결 확인
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=120) as client:
         try:
             resp = await client.get(f"{BASE_URL}/health")
             if resp.status_code != 200:

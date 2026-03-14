@@ -15,6 +15,7 @@ from httpx import Request, Response
 from app.config import settings
 from app.connectors.keco_air import KecoAirConnector
 from app.connectors.kma_weather import KmaWeatherConnector
+from app.connectors.land_use_regulation import LandUseRegulationConnector
 from app.connectors.soil_info import SoilInfoConnector
 from app.connectors.traffic_volume import TrafficVolumeConnector
 from app.connectors.waste_stats import WasteStatsConnector
@@ -972,28 +973,40 @@ class TestLandUseConnector:
         self.snapshot_id = uuid.uuid4()
 
     SAMPLE_RESPONSE = {
-        "response": {
-            "status": "OK",
-            "record": {"total": "2"},
-            "result": {
-                "featureCollection": {
-                    "features": [
-                        {
-                            "properties": {
-                                "PRPOS_AREA_NM": "제1종일반주거지역",
-                                "JIMOK": "대",
-                            }
-                        },
-                        {
-                            "properties": {
-                                "PRPOS_AREA_NM": "자연녹지지역",
-                                "JIMOK": "전",
-                            }
-                        },
-                    ]
-                }
-            },
-        }
+        "features_by_type": {
+            "LT_C_UQ111": [
+                {
+                    "properties": {
+                        "uname": "제1종일반주거지역",
+                        "dyear": "2003",
+                        "sido_name": "서울특별시",
+                    }
+                },
+                {
+                    "properties": {
+                        "uname": "자연녹지지역",
+                        "dyear": "2003",
+                        "sido_name": "서울특별시",
+                    }
+                },
+            ],
+            "LT_C_LHBLPN": [
+                {
+                    "properties": {
+                        "PRPOS_AREA_NM": "제1종일반주거지역",
+                        "JIMOK": "대",
+                    }
+                },
+                {
+                    "properties": {
+                        "PRPOS_AREA_NM": "자연녹지지역",
+                        "JIMOK": "전",
+                    }
+                },
+            ],
+        },
+        "lng": 127.045,
+        "lat": 37.507,
     }
 
     def test_normalize_정상_응답(self):
@@ -1035,11 +1048,12 @@ class TestLandUseConnector:
     def test_normalize_빈_응답(self):
         """빈 응답 시 빈 리스트를 반환하는지 확인."""
         empty_payload = {
-            "response": {
-                "status": "OK",
-                "record": {"total": "0"},
-                "result": {"featureCollection": {"features": []}},
-            }
+            "features_by_type": {
+                "LT_C_UQ111": [],
+                "LT_C_LHBLPN": [],
+            },
+            "lng": 127.0,
+            "lat": 37.5,
         }
         evidences = self.connector.normalize(
             raw_payload=empty_payload,
@@ -1227,31 +1241,37 @@ class TestTrafficVolumeConnector:
         self.data_source_id = uuid.uuid4()
         self.snapshot_id = uuid.uuid4()
 
-    # 교통량 통계 샘플 응답 — traffic 배열 형태
+    # 교통량 통계 샘플 응답 — 실제 vt_yearly API 응답 구조
     SAMPLE_RESPONSE = {
-        "resultCode": "0",
-        "resultMsg": "OK",
+        "resultCode": "00",
+        "resultMsg": "NORMAL SERVICE",
         "year": 2023,
         "dtype": 2,
-        "count": 3,
+        "count": 4,
         "traffic": [
             {
                 "spot_id": "A001",
-                "spot_nm": "서울-수원 구간",
-                "aadt": "25000",
-                "road_grade": "일반국도",
+                "direction": 1,
+                "vehicle_type1": 2000000,
+                "total_count": 3000000,
+            },
+            {
+                "spot_id": "A001",
+                "direction": 2,
+                "vehicle_type1": 2100000,
+                "total_count": 3200000,
             },
             {
                 "spot_id": "A002",
-                "spot_nm": "수원-평택 구간",
-                "aadt": "18500",
-                "road_grade": "일반국도",
+                "direction": 1,
+                "vehicle_type1": 1500000,
+                "total_count": 2500000,
             },
             {
-                "spot_id": "A003",
-                "spot_nm": "평택-천안 구간",
-                "aadt": None,
-                "road_grade": "일반국도",
+                "spot_id": "A002",
+                "direction": 2,
+                "vehicle_type1": 1600000,
+                "total_count": 2700000,
             },
         ],
     }
@@ -1264,36 +1284,23 @@ class TestTrafficVolumeConnector:
             data_source_id=self.data_source_id,
             snapshot_id=self.snapshot_id,
         )
-        # 첫 번째: 교통량_현황 + 도로등급 + 도로명 = 3
-        # 두 번째: 교통량_현황 + 도로등급 + 도로명 = 3
-        # 세 번째: aadt=None → 건너뜀, 도로등급 + 도로명 = 2
-        assert len(evidences) == 8
+        # 2개 지점 x (교통량_현황 + 도로등급) = 4건
+        assert len(evidences) == 4
 
     def test_normalize_교통량_값_검증(self):
-        """교통량 지표 값과 단위가 올바르게 매핑되는지 확인."""
+        """AADT가 양방향 합산 / 365로 올바르게 계산되는지 확인."""
         evidences = self.connector.normalize(
             raw_payload=self.SAMPLE_RESPONSE,
             project_id=self.project_id,
             data_source_id=self.data_source_id,
             snapshot_id=self.snapshot_id,
         )
-        traffic = next(e for e in evidences if e.indicator == "교통량_현황")
-        assert traffic.value == "25000"
-        assert traffic.numeric_value == 25000.0
-        assert traffic.unit == "대/일"
-        assert traffic.category == EvidenceCategory.TRAFFIC
-
-    def test_normalize_도로명_추출(self):
-        """도로명 지표가 올바르게 생성되는지 확인."""
-        evidences = self.connector.normalize(
-            raw_payload=self.SAMPLE_RESPONSE,
-            project_id=self.project_id,
-            data_source_id=self.data_source_id,
-            snapshot_id=self.snapshot_id,
-        )
-        road_names = [e for e in evidences if e.indicator == "도로명"]
-        assert len(road_names) == 3
-        assert road_names[0].value == "서울-수원 구간"
+        traffic_list = [e for e in evidences if e.indicator == "교통량_현황"]
+        # A001: (3000000 + 3200000) / 365 = 16986
+        a001 = next(t for t in traffic_list if t.metadata_json["spot_id"] == "A001")
+        assert a001.numeric_value == round((3000000 + 3200000) / 365)
+        assert a001.unit == "대/일"
+        assert a001.category == EvidenceCategory.TRAFFIC
 
     def test_normalize_도로등급_추출(self):
         """도로등급 지표가 올바르게 생성되는지 확인."""
@@ -1304,11 +1311,11 @@ class TestTrafficVolumeConnector:
             snapshot_id=self.snapshot_id,
         )
         grades = [e for e in evidences if e.indicator == "도로등급"]
-        assert len(grades) == 3
+        assert len(grades) == 2
         assert grades[0].value == "일반국도"
 
     def test_normalize_메타데이터_포함(self):
-        """메타데이터에 지점명과 도로유형이 포함되는지 확인."""
+        """메타데이터에 지점ID와 도로유형이 포함되는지 확인."""
         evidences = self.connector.normalize(
             raw_payload=self.SAMPLE_RESPONSE,
             project_id=self.project_id,
@@ -1316,7 +1323,7 @@ class TestTrafficVolumeConnector:
             snapshot_id=self.snapshot_id,
         )
         traffic = next(e for e in evidences if e.indicator == "교통량_현황")
-        assert traffic.metadata_json["spot_name"] == "서울-수원 구간"
+        assert traffic.metadata_json["spot_id"] in ("A001", "A002")
         assert traffic.metadata_json["road_type"] == "일반국도"
 
     def test_normalize_빈_응답(self):
@@ -1341,33 +1348,13 @@ class TestTrafficVolumeConnector:
         )
         assert all(e.screening_only for e in evidences)
 
-    def test_normalize_응답구조_패턴2(self):
-        """response.body.items 패턴도 처리하는지 확인."""
-        alt_payload = {
-            "response": {
-                "body": {
-                    "items": [
-                        {"spotNm": "구간1", "AADT": "12000"},
-                    ]
-                }
-            }
-        }
-        evidences = self.connector.normalize(
-            raw_payload=alt_payload,
-            project_id=self.project_id,
-            data_source_id=self.data_source_id,
-            snapshot_id=self.snapshot_id,
-        )
-        traffic = [e for e in evidences if e.indicator == "교통량_현황"]
-        assert len(traffic) == 1
-        assert traffic[0].numeric_value == 12000.0
-
-    def test_normalize_쉼표_교통량(self):
-        """쉼표가 포함된 교통량 값을 올바르게 파싱하는지 확인."""
+    def test_normalize_단방향_지점(self):
+        """단방향 데이터만 있는 지점도 올바르게 처리되는지 확인."""
         payload = {
+            "year": 2023, "dtype": 2,
             "traffic": [
-                {"spot_nm": "구간A", "aadt": "1,250,000"},
-            ]
+                {"spot_id": "B001", "direction": 1, "total_count": 3650000},
+            ],
         }
         evidences = self.connector.normalize(
             raw_payload=payload,
@@ -1376,7 +1363,9 @@ class TestTrafficVolumeConnector:
             snapshot_id=self.snapshot_id,
         )
         traffic = next(e for e in evidences if e.indicator == "교통량_현황")
-        assert traffic.numeric_value == 1250000.0
+        # AADT = 3650000 / 365 = 10000
+        assert traffic.numeric_value == 10000.0
+        assert traffic.unit == "대/일"
 
     def test_커넥터_메타데이터(self):
         """커넥터 키와 표시명이 올바른지 확인."""
@@ -1737,6 +1726,7 @@ class TestConnectorRegistry:
         assert "soil_info" in connector_registry
         assert "kma_weather" in connector_registry
         assert "vworld_land_use" in connector_registry
+        assert "land_use_regulation" in connector_registry
         assert "cultural_heritage" in connector_registry
         assert "traffic_volume" in connector_registry
         assert "waste_stats" in connector_registry
@@ -1882,3 +1872,116 @@ async def test_에어코리아_수집_API키_누락(client, db_session):
         result = resp.json()
         assert result["status"] == "error"
         assert result["evidence_count"] == 0
+
+
+# ──────────────────────────────────────────────────
+# 국토교통부 토지이용규제정보 커넥터 테스트
+# ──────────────────────────────────────────────────
+
+
+class TestLandUseRegulationConnector:
+    """국토교통부 토지이용규제정보서비스 커넥터 단위 테스트."""
+
+    def setup_method(self):
+        self.connector = LandUseRegulationConnector()
+        self.project_id = uuid.uuid4()
+        self.data_source_id = uuid.uuid4()
+        self.snapshot_id = uuid.uuid4()
+
+    SAMPLE_RESPONSE = {
+        "area_cd": "11680",
+        "total_count": 1,
+        "items": [
+            {
+                "ucode": "UQA100",
+                "UNAME": "주거지역",
+                "UCODE_REF_LAW_NM": "국토의 계획 및 이용에 관한 법률 제36조",
+                "restrictions": [
+                    {
+                        "description": "건축허가 제한",
+                        "law_ref": "국토의 계획 및 이용에 관한 법률 제36조",
+                    },
+                    {
+                        "description": "공장설립 제한",
+                        "law_ref": "",
+                    },
+                ],
+            },
+        ],
+    }
+
+    def test_normalize_정상_응답(self):
+        """정상 응답에서 올바른 수의 증거가 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        # 행위제한_용도지역 1건 + 행위제한_내용 2건 = 3건
+        assert len(evidences) == 3
+
+    def test_normalize_용도지역_증거(self):
+        """행위제한_용도지역 지표가 올바르게 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        zone = next(e for e in evidences if e.indicator == "행위제한_용도지역")
+        assert zone.value == "주거지역"
+        assert zone.category == EvidenceCategory.LAND_USE
+        assert zone.metadata_json["ucode"] == "UQA100"
+
+    def test_normalize_행위제한_내용(self):
+        """행위제한_내용 지표가 올바르게 생성되는지 확인."""
+        evidences = self.connector.normalize(
+            raw_payload=self.SAMPLE_RESPONSE,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        restrictions = [e for e in evidences if e.indicator == "행위제한_내용"]
+        assert len(restrictions) == 2
+        assert restrictions[0].value == "건축허가 제한"
+
+    def test_normalize_빈_응답(self):
+        """데이터가 없을 때 빈 리스트를 반환하는지 확인."""
+        empty_payload = {"area_cd": "11680", "items": [], "total_count": 0}
+        evidences = self.connector.normalize(
+            raw_payload=empty_payload,
+            project_id=self.project_id,
+            data_source_id=self.data_source_id,
+            snapshot_id=self.snapshot_id,
+        )
+        assert evidences == []
+
+    def test_커넥터_메타데이터(self):
+        """커넥터 키와 표시명이 올바른지 확인."""
+        assert self.connector.connector_key == "land_use_regulation"
+        assert "토지이용규제" in self.connector.display_name
+
+    def test_커넥터_레지스트리_등록(self):
+        """레지스트리에 토지이용규제 커넥터가 등록되었는지 확인."""
+        conn = get_connector("land_use_regulation")
+        assert conn is not None
+        assert conn.connector_key == "land_use_regulation"
+
+    @pytest.mark.asyncio
+    async def test_fetch_API키_미설정(self):
+        """API 키가 없을 때 ValueError가 발생하는지 확인."""
+        with patch("app.connectors.land_use_regulation.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = ""
+            mock_settings.CONNECTOR_TIMEOUT = 30
+            with pytest.raises(ValueError, match="DATA_GO_KR_API_KEY"):
+                await self.connector.fetch({"area_cd": "11680"})
+
+    @pytest.mark.asyncio
+    async def test_fetch_필수_파라미터_누락(self):
+        """area_cd가 없을 때 ValueError가 발생하는지 확인."""
+        with patch("app.connectors.land_use_regulation.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = "test_key"
+            mock_settings.CONNECTOR_TIMEOUT = 30
+            with pytest.raises(ValueError, match="area_cd"):
+                await self.connector.fetch({})

@@ -8,7 +8,7 @@
 
 ```
 프로젝트 입력 (이름, 유형, geometry)
-  → 공공데이터 수집 (8종 커넥터: 대기질·수질·토양·기후·토지이용·문화재·교통량·폐기물 + 수동 입력)
+  → 공공데이터 수집 (9종 커넥터: 대기질·수질·토양·기후·토지이용·토지이용규제·문화재·교통량·폐기물 + 수동 입력)
   → 증거(Evidence) 정규화 및 저장
   → 유사사례 매칭 (사업유형/위치/규모/환경분야 가중 유사도)
   → 섹션 플래너 (11개 섹션 필수 지표 충족도 계산)
@@ -37,7 +37,7 @@
 | 10 | 문화재 | 문화재명, 이격거리 |
 | 11 | 기후 | 평균기온, 강수량, 평균풍속 |
 
-### 공공데이터 커넥터 (8종 정의, 4종 운영 중)
+### 공공데이터 커넥터 (9종 정의, 8종 운영 중)
 
 | 커넥터 | 대상 API | 수집 지표 |
 |--------|----------|-----------|
@@ -45,9 +45,10 @@
 | `water_info` | 국립환경과학원 수질 DB | BOD, COD, SS, DO, T-N, T-P |
 | `soil_info` | 국립환경과학원 토양측정망 | Cd, Cu, Pb, Zn, Ni, Cr6+, pH, 유기물함량 |
 | `kma_weather` | 기상청 ASOS 일자료 | 평균기온, 최고/최저기온, 강수량, 풍속, 습도 |
-| `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
+| `vworld_land_use` | V-world 2D데이터 | 용도지역구분(LT_C_UQ111), 토지이용계획(LT_C_LHBLPN) |
+| `land_use_regulation` | 국토교통부 토지이용규제정보서비스 | 행위제한_용도지역, 행위제한_내용 (용도지역별 행위제한) |
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
-| `traffic_volume` | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급, 도로명 |
+| `traffic_volume` | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급 (vt_yearly 엔드포인트) |
 | `waste_stats` | 행정안전부 생활쓰레기배출정보 | 폐기물 배출일정/관리정보 (배출요일, 배출방법, 관리부서) |
 
 ### 커넥터 가용 현황
@@ -56,15 +57,16 @@
 |--------|------|------|
 | `keco_air` | ✅ 운영 중 | 공공데이터포털 API 키 필요 |
 | `water_info` | ✅ 운영 중 | 공공데이터포털 API 키 필요 |
+| `kma_weather` | ✅ 운영 중 | 공공데이터포털 API 키 필요 (ASOS 일자료 활용 신청 완료) |
+| `vworld_land_use` | ✅ 운영 중 | VWORLD_API_KEY 필요 (V-world 별도 키 발급) |
+| `land_use_regulation` | ✅ 운영 중 | 공공데이터포털 API 키 필요 (토지이용규제정보서비스) |
 | `cultural_heritage` | ✅ 운영 중 | API 키 불필요 (공개 API) |
+| `traffic_volume` | ✅ 운영 중 | 공공데이터포털 API 키 필요 (vt_yearly 엔드포인트) |
 | `waste_stats` | ✅ 운영 중 | 공공데이터포털 API 키 필요 |
 | `soil_info` | ⚠️ 일시 불가 | API 서버 오류 (500) — 공공데이터포털 측 서버 장애 |
-| `kma_weather` | ⚠️ 일시 불가 | API 키 승인 대기 — 활용 신청 후 승인 완료 시 사용 가능 |
-| `vworld_land_use` | ⚠️ 일시 불가 | VWORLD_API_KEY 미설정 — V-world 별도 키 발급 필요 |
-| `traffic_volume` | ⚠️ 일시 불가 | API 엔드포인트 폐지 — 대체 API 확인 필요 |
 
-> 4종 커넥터(keco_air, water_info, cultural_heritage, waste_stats)는 실제 API 검증 완료 상태입니다.
-> 나머지 4종은 코드 구현 완료이나 외부 요인으로 일시적으로 사용 불가합니다.
+> 8종 커넥터 실제 API 검증 완료 (keco_air, water_info, kma_weather, vworld_land_use, land_use_regulation, cultural_heritage, traffic_volume, waste_stats).
+> soil_info(토양측정망)만 공공데이터포털 측 서버 장애(HTTP 500)로 일시적으로 사용 불가합니다.
 
 ### 영향 예측 모델 (3종)
 
@@ -138,7 +140,7 @@
 - **문서 생성**: python-docx (DOCX), reportlab (PDF)
 - **LLM**: openai SDK + httpx (Gemini REST)
 - **예측 모델**: 대기 확산(가우시안 플룸) + 소음 전파 + 수질 혼합
-- **테스트**: pytest + httpx (ASGI 테스트, 606개)
+- **테스트**: pytest + httpx (ASGI 테스트, 612개)
 
 ## 로컬 개발 환경 설정
 
@@ -198,8 +200,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
    - **기상청 ASOS 일자료**: https://www.data.go.kr/data/15059093/openapi.do
 3. 발급받은 **인코딩 키**를 `backend/.env`의 `DATA_GO_KR_API_KEY`에 설정
 
-> 6개 커넥터(keco_air, water_info, soil_info, kma_weather, traffic_volume, waste_stats)가 동일한 공공데이터포털 키를 사용합니다.
-> 현재 4종(keco_air, water_info, cultural_heritage, waste_stats)이 실제 운영 중이며, soil_info(서버 오류), kma_weather(키 미승인), traffic_volume(엔드포인트 폐지)은 일시적으로 사용 불가합니다.
+> 7개 커넥터(keco_air, water_info, soil_info, kma_weather, traffic_volume, waste_stats, land_use_regulation)가 동일한 공공데이터포털 키를 사용합니다.
+> 현재 8종 실제 운영 중이며, soil_info(토양측정망)만 공공데이터포털 측 서버 장애(HTTP 500)로 일시적으로 사용 불가합니다.
 
 ### 4. V-world API 키 발급 (토지이용 커넥터)
 
@@ -242,7 +244,7 @@ python scripts/demo_full_scenario.py
 
 ## 테스트
 
-### 백엔드 테스트 (pytest, 606개)
+### 백엔드 테스트 (pytest, 612개)
 
 ```bash
 cd backend
@@ -251,7 +253,7 @@ pytest tests/ -v
 
 주요 테스트 파일:
 - `tests/test_projects.py` — 프로젝트 CRUD + 헬스체크 (9개)
-- `tests/test_connectors.py` — 커넥터 8종 fetch/normalize + 레지스트리 (95개)
+- `tests/test_connectors.py` — 커넥터 9종 fetch/normalize + 레지스트리 (102개)
 - `tests/test_e2e.py` — 전체 워크플로우 E2E 테스트 (1개)
 - `tests/test_spec_alignment.py` — 스펙 정렬 검증 (23개)
 - `tests/test_statistics.py` — 통계 엔진 (16개)
@@ -307,7 +309,7 @@ eia-draft-copilot/
 ├── backend/                      # FastAPI 백엔드
 │   ├── app/
 │   │   ├── api/v1/               # REST API 엔드포인트 (11개 라우터)
-│   │   ├── connectors/           # 공공데이터 커넥터 (8종 정의, 4종 운영 중)
+│   │   ├── connectors/           # 공공데이터 커넥터 (9종 정의, 8종 운영 중)
 │   │   ├── crud/                 # DB CRUD 함수
 │   │   ├── data/                 # 환경기준 데이터 + 법령 데이터
 │   │   │   └── regulations/     # 법령 데이터 (법적 근거, 필수 항목, 지역구분)
@@ -320,11 +322,11 @@ eia-draft-copilot/
 │   │   ├── config.py             # 환경 설정
 │   │   └── db.py                 # DB 세션 관리
 │   ├── alembic/                  # DB 마이그레이션 (4개)
-│   ├── tests/                    # 백엔드 테스트 (606개)
+│   ├── tests/                    # 백엔드 테스트 (612개)
 │   └── requirements.txt          # Python 의존성
 ├── scripts/                      # 유틸리티 스크립트
 │   ├── demo_full_scenario.py     # 통합 데모 (실제 API 기반, 소음/생태만 수동)
-│   └── test_connectors_live.py   # 커넥터 실제 API 검증 (8종)
+│   └── test_connectors_live.py   # 커넥터 실제 API 검증 (9종)
 ├── docs/                         # 문서
 │   ├── architecture.md           # 시스템 아키텍처
 │   ├── user-guide.md             # 사용자 가이드

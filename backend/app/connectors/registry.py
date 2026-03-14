@@ -26,6 +26,7 @@ def _register_all() -> None:
     from app.connectors.keco_air import KecoAirConnector
     from app.connectors.kma_weather import KmaWeatherConnector
     from app.connectors.land_use import LandUseConnector
+    from app.connectors.land_use_regulation import LandUseRegulationConnector
     from app.connectors.soil_info import SoilInfoConnector
     from app.connectors.traffic_volume import TrafficVolumeConnector
     from app.connectors.waste_stats import WasteStatsConnector
@@ -36,6 +37,7 @@ def _register_all() -> None:
     register_connector(SoilInfoConnector())
     register_connector(KmaWeatherConnector())
     register_connector(LandUseConnector())
+    register_connector(LandUseRegulationConnector())
     register_connector(CulturalHeritageConnector())
     register_connector(TrafficVolumeConnector())
     register_connector(WasteStatsConnector())
