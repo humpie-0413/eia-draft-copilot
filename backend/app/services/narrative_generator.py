@@ -522,10 +522,10 @@ def generate_traffic_narrative(
             )
 
         # 최대/최소 정보
-        if traffic_stat.max is not None and traffic_stat.min is not None:
+        if traffic_stat.max_value is not None and traffic_stat.min_value is not None:
             lines.append(
-                f"조사 구간 내 교통량은 최소 {_fmt(traffic_stat.min, 0)} {unit}에서 "
-                f"최대 {_fmt(traffic_stat.max, 0)} {unit}의 범위이다."
+                f"조사 구간 내 교통량은 최소 {_fmt(traffic_stat.min_value, 0)} {unit}에서 "
+                f"최대 {_fmt(traffic_stat.max_value, 0)} {unit}의 범위이다."
             )
     else:
         lines.append("본 사업지역 인근의 교통량 현황을 조사하였다.")

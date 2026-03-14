@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Conn-2: 비활성 커넥터 복구 + 토지이용규제정보 커넥터 추가** ✅
+**Demo-1: 통합 데모 전체 실행 성공 + 버그 수정** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -14,29 +14,21 @@
 - Final-1: 통합 검증 + 문서화 ✅
 - Final-2: 배포 전 최종 검증 + 문서 갱신 ✅
 - Conn-2: 비활성 커넥터 복구 + 토지이용규제정보 커넥터 추가 ✅
+- Demo-1: 통합 데모 전체 실행 성공 + 버그 수정 ✅
 
-## 완료된 작업 (Conn-2: 2026-03-14)
+## 완료된 작업 (Demo-1: 2026-03-14)
 
-### 1. 비활성 커넥터 4종 복구 결과
-| 커넥터 | 이전 상태 | 현재 상태 | 변경 사항 |
-|--------|-----------|-----------|-----------|
-| traffic_volume | HTTP 404 | ✅ 정상 | 엔드포인트 `/yearlyTrafficVolume` → `/vt_yearly`, AADT 계산 로직 변경 |
-| vworld_land_use | KEY 미설정 | ✅ 정상 | 데이터 타입 `LT_C_UQ111`(용도지역) + `LT_C_LHBLPN` fallback |
-| kma_weather | HTTP 403 | ✅ 정상 | API 키 승인 완료 |
-| soil_info | HTTP 500 | ⚠️ 서버 장애 | 공공데이터포털 측 서버 장애 지속 — 복구 불가 |
+### 1. 버그 수정
+- `narrative_generator.py:525`: `IndicatorStats.max`/`.min` → `.max_value`/`.min_value` 속성명 불일치 수정
+- `demo_full_scenario.py`: httpx 타임아웃 120s → 300s (대용량 데이터 처리 시 타임아웃 방지)
 
-### 2. 토지이용규제정보 커넥터 신규 추가
-- 커넥터 키: `land_use_regulation`
-- API: 국토교통부 토지이용규제정보서비스 (DTarLandUseInfo)
-- 파라미터: area_cd(시군구 코드), ucodes(용도지역 코드 리스트), land_use_nm(기본: "건축")
-- 수집 지표: 행위제한_용도지역, 행위제한_내용
-- XML 응답 EUC-KR 인코딩 처리
+### 2. 통합 데모 전체 실행 성공 (11단계)
+- 프로젝트 생성 → 데이터 수집(API 7/9 성공, 3,205건) → 유사사례(3건)
+- 섹션 플래너(완료 4 + 부분 4) → 법령 검증 → 통계(2,545건) → 환경기준(초과 2건)
+- 초안 서술문(11개 섹션) → 영향 예측 3종(41건) → QA(critical 2, warning 10, info 10)
+- Export 정상 차단(critical 이슈) + 문서 구조 미리보기
 
-### 3. 실제 API 검증: 8/9 성공
-- 정상: keco_air, water_info, kma_weather, vworld_land_use, land_use_regulation, cultural_heritage, traffic_volume, waste_stats
-- 실패: soil_info (HTTP 500 서버 장애)
-
-### 4. 테스트 612개 전체 통과
+### 3. 테스트 612개 전체 통과
 
 ## 시스템 전체 현황
 

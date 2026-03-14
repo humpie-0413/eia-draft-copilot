@@ -1400,7 +1400,7 @@ async def main():
     print(f"  실행 시각: {datetime.now(tz=timezone.utc).isoformat()}")
 
     # 서버 연결 확인
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(timeout=300) as client:
         try:
             resp = await client.get(f"{BASE_URL}/health")
             if resp.status_code != 200:
