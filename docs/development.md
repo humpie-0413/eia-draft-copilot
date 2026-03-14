@@ -112,7 +112,7 @@ npm run dev  # http://localhost:3000
 
 ```bash
 cd backend
-pytest tests/ -v                         # 전체 테스트 (365개)
+pytest tests/ -v                         # 전체 테스트 (605개)
 pytest tests/test_projects.py -v         # 프로젝트 테스트만
 pytest tests/test_connectors.py -v       # 커넥터 테스트만
 pytest tests/test_e2e.py -v              # E2E 테스트만
@@ -151,7 +151,7 @@ async def test_something(client: AsyncClient):
 python scripts/test_connectors_live.py
 ```
 
-이 스크립트는 6개 커넥터(에어코리아, 수질, 토양, 기후, V-world 토지이용, 국가유산청 문화재)의 실제 API 호출을 검증합니다.
+이 스크립트는 8개 커넥터(에어코리아, 수질, 토양, 기후, V-world 토지이용, 국가유산청 문화재, 교통량 통계, 폐기물 통계)의 실제 API 호출을 검증합니다.
 
 ### 통합 데모
 
@@ -160,7 +160,7 @@ python scripts/test_connectors_live.py
 python scripts/demo_full_scenario.py
 ```
 
-11단계 전체 흐름을 자동 실행하고 결과를 `output/` 폴더에 저장합니다.
+12단계 전체 흐름(8종 커넥터 수집 + 영향 예측 3종 포함)을 자동 실행하고 결과를 `output/` 폴더에 저장합니다.
 
 ### 프론트엔드 테스트
 
@@ -274,7 +274,8 @@ register_connector(NewConnector())
 | `narrative_generator.py` | 서술문 템플릿 생성 + 법적 근거 인용 (Post-3, Reg-2) |
 | `similarity.py` | 유사사례 유사도 계산 |
 | `qa_engine.py` | QA 규칙 엔진 (8개 규칙, R007/R008 포함) |
-| `export_service.py` | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 |
+| `export_service.py` | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 |
+| `prediction/` | 영향 예측 모델 (대기 확산 + 소음 전파 + 수질 혼합) |
 
 ### 새 서비스 추가 패턴
 
@@ -283,6 +284,93 @@ register_connector(NewConnector())
 3. `backend/app/api/v1/` 에 API 엔드포인트 추가
 4. `backend/app/main.py` 에 라우터 등록
 5. `backend/tests/` 에 테스트 추가
+
+---
+
+## 새 예측 모델 추가 방법
+
+### 1. 모델 클래스 작성
+
+`backend/app/services/prediction/` 에 새 파일 생성:
+
+```python
+"""새 예측 모델 설명."""
+
+from app.services.prediction.base import (
+    BasePredictionModel, PredictionResult, PredictionItem,
+    ModelInfo, InputParameter,
+)
+
+class NewPredictionModel(BasePredictionModel):
+
+    def predict(self, parameters: dict, background_data: dict | None = None) -> PredictionResult:
+        """입력 파라미터와 배경 데이터로 예측 실행."""
+        # 예측 로직 구현
+        items = []
+        for distance in [100, 200, 500]:
+            items.append(PredictionItem(
+                label=f"{distance}m",
+                distance_m=float(distance),
+                pollutant="지표명",
+                predicted_concentration=계산값,
+                background_concentration=배경값,
+                total_concentration=합산값,
+                unit="단위",
+                standard_value=기준값,
+                exceeds_standard=합산값 > 기준값,
+            ))
+
+        return PredictionResult(
+            section_key="적용_섹션_키",
+            model_name="model_name",
+            input_parameters=parameters,
+            predictions=items,
+            summary="예측 요약문",
+            assumptions=["전제 조건 1", "전제 조건 2"],
+            limitations=["모델 한계 1"],
+        )
+
+    def get_required_inputs(self) -> list[InputParameter]:
+        return [
+            InputParameter(name="param1", display_name="파라미터 1",
+                         unit="단위", default=기본값, required=False,
+                         description="설명"),
+        ]
+
+    def get_model_info(self) -> ModelInfo:
+        return ModelInfo(
+            name="model_name",
+            display_name="모델 표시 이름",
+            description="모델 설명",
+            applicable_sections=["적용_섹션_키"],
+        )
+```
+
+### 2. 레지스트리 등록
+
+`backend/app/services/prediction/registry.py`:
+```python
+from app.services.prediction.new_model import NewPredictionModel
+
+# _MODEL_REGISTRY 딕셔너리에 추가
+_MODEL_REGISTRY["model_name"] = NewPredictionModel()
+
+# _SECTION_MODEL_MAP에 섹션 매핑 추가
+_SECTION_MODEL_MAP["적용_섹션_키"] = ["model_name"]
+```
+
+### 3. 서술문 생성기 추가
+
+`backend/app/services/narrative_generator.py`:
+- `generate_prediction_narrative()` 에 새 섹션 키 분기 추가
+- 예측 결과를 한글 서술문으로 변환하는 함수 작성
+
+### 4. 테스트 작성
+
+`backend/tests/` 에 테스트 추가:
+- 모델 predict() 정확성 검증
+- 레지스트리 조회 검증
+- 서술문 생성 검증
 
 ---
 

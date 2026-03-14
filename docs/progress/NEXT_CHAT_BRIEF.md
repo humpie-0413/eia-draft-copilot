@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Conn-1: 추가 커넥터 확장 (교통/폐기물)** ✅
+**Final-1: 통합 검증 + 문서화** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -11,45 +11,40 @@
 - Pred-2: 소음 전파 + 수질 혼합 모델 ✅
 - Pred-3: 예측 결과 통합 — ScaffoldSection + Export + API 스키마 ✅
 - Conn-1: 추가 커넥터 확장 — 교통/폐기물 커넥터 + 미수집 서술문 개선 ✅
+- Final-1: 통합 검증 + 문서화 ✅
 
-## 완료된 작업 (Conn-1)
+## 완료된 작업 (Final-1)
 
-### 신규 커넥터 (2종)
-1. `TrafficVolumeConnector` — 한국건설기술연구원 교통량 통계 (AADT, 도로등급, 도로명)
-2. `WasteStatsConnector` — 행정안전부 생활쓰레기배출정보 (생활폐기물, 음식물, 재활용)
+### 데모 스크립트 최종 업데이트
+- 교통량/폐기물 커넥터 수집 단계 추가 (2-i, 2-j)
+- 영향 예측 실행 단계 추가 (7.5): 대기 확산, 소음 전파, 수질 혼합
+- scaffold에 예측 결과 포함 여부 표시
+- 기능 비교 표: MVP → Post-MVP → 법령 → 최종(Final) 4단계 비교
 
-### 수동 입력 확정 (3개 섹션)
-- 경관: 현장 시각 조사 필수 → API 자동화 불가
-- 생태: 현장 생태 조사 필수
-- 소음·진동: 현장 측정 필수
+### 문서 최종 업데이트
+- README.md: 8종 커넥터, 3종 예측 모델, 605개 테스트 반영
+- docs/architecture.md: 예측 엔진 구조, 모델 목록, Export 5부 구조
+- docs/user-guide.md: 영향 예측 사용법, 파라미터 설명
+- docs/api-reference.md: 예측 API 엔드포인트, 교통/폐기물 커넥터 파라미터
+- docs/development.md: 새 예측 모델 추가 방법, 새 커넥터 추가 방법
 
-### 서술문 개선
-- 미수집 섹션: "자동 수집 대상에 해당하지 않는다. 수동 입력이 필요하다" + 권장 지표 안내
-- 교통 전용 서술문: AADT + 도로명 + 도로등급 기반
-- 폐기물 전용 서술문: 생활/음식물/재활용/건설폐기물 기반
-
-### 섹션 플래너 필수 지표 갱신
-- traffic: 교통량_현황, 도로등급, 도로명
-- waste: 생활폐기물_발생량, 건설폐기물_발생량, 지정폐기물_여부
-- landscape: 주요_조망점, 스카이라인_영향, 경관_등급, 주요_경관자원
-
-### 테스트
-- 26개 신규 테스트 (605개 전체 통과)
+### 전체 테스트
+- 605개 전체 통과
 
 ## 시스템 전체 현황
 
-### 백엔드 서비스 (10개)
+### 백엔드 서비스 (11개)
 | 서비스 | 역할 |
 |--------|------|
 | section_planner.py | 11개 섹션 정의 + 필수 지표 충족도 계산 + 평가 범위 연동 |
 | scope_service.py | 사업유형별 필수/권장/선택 평가 범위 판단 |
-| draft_scaffold.py | 초안 뼈대 생성 (법적 근거 포함 서술문 우선 → 템플릿 fallback) |
+| draft_scaffold.py | 초안 뼈대 생성 (법적 근거 포함 서술문 우선 → 템플릿 fallback + 예측 결과 포함) |
 | statistics.py | 지표별 기술 통계 (평균, 최대, 최소, 표준편차) |
 | standard_checker.py | 대기/수질/소음/토양 환경기준 비교 + 등급 판정 + 법적 근거 |
-| narrative_generator.py | 섹션별 서술문 템플릿 + 법적 근거 자동 삽입 + 수동입력 가이드 |
+| narrative_generator.py | 섹션별 서술문 템플릿 + 법적 근거 자동 삽입 + 예측 서술문 + 수동입력 가이드 |
 | similarity.py | 유사사례 가중 유사도 계산 |
 | qa_engine.py | 8개 QA 규칙 (R001~R008) + 사업유형 기반 동적 판단 |
-| export_service.py | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 |
+| export_service.py | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 섹션 |
 | prediction/ | 예측 모듈 (대기 확산 + 소음 전파 + 수질 혼합) |
 
 ### 예측 모델 (Pred-1~2)
@@ -130,3 +125,11 @@ python scripts/demo_full_scenario.py
 # 커넥터 실제 API 검증
 python scripts/test_connectors_live.py
 ```
+
+## 알려진 제한사항 및 향후 과제
+- 프론트엔드 프로젝트 생성 폼 미구현 (API를 통해서만 생성 가능)
+- 예측 모델은 간이 모델 — 정밀 모사에는 전문 소프트웨어 필요
+- PROCEDURE_PENDING 상태 미구현 (외부 절차 연동 필요)
+- spatialRelation, confidence 필드 미구현 (현재 작동에 영향 없음)
+- Draft claim contract 미구현 (LLM 연동 심화 시 구현 예정)
+- 실시간 협업, 테넌트 인증, 빌링 미지원 (MVP 비목표)

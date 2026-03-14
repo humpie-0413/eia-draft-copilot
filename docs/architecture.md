@@ -26,15 +26,16 @@
 │  ┌──────────┐ ┌──────────────┐ ┌─────────────────────────────┐ │
 │  │ API      │ │  서비스 계층   │ │    커넥터 파이프라인          │ │
 │  │ 라우터   │─▶│              │ │ BaseConnector               │ │
-│  │ (12개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector         │ │
+│  │ (13개)   │ │ ┌통계 엔진    │ │ ├─ KecoAirConnector         │ │
 │  └──────────┘ │ ├기준비교     │ │ ├─ WaterInfoConnector       │ │
 │               │ ├서술문생성   │ │ ├─ SoilInfoConnector        │ │
 │               │ ├QA 규칙     │ │ ├─ KmaWeatherConnector      │ │
 │               │ ├평가범위     │ │ ├─ LandUseConnector         │ │
-│               │              │ │ └─ CulturalHeritageConnector│ │
-│               │ ├Export      │ └─────────────────────────────┘ │
-│               │ └유사도 계산 │                                  │
-│               └──────┬───────┘  ┌────────────────────┐         │
+│               │ ├예측 엔진   │ │ ├─ CulturalHeritageConnector│ │
+│               │ ├Export      │ │ ├─ TrafficVolumeConnector   │ │
+│               │ └유사도 계산 │ │ └─ WasteStatsConnector      │ │
+│               └──────┬───────┘ └─────────────────────────────┘ │
+│                      │          ┌────────────────────┐         │
 │                      │          │  LLM Adapter        │         │
 │                      │          │ ├─ NoneAdapter      │         │
 │                      │          │ ├─ OpenAIAdapter    │         │
@@ -96,16 +97,23 @@
    └─ API 실패 시 fallback → 원본 반환
    └─ 보강 결과 DB 저장 (DraftNarrative) → Export 시 우선 사용 (Post-9)
 
-10. 초안 뼈대 (Draft Scaffold)
-    └─ 서술문 + 통계 요약 테이블 + 환경기준 비교 + 상세 데이터 샘플
+10. 영향 예측 (Pred-1~2)
+    └─ 섹션별 기본 모델 자동 선택
+    └─ 배경 데이터 evidence에서 자동 추출
+    ├─ 대기 확산: 가우시안 플룸 (Pasquill-Gifford 확산계수)
+    ├─ 소음 전파: 점/선음원 거리감쇠 + Maekawa 차음벽
+    └─ 수질 혼합: 완전혼합 희석 모델
 
-11. QA (Quality Assurance)
+11. 초안 뼈대 (Draft Scaffold, Pred-3)
+    └─ 서술문 + 통계 요약 테이블 + 환경기준 비교 + 영향 예측 + 상세 데이터 샘플
+
+12. QA (Quality Assurance)
     └─ 8개 결정적 규칙 실행 → critical/warning/info 이슈 목록
     └─ R007/R008: 사업유형 기반 법적 필수 항목 검증
 
-12. Export (Post-5)
+13. Export (Post-5)
     └─ export_ready 확인 (critical 0건)
-    └─ DOCX: 표지 + 목차 + 본문 11섹션(4부 구조) + 부록 A/B/C
+    └─ DOCX: 표지 + 목차 + 본문 11섹션(5부 구조, 영향 예측 포함) + 부록 A/B/C
     └─ PDF: 동일 구조 (reportlab)
 ```
 
@@ -261,7 +269,7 @@ Unique 제약: (project_id, section_key)
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/connectors` | 사용 가능한 커넥터 목록 (6종) |
+| GET | `/connectors` | 사용 가능한 커넥터 목록 (8종) |
 | POST | `/connectors/{connector_key}/collect` | 데이터 수집 실행 |
 
 ### 유사사례 (Similar Cases)
@@ -327,6 +335,13 @@ Unique 제약: (project_id, section_key)
 | GET | `/llm/status` | LLM adapter 상태 조회 |
 | POST | `/llm/projects/{id}/enhance` | 섹션 서술문 AI 보강 |
 
+### 영향 예측 (Predictions) — Pred-1~3
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/prediction-models` | 등록된 예측 모델 목록 + 입력 파라미터 |
+| POST | `/projects/{id}/predict/{section_key}` | 섹션별 영향 예측 실행 |
+
 ### 헬스체크
 
 | 메서드 | 경로 | 설명 |
@@ -348,7 +363,7 @@ BaseConnector (추상 클래스)
         └── Evidence 벌크 INSERT
 ```
 
-### 구현된 커넥터 (6종)
+### 구현된 커넥터 (8종)
 
 | 커넥터 키 | 이름 | API | 수집 지표 |
 |-----------|------|-----|-----------|
@@ -358,6 +373,8 @@ BaseConnector (추상 클래스)
 | `kma_weather` | 기상청 ASOS | 지상일자료 조회 | 기온, 강수량, 풍속, 습도 |
 | `vworld_land_use` | V-world 토지이용 | 2D데이터 API (geomFilter) | 용도지역구분, 용도지구, 지목 |
 | `cultural_heritage` | 국가유산청 문화재 | Open API (XML) | 문화재명, 종별, 이격거리, 소재지 |
+| `traffic_volume` | 교통량 통계 | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급, 도로명 |
+| `waste_stats` | 폐기물 통계 | 행정안전부 생활쓰레기배출정보 | 생활폐기물_발생량, 음식물쓰레기_발생량, 재활용_발생량 |
 
 ## 통계 엔진 구조 (Post-1)
 
@@ -397,6 +414,64 @@ check_section_standards(db, project_id, section_key)
 │
 ├── 수질 등급 판정: BOD/COD/DO/T-P 기반 최악 등급
 └── 섹션별 기준 비교 서술문 자동 생성
+```
+
+## 영향 예측 엔진 구조 (Pred-1~3)
+
+```
+backend/app/services/prediction/
+│
+├── base.py                   # BasePredictionModel (추상 클래스)
+│   ├── predict(parameters, background_data) → PredictionResult
+│   ├── get_required_inputs() → list[InputParameter]
+│   └── get_model_info() → ModelInfo
+│
+├── air_dispersion.py         # AirDispersionModel (가우시안 플룸)
+│   ├── Pasquill-Gifford 확산계수 (A~F 등급)
+│   ├── 예측 거리: 100, 200, 500, 1000, 2000, 5000 m
+│   ├── 오염물질: PM10, PM2.5, NO2, SO2
+│   └── 사업유형별 기본 배출량 및 굴뚝 높이
+│
+├── noise_propagation.py      # NoisePropagationModel (거리감쇠 + 차음벽)
+│   ├── 점음원/선음원 거리감쇠 (구면파/원통파)
+│   ├── Maekawa 차음벽 회절 감쇠
+│   ├── 에너지 합산 (배경소음 + 예측소음)
+│   └── 예측 거리: 10, 20, 50, 100, 200, 500 m
+│
+├── water_mixing.py           # WaterMixingModel (완전혼합)
+│   ├── 완전혼합 공식: (Q_r·C_r + Q_d·C_d) / (Q_r + Q_d)
+│   ├── 오염물질: BOD, COD, SS, T-N, T-P
+│   └── 방류수 수질기준 (물환경보전법) 기반 기본값
+│
+└── registry.py               # 모델 레지스트리
+    ├── get_model(model_name) → BasePredictionModel
+    ├── get_default_model_for_section(section_key) → BasePredictionModel
+    └── list_models() → list[ModelInfo]
+
+모델 매핑:
+  air_quality     → gaussian_plume
+  noise_vibration → noise_propagation
+  water_quality   → water_mixing
+```
+
+### 예측 결과 통합 흐름 (Pred-3)
+
+```
+1. Scaffold 생성 시 예측 자동 실행
+   generate_draft_scaffold() → 각 섹션마다:
+   ├── get_default_model_for_section(section_key) → model
+   ├── _extract_background_data(section_key, entries) → background
+   ├── model.predict(parameters={project_type}, background_data) → PredictionResult
+   └── generate_prediction_narrative(section_key, prediction_result) → narrative
+
+2. ScaffoldSection에 예측 결과 포함
+   ├── prediction_result: PredictionResult | None
+   └── prediction_narrative: str
+
+3. DOCX/PDF 출력 시 예측 섹션 포함
+   ├── N.4 영향 예측 (적용 모델 + 서술문 + 데이터 테이블)
+   ├── 전제 조건 + 모델 한계
+   └── 초과 행 빨간 배경 표시
 ```
 
 ## 서술문 생성기 구조 (Post-3)
@@ -528,11 +603,12 @@ BaseLLMAdapter (추상 클래스)
 2. 목차
    └─ 테이블: 섹션 번호(제N장) + 제목 + 상태 + 증거 건수
 
-3. 본문 섹션 (11개, 4부 구조)
+3. 본문 섹션 (11개, 5부 구조)
    ├─ 가. 현황 및 영향 분석 (서술문)
    ├─ 나. 측정 현황 요약 (통계 테이블)
    ├─ 다. 환경기준 비교 (기준 비교 테이블)
-   └─ 라. 측정 데이터 (대표 샘플 5건)
+   ├─ 라. 영향 예측 (예측 모델 + 서술문 + 데이터 테이블, 해당 섹션만)
+   └─ 마. 측정 데이터 (대표 샘플 5건)
 
 4. 부록
    ├─ A: 상세 측정 데이터 (섹션별 최대 50건)

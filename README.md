@@ -8,16 +8,17 @@
 
 ```
 프로젝트 입력 (이름, 유형, geometry)
-  → 공공데이터 수집 (대기질 · 수질 · 토양 · 기후 · 토지이용 · 문화재 6종 커넥터 + 수동 입력)
+  → 공공데이터 수집 (8종 커넥터: 대기질·수질·토양·기후·토지이용·문화재·교통량·폐기물 + 수동 입력)
   → 증거(Evidence) 정규화 및 저장
   → 유사사례 매칭 (사업유형/위치/규모/환경분야 가중 유사도)
   → 섹션 플래너 (11개 섹션 필수 지표 충족도 계산)
   → 통계 엔진 (지표별 기술 통계 산출)
   → 환경기준 비교 (대기/수질/소음/토양 기준 적합·초과 판정)
+  → 영향 예측 (대기 확산 · 소음 전파 · 수질 혼합 — 3종 모델)
   → 서술문 템플릿 생성 (LLM 미사용 결정적 방식)
   → LLM 보강 (선택: OpenAI/Gemini adapter → DB 저장 → Export 반영)
   → QA 검증 (8개 규칙, critical/warning/info 등급 + 법적 필수 항목 검증)
-  → DOCX/PDF export (표지 + 목차 + 본문 + 부록 3종)
+  → DOCX/PDF export (표지 + 목차 + 본문 + 영향 예측 + 부록 3종)
 ```
 
 ### EIA 11개 섹션
@@ -36,7 +37,7 @@
 | 10 | 문화재 | 문화재명, 이격거리 |
 | 11 | 기후 | 평균기온, 강수량, 평균풍속 |
 
-### 공공데이터 커넥터 (6종)
+### 공공데이터 커넥터 (8종)
 
 | 커넥터 | 대상 API | 수집 지표 |
 |--------|----------|-----------|
@@ -46,6 +47,18 @@
 | `kma_weather` | 기상청 ASOS 일자료 | 평균기온, 최고/최저기온, 강수량, 풍속, 습도 |
 | `vworld_land_use` | V-world 2D데이터 | 용도지역구분, 용도지구, 지목 |
 | `cultural_heritage` | 국가유산청 Open API | 문화재명, 종별, 이격거리, 소재지 |
+| `traffic_volume` | 한국건설기술연구원 교통량 통계 | 교통량_현황(AADT), 도로등급, 도로명 |
+| `waste_stats` | 행정안전부 생활쓰레기배출정보 | 생활폐기물_발생량, 음식물쓰레기_발생량, 재활용_발생량 |
+
+### 영향 예측 모델 (3종)
+
+| 모델 | 적용 섹션 | 설명 |
+|------|----------|------|
+| `gaussian_plume` | 대기질 | 가우시안 플룸 대기 확산 (PM10, PM2.5, NO2, SO2) — Pasquill-Gifford 확산계수 |
+| `noise_propagation` | 소음·진동 | 점/선음원 거리감쇠 + Maekawa 차음벽 (주간/야간 Leq) |
+| `water_mixing` | 수질 | 완전혼합 희석 모델 (BOD, COD, SS, T-N, T-P) |
+
+> 예측 결과는 초안 뼈대(scaffold)에 자동 포함되며 DOCX/PDF 문서에도 반영됩니다.
 
 ### QA 규칙 (8개)
 
@@ -108,7 +121,8 @@
 - **HTTP 클라이언트**: httpx (공공데이터 API 호출)
 - **문서 생성**: python-docx (DOCX), reportlab (PDF)
 - **LLM**: openai SDK + httpx (Gemini REST)
-- **테스트**: pytest + httpx (ASGI 테스트, 365개)
+- **예측 모델**: 대기 확산(가우시안 플룸) + 소음 전파 + 수질 혼합
+- **테스트**: pytest + httpx (ASGI 테스트, 605개)
 
 ## 로컬 개발 환경 설정
 
@@ -168,7 +182,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
    - **기상청 ASOS 일자료**: https://www.data.go.kr/data/15059093/openapi.do
 3. 발급받은 **인코딩 키**를 `backend/.env`의 `DATA_GO_KR_API_KEY`에 설정
 
-> 4개 커넥터(keco_air, water_info, soil_info, kma_weather)가 동일한 공공데이터포털 키를 사용합니다.
+> 5개 커넥터(keco_air, water_info, soil_info, kma_weather, traffic_volume)가 동일한 공공데이터포털 키를 사용합니다.
+> waste_stats(폐기물) 커넥터도 공공데이터포털 키를 사용합니다.
 
 ### 4. V-world API 키 발급 (토지이용 커넥터)
 
@@ -206,11 +221,11 @@ npm run dev                   # http://localhost:3000
 python scripts/demo_full_scenario.py
 ```
 
-전체 워크플로우를 자동 실행합니다: 프로젝트 생성 → 6종 커넥터 수집 → 유사사례 매칭 → 통계 → 기준비교 → 서술문 → LLM 보강 → QA → DOCX/PDF Export.
+전체 워크플로우를 자동 실행합니다: 프로젝트 생성 → 8종 커넥터 수집 → 유사사례 매칭 → 통계 → 기준비교 → 서술문 → 영향 예측(3종) → LLM 보강 → QA → DOCX/PDF Export.
 
 ## 테스트
 
-### 백엔드 테스트 (pytest, 365개)
+### 백엔드 테스트 (pytest, 605개)
 
 ```bash
 cd backend
@@ -219,12 +234,16 @@ pytest tests/ -v
 
 주요 테스트 파일:
 - `tests/test_projects.py` — 프로젝트 CRUD + 헬스체크 (9개)
-- `tests/test_connectors.py` — 커넥터 6종 fetch/normalize + 레지스트리 (69개)
+- `tests/test_connectors.py` — 커넥터 8종 fetch/normalize + 레지스트리 (95개)
 - `tests/test_e2e.py` — 전체 워크플로우 E2E 테스트 (1개)
 - `tests/test_spec_alignment.py` — 스펙 정렬 검증 (23개)
 - `tests/test_statistics.py` — 통계 엔진 (16개)
 - `tests/test_standard_checker.py` — 환경기준 비교 (27개)
 - `tests/test_narrative_generator.py` — 서술문 생성기 (51개)
+- `tests/test_prediction.py` — 대기 확산 예측 모델 (74개)
+- `tests/test_prediction_noise_water.py` — 소음 전파 + 수질 혼합 (82개)
+- `tests/test_prediction_narrative.py` — 예측 서술문 (26개)
+- `tests/test_pred3_integration.py` — 예측 통합 (scaffold, export, API) (27개)
 - `tests/test_export_format.py` — DOCX/PDF 포맷 (40+개)
 - `tests/test_export_pdf.py` — PDF 출력 (4개)
 - `tests/test_llm_adapter.py` — LLM adapter (29개)
@@ -271,23 +290,24 @@ eia-draft-copilot/
 ├── backend/                      # FastAPI 백엔드
 │   ├── app/
 │   │   ├── api/v1/               # REST API 엔드포인트 (11개 라우터)
-│   │   ├── connectors/           # 공공데이터 커넥터 (6종)
+│   │   ├── connectors/           # 공공데이터 커넥터 (8종)
 │   │   ├── crud/                 # DB CRUD 함수
 │   │   ├── data/                 # 환경기준 데이터 + 법령 데이터
 │   │   │   └── regulations/     # 법령 데이터 (법적 근거, 필수 항목, 지역구분)
 │   │   ├── llm/                  # LLM adapter (3종)
 │   │   ├── models/               # SQLAlchemy 모델
 │   │   ├── schemas/              # Pydantic 스키마
-│   │   ├── services/             # 비즈니스 로직 (통계, 기준비교, 서술문, QA, 평가범위, Export)
+│   │   ├── services/             # 비즈니스 로직 (통계, 기준비교, 서술문, QA, 평가범위, Export, 예측)
+│   │   │   └── prediction/      # 영향 예측 모델 (대기 확산, 소음 전파, 수질 혼합)
 │   │   ├── main.py               # FastAPI 앱 엔트리포인트
 │   │   ├── config.py             # 환경 설정
 │   │   └── db.py                 # DB 세션 관리
 │   ├── alembic/                  # DB 마이그레이션 (4개)
-│   ├── tests/                    # 백엔드 테스트 (365개)
+│   ├── tests/                    # 백엔드 테스트 (605개)
 │   └── requirements.txt          # Python 의존성
 ├── scripts/                      # 유틸리티 스크립트
-│   ├── demo_full_scenario.py     # 통합 데모 (11단계)
-│   └── test_connectors_live.py   # 커넥터 실제 API 검증
+│   ├── demo_full_scenario.py     # 통합 데모 (12단계, 예측 포함)
+│   └── test_connectors_live.py   # 커넥터 실제 API 검증 (8종)
 ├── docs/                         # 문서
 │   ├── architecture.md           # 시스템 아키텍처
 │   ├── user-guide.md             # 사용자 가이드

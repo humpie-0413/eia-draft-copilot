@@ -1552,3 +1552,84 @@
 
 ### 전체 테스트
 - 605개 전체 통과 (기존 579개 + 신규 26개)
+
+---
+
+## Final-1: 통합 검증 + 문서화 ✅
+
+### 완료 항목
+
+#### 1. 데모 스크립트 최종 업데이트 (`scripts/demo_full_scenario.py`)
+- 교통량 통계 커넥터 (2-i), 폐기물 통계 커넥터 (2-j) 수집 단계 추가
+- 영향 예측 실행 단계 추가 (7.5):
+  - 대기 확산 예측 (가우시안 플룸)
+  - 소음 전파 예측 (거리감쇠 + 차음벽)
+  - 수질 혼합 예측 (완전혼합)
+- scaffold 확인 시 예측 결과 포함 여부 표시
+- 결과 요약 비교 표에 영향 예측 + 8종 커넥터 반영
+- 기능 비교 표: MVP → Post-MVP → 법령 → 최종(Final) 4단계 비교
+
+#### 2. 전체 테스트 실행
+- pytest 605개 전체 통과 확인
+
+#### 3. 문서 최종 업데이트
+- **README.md**: 8종 커넥터 + 3종 예측 모델 + 605개 테스트 반영
+- **docs/architecture.md**: 예측 엔진 구조 + 8종 커넥터 + 예측 API + Export 5부 구조
+- **docs/user-guide.md**: 영향 예측 사용법 (3종 모델 상세 입출력) + 8종 커넥터
+- **docs/api-reference.md**: 예측 API 엔드포인트 + 교통/폐기물 커넥터 파라미터
+- **docs/development.md**: 새 예측 모델 추가 방법 + 서비스 목록 업데이트
+
+#### 4. 프로젝트 전체 현황 정리
+
+### 시스템 구성 최종 현황
+
+| 구성 요소 | 수량 | 상세 |
+|-----------|------|------|
+| 커넥터 | 8종 | keco_air, water_info, soil_info, kma_weather, vworld_land_use, cultural_heritage, traffic_volume, waste_stats |
+| 예측 모델 | 3종 | gaussian_plume (대기), noise_propagation (소음), water_mixing (수질) |
+| QA 규칙 | 8개 | R001~R008 (사업유형 기반 동적 심각도 + 법적 필수 항목 검증) |
+| LLM 어댑터 | 3종 | none (기본), openai_paid, gemini_free |
+| 법령 데이터 | 3모듈 | legal_references, required_items, area_classifications |
+| 사업유형 | 12종 | power_plant, road, railway, housing, industrial, tourism 등 |
+| EIA 섹션 | 11개 | 대기질~기후 |
+| DB 테이블 | 6개 | projects, data_sources, source_snapshots, evidences, similar_cases, draft_narratives |
+| 백엔드 테스트 | 605개 | 전체 통과 |
+
+### 전체 Phase 이력
+| Phase | 설명 | 상태 |
+|-------|------|------|
+| Phase 0 | 프로젝트 스캐폴딩 | ✅ |
+| Phase 1 | Project CRUD & Backend API | ✅ |
+| Phase 2 | 공공데이터 커넥터 & Evidence | ✅ |
+| Phase 3 | Evidence Workbench UI | ✅ |
+| Phase 4 | 유사사례 매칭 | ✅ |
+| Phase 5 | 섹션 플래너 + Draft Scaffold | ✅ |
+| Phase 6 | QA 엔진 | ✅ |
+| Post-0.5 | output-contracts 스펙 정렬 | ✅ |
+| Post-1 | 통계 엔진 | ✅ |
+| Post-2 | 환경기준 비교 | ✅ |
+| Post-3 | 서술문 템플릿 생성기 | ✅ |
+| Post-4 | 토양+기상 커넥터 확장 | ✅ |
+| Post-5 | DOCX/PDF 고급 포맷 | ✅ |
+| Post-6 | LLM 어댑터 연동 | ✅ |
+| Post-7~11 | UI 개선, LLM Export 반영 등 | ✅ |
+| Reg-1 | 환경기준 법적 근거 매핑 | ✅ |
+| Reg-2 | 서술문 법적 근거 자동 삽입 | ✅ |
+| Reg-3 | QA R007/R008 법적 필수 항목 검증 | ✅ |
+| Reg-4 | 사업유형별 평가 범위 판단 | ✅ |
+| Reg-5 | 법령 반영 통합 검증 | ✅ |
+| Pred-1 | 예측 모듈 기반 구조 + 가우시안 플룸 | ✅ |
+| Pred-2 | 소음 전파 + 수질 혼합 모델 | ✅ |
+| Pred-3 | 예측 결과 통합 (Scaffold + Export + API) | ✅ |
+| Conn-1 | 교통/폐기물 커넥터 확장 | ✅ |
+| Final-1 | 통합 검증 + 문서화 | ✅ |
+
+### 알려진 제한사항 및 향후 과제
+- 프론트엔드 프로젝트 생성 폼 미구현 (API를 통해서만 생성 가능)
+- 지도(Map) UI는 지원적 역할 — 별도 구현 필요
+- 실시간 협업 미지원 (MVP 비목표)
+- 테넌트 기반 인증/빌링 미지원 (MVP 비목표)
+- 예측 모델은 간이 모델 — 정밀 모사에는 전문 소프트웨어 필요
+- PROCEDURE_PENDING 상태 미구현 (외부 절차 연동 필요)
+- spatialRelation, confidence 필드 미구현 (현재 작동에 영향 없음)
+- Draft claim contract 미구현 (LLM 연동 심화 시 구현 예정)

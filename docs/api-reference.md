@@ -149,7 +149,7 @@ ReDoc: http://localhost:8000/redoc
 
 ### GET /connectors
 
-사용 가능한 커넥터 목록을 조회합니다 (6종).
+사용 가능한 커넥터 목록을 조회합니다 (8종).
 
 **응답 (200)**:
 ```json
@@ -159,7 +159,9 @@ ReDoc: http://localhost:8000/redoc
   { "connector_key": "soil_info", "display_name": "국립환경과학원 토양측정망" },
   { "connector_key": "kma_weather", "display_name": "기상청 지상(ASOS) 일자료" },
   { "connector_key": "vworld_land_use", "display_name": "V-world 토지이용 (2D데이터)" },
-  { "connector_key": "cultural_heritage", "display_name": "국가유산청 문화재 조회" }
+  { "connector_key": "cultural_heritage", "display_name": "국가유산청 문화재 조회" },
+  { "connector_key": "traffic_volume", "display_name": "한국건설기술연구원 교통량 통계 (KICT)" },
+  { "connector_key": "waste_stats", "display_name": "행정안전부 생활쓰레기배출정보" }
 ]
 ```
 
@@ -210,6 +212,20 @@ ReDoc: http://localhost:8000/redoc
 | ccba_ctcd | X | 시도코드 (미입력 시 좌표에서 추론) |
 
 > API 키 불필요 (공개 API). 반경 1km 이내 문화재 자동 필터링.
+
+#### traffic_volume (교통량 통계)
+| 파라미터 | 필수 | 설명 |
+|----------|------|------|
+| year | O | 조회 연도 (예: "2024") |
+| dtype | X | 도로유형 코드 (1=고속도로, 2=일반국도, 3=지방도, 기본: 2) |
+| month | X | 조회 월 (기본: 1) |
+
+#### waste_stats (폐기물 통계)
+| 파라미터 | 필수 | 설명 |
+|----------|------|------|
+| region | O | 시군구명 (예: "강남구") |
+| start_date | X | 기준일 시작 (YYYYMMDD) |
+| end_date | X | 기준일 종료 (YYYYMMDD) |
 
 **응답 (200)**:
 ```json
@@ -520,6 +536,96 @@ PDF 파일을 생성하여 다운로드합니다.
 
 **응답 (200)**: PDF 파일 스트리밍
 **응답 (422)**: Export Gate 차단
+
+---
+
+## 영향 예측 (Predictions) — Pred-1~3
+
+### GET /prediction-models
+
+등록된 예측 모델 목록과 입력 파라미터를 반환합니다.
+
+**응답 (200)**:
+```json
+[
+  {
+    "name": "gaussian_plume",
+    "display_name": "가우시안 플룸 대기 확산 모델",
+    "description": "Pasquill-Gifford 확산계수 기반 지표면 농도 예측",
+    "applicable_sections": ["air_quality"],
+    "required_inputs": [
+      { "name": "emission_rate_pm10", "display_name": "PM10 배출량", "unit": "g/s", "default": null, "required": false, "description": "미입력 시 사업유형별 기본값" },
+      { "name": "stack_height", "display_name": "굴뚝 높이", "unit": "m", "default": null, "required": false, "description": "미입력 시 사업유형별 기본값" },
+      { "name": "wind_speed", "display_name": "풍속", "unit": "m/s", "default": 3.0, "required": false, "description": "미입력 시 기상 데이터에서 자동 추출" },
+      { "name": "stability_class", "display_name": "대기안정도", "unit": "", "default": "D", "required": false, "description": "Pasquill 안정도 등급 (A~F)" }
+    ]
+  },
+  {
+    "name": "noise_propagation",
+    "display_name": "소음 전파 모델",
+    "description": "점/선음원 거리감쇠 + Maekawa 차음벽 회절감쇠",
+    "applicable_sections": ["noise_vibration"],
+    "required_inputs": [...]
+  },
+  {
+    "name": "water_mixing",
+    "display_name": "수질 완전혼합 모델",
+    "description": "하천 방류 시 완전혼합 희석 모델",
+    "applicable_sections": ["water_quality"],
+    "required_inputs": [...]
+  }
+]
+```
+
+### POST /projects/{project_id}/predict/{section_key}
+
+특정 섹션의 영향 예측을 실행합니다.
+
+**요청**:
+```json
+{
+  "model_name": null,
+  "parameters": {},
+  "use_background_data": true
+}
+```
+
+| 필드 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| model_name | string | null | 예측 모델 이름 (null이면 섹션 기본 모델) |
+| parameters | dict | {} | 입력 파라미터 (미지정 시 사업유형별 기본값) |
+| use_background_data | bool | true | 배경 데이터를 evidence에서 자동 추출 |
+
+**응답 (200)**:
+```json
+{
+  "section_key": "air_quality",
+  "model_name": "gaussian_plume",
+  "input_parameters": {
+    "project_type": "power_plant",
+    "emission_rate_pm10": 0.5,
+    "stack_height": 30.0,
+    "wind_speed": 2.3,
+    "stability_class": "D"
+  },
+  "predictions": [
+    {
+      "label": "100m",
+      "distance_m": 100.0,
+      "pollutant": "PM10",
+      "predicted_concentration": 2.34,
+      "background_concentration": 42.0,
+      "total_concentration": 44.34,
+      "unit": "ug/m3",
+      "standard_value": 50.0,
+      "exceeds_standard": false
+    }
+  ],
+  "summary": "가우시안 플룸 모델 예측 결과...",
+  "assumptions": ["대기안정도 D등급 (중립)...", "지형 효과 미반영..."],
+  "limitations": ["간이 모델로서 정밀 모사에 한계...", "단일 점원만 고려..."]
+}
+```
 
 ---
 

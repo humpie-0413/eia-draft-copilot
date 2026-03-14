@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""실사용 시나리오 전체 흐름 데모 (Reg-5 최종판).
+"""실사용 시나리오 전체 흐름 데모 (Final-1 최종판).
 
 시나리오: "서울특별시 강남구 태양광 발전소 건설 프로젝트"
 
@@ -14,6 +14,8 @@
      f. 국가유산청 문화재 커넥터 (Post-9)
      g. 소음·진동 수동 데이터
      h. 생태 수동 데이터
+     i. 교통량 통계 커넥터 (Conn-1)
+     j. 폐기물 통계 커넥터 (Conn-1)
   3. 유사사례 등록 및 매칭
   4. 섹션 플래너 충족도 확인
   4.5. 법령 반영 검증 (Reg-5)
@@ -23,10 +25,14 @@
      d. 환경기준 비교 법적 근거 열 확인
   5. 통계 엔진 실행 (Post-1)
   6. 환경기준 비교 실행 (Post-2)
-  7. 초안 뼈대 + 서술문 생성 (Post-3)
+  7. 초안 뼈대 + 서술문 생성 (Post-3, Pred-3 예측 포함)
+  7.5. 영향 예측 실행 (Pred-1~2)
+     a. 대기 확산 예측 (가우시안 플룸)
+     b. 소음 전파 예측 (거리감쇠 + 차음벽)
+     c. 수질 혼합 예측 (완전혼합)
   8. LLM 보강 실행 (Post-6, 선택)
   9. QA 실행 + R007/R008 법적 필수 항목 검증 (Reg-3)
-  10. DOCX + PDF export (부록 포함, Post-5)
+  10. DOCX + PDF export (부록 + 영향 예측 포함, Post-5)
   11. 결과 요약 비교
 
 사전 조건:
@@ -156,8 +162,8 @@ async def step1_create_project(client: httpx.AsyncClient) -> str | None:
 # ═══════════════════════════════════════════════════════════════
 
 async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict:
-    """8개 경로로 데이터 수집: 커넥터 6종 + 수동 2종."""
-    banner("단계 2: 데이터 수집 (커넥터 6종 + 수동 2종)")
+    """10개 경로로 데이터 수집: 커넥터 8종 + 수동 2종."""
+    banner("단계 2: 데이터 수집 (커넥터 8종 + 수동 2종)")
 
     stats = {"connectors": {}, "manual": {}}
 
@@ -413,6 +419,76 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         if result:
             print(f"    {ev['indicator']}: {ev['value']} — 등록 완료")
     stats["manual"]["ecology"] = len(ecology_evidences)
+
+    # 2-i. 교통량 통계 커넥터 (Conn-1)
+    sub_banner("2-i. 교통량 통계 커넥터 — 서울 일반국도")
+    result = await api_call(
+        client, "POST", "/api/v1/connectors/traffic_volume/collect",
+        json={
+            "project_id": project_id,
+            "params": {"year": "2024", "dtype": "2"},
+            "screening_only": False,
+        },
+        expected=200, label="교통량 통계 수집",
+    )
+    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
+        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
+        stats["connectors"]["traffic_volume"] = result["evidence_count"]
+    else:
+        if result:
+            msg = result.get("error_message", "")
+            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
+            if msg:
+                print(f"    오류: {msg}")
+        print("    [경고] 교통량 커넥터 실패 — 수동 교통 데이터로 대체합니다.")
+        traffic_manual = [
+            {"category": "traffic", "indicator": "교통량_현황", "value": "15420", "numeric_value": 15420.0, "unit": "대/일"},
+            {"category": "traffic", "indicator": "도로등급", "value": "일반국도"},
+            {"category": "traffic", "indicator": "도로명", "value": "강남대로"},
+        ]
+        for ev in traffic_manual:
+            await api_call(
+                client, "POST", "/api/v1/evidences",
+                json={"project_id": project_id, "screening_only": False, **ev},
+                expected=201, label=f"수동 교통: {ev['indicator']}",
+            )
+        stats["connectors"]["traffic_volume"] = len(traffic_manual)
+        print(f"    수동 교통 데이터 {len(traffic_manual)}건 추가 완료")
+
+    # 2-j. 폐기물 통계 커넥터 (Conn-1)
+    sub_banner("2-j. 폐기물 통계 커넥터 — 강남구")
+    result = await api_call(
+        client, "POST", "/api/v1/connectors/waste_stats/collect",
+        json={
+            "project_id": project_id,
+            "params": {"region": "강남구"},
+            "screening_only": False,
+        },
+        expected=200, label="폐기물 통계 수집",
+    )
+    if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
+        print(f"    상태: {result['status']}, 수집 건수: {result['evidence_count']}")
+        stats["connectors"]["waste_stats"] = result["evidence_count"]
+    else:
+        if result:
+            msg = result.get("error_message", "")
+            print(f"    상태: {result.get('status')}, 수집 건수: {result.get('evidence_count', 0)}")
+            if msg:
+                print(f"    오류: {msg}")
+        print("    [경고] 폐기물 커넥터 실패 — 수동 폐기물 데이터로 대체합니다.")
+        waste_manual = [
+            {"category": "waste", "indicator": "생활폐기물_발생량", "value": "1250", "numeric_value": 1250.0, "unit": "톤/일"},
+            {"category": "waste", "indicator": "음식물쓰레기_발생량", "value": "320", "numeric_value": 320.0, "unit": "톤/일"},
+            {"category": "waste", "indicator": "재활용_발생량", "value": "480", "numeric_value": 480.0, "unit": "톤/일"},
+        ]
+        for ev in waste_manual:
+            await api_call(
+                client, "POST", "/api/v1/evidences",
+                json={"project_id": project_id, "screening_only": False, **ev},
+                expected=201, label=f"수동 폐기물: {ev['indicator']}",
+            )
+        stats["connectors"]["waste_stats"] = len(waste_manual)
+        print(f"    수동 폐기물 데이터 {len(waste_manual)}건 추가 완료")
 
     # 수집 결과 요약
     sub_banner("수집 결과 요약")
@@ -844,15 +920,21 @@ async def step7_scaffold(client: httpx.AsyncClient, project_id: str) -> dict:
     print()
 
     scaffold_summary = {}
+    prediction_count = 0
     for s in result.get("sections", []):
         entry_count = len(s.get("evidence_entries", []))
         has_narrative = bool(s.get("narrative"))
         has_summary = bool(s.get("summary_text"))
+        has_prediction = bool(s.get("prediction_result"))
+        has_pred_narrative = bool(s.get("prediction_narrative"))
         scaffold_summary[s["section_key"]] = {
             "evidence_count": entry_count,
             "has_narrative": has_narrative,
             "has_summary": has_summary,
+            "has_prediction": has_prediction,
         }
+        if has_prediction:
+            prediction_count += 1
 
         status_parts = []
         if entry_count > 0:
@@ -863,6 +945,9 @@ async def step7_scaffold(client: httpx.AsyncClient, project_id: str) -> dict:
             status_parts.append("서술문 있음")
         if has_summary:
             status_parts.append("통계 요약 있음")
+        if has_prediction:
+            model_name = s["prediction_result"].get("model_name", "")
+            status_parts.append(f"예측: {model_name}")
 
         print(f"    {s['order']:2d}. {s['title']:<12s}  {' | '.join(status_parts)}")
 
@@ -873,11 +958,150 @@ async def step7_scaffold(client: httpx.AsyncClient, project_id: str) -> dict:
             for line in lines:
                 print(f"        {line[:70]}")
 
+        # 예측 서술문 첫 줄 미리보기
+        if has_pred_narrative:
+            pred_lines = [l for l in s["prediction_narrative"].split("\n") if l.strip()]
+            if pred_lines:
+                print(f"        [예측] {pred_lines[0][:70]}")
+
     narrative_sections = sum(1 for v in scaffold_summary.values() if v["has_narrative"])
     print()
     print(f"    서술문 존재 섹션: {narrative_sections} / {len(scaffold_summary)}")
+    print(f"    예측 결과 포함 섹션: {prediction_count}개")
 
     return scaffold_summary
+
+
+# ═══════════════════════════════════════════════════════════════
+# 단계 7.5: 영향 예측 실행 (Pred-1~2)
+# ═══════════════════════════════════════════════════════════════
+
+async def step7_5_prediction(client: httpx.AsyncClient, project_id: str) -> dict:
+    """대기 확산, 소음 전파, 수질 혼합 예측 실행."""
+    banner("단계 7.5: 영향 예측 실행 (Pred-1~2)")
+
+    # 예측 모델 목록 조회
+    sub_banner("등록된 예측 모델 목록")
+    models = await api_call(
+        client, "GET", "/api/v1/prediction-models",
+        label="예측 모델 목록",
+    )
+    if models:
+        for m in models:
+            print(f"    {m['name']:<25s} {m['display_name']}")
+            print(f"        적용 섹션: {', '.join(m['applicable_sections'])}")
+            input_count = len(m.get("required_inputs", []))
+            print(f"        입력 파라미터: {input_count}개")
+
+    pred_summary = {"models_run": [], "results": {}}
+
+    # 대기 확산 예측 (가우시안 플룸)
+    sub_banner("7.5-a. 대기 확산 예측 (가우시안 플룸)")
+    result = await api_call(
+        client, "POST",
+        f"/api/v1/projects/{project_id}/predict/air_quality",
+        json={
+            "model_name": "gaussian_plume",
+            "parameters": {},
+            "use_background_data": True,
+        },
+        label="대기 확산 예측",
+    )
+    if result:
+        pred_summary["models_run"].append("gaussian_plume")
+        pred_count = len(result.get("predictions", []))
+        print(f"    모델: {result['model_name']}")
+        print(f"    예측 결과: {pred_count}건")
+        # 대표 결과 3건 출력
+        for p in result.get("predictions", [])[:3]:
+            exceed = " [초과]" if p.get("exceeds_standard") else ""
+            print(f"      {p['label']:>6s} {p['pollutant']}: "
+                  f"기여 {p['predicted_concentration']:.2f} + "
+                  f"현황 {p['background_concentration']:.1f} = "
+                  f"합산 {p['total_concentration']:.2f} {p['unit']}{exceed}")
+        if pred_count > 3:
+            print(f"      ... 외 {pred_count - 3}건")
+        # 요약문 첫 줄
+        summary = result.get("summary", "")
+        if summary:
+            print(f"    요약: {summary.split(chr(10))[0][:70]}")
+        pred_summary["results"]["air_quality"] = {
+            "model": result["model_name"],
+            "prediction_count": pred_count,
+        }
+
+    # 소음 전파 예측
+    sub_banner("7.5-b. 소음 전파 예측 (거리감쇠 + 차음벽)")
+    result = await api_call(
+        client, "POST",
+        f"/api/v1/projects/{project_id}/predict/noise_vibration",
+        json={
+            "model_name": "noise_propagation",
+            "parameters": {},
+            "use_background_data": True,
+        },
+        label="소음 전파 예측",
+    )
+    if result:
+        pred_summary["models_run"].append("noise_propagation")
+        pred_count = len(result.get("predictions", []))
+        print(f"    모델: {result['model_name']}")
+        print(f"    예측 결과: {pred_count}건")
+        for p in result.get("predictions", [])[:4]:
+            exceed = " [초과]" if p.get("exceeds_standard") else ""
+            print(f"      {p['label']:>6s} {p['pollutant']}: "
+                  f"합산 {p['total_concentration']:.1f} {p['unit']}{exceed}")
+        if pred_count > 4:
+            print(f"      ... 외 {pred_count - 4}건")
+        summary = result.get("summary", "")
+        if summary:
+            print(f"    요약: {summary.split(chr(10))[0][:70]}")
+        pred_summary["results"]["noise_vibration"] = {
+            "model": result["model_name"],
+            "prediction_count": pred_count,
+        }
+
+    # 수질 혼합 예측
+    sub_banner("7.5-c. 수질 혼합 예측 (완전혼합)")
+    result = await api_call(
+        client, "POST",
+        f"/api/v1/projects/{project_id}/predict/water_quality",
+        json={
+            "model_name": "water_mixing",
+            "parameters": {},
+            "use_background_data": True,
+        },
+        label="수질 혼합 예측",
+    )
+    if result:
+        pred_summary["models_run"].append("water_mixing")
+        pred_count = len(result.get("predictions", []))
+        print(f"    모델: {result['model_name']}")
+        print(f"    예측 결과: {pred_count}건")
+        for p in result.get("predictions", []):
+            exceed = " [초과]" if p.get("exceeds_standard") else ""
+            std_str = f", 기준 {p['standard_value']}" if p.get("standard_value") else ""
+            print(f"      {p['pollutant']}: "
+                  f"혼합 후 {p['total_concentration']:.3f} {p['unit']}"
+                  f"{std_str}{exceed}")
+        summary = result.get("summary", "")
+        if summary:
+            print(f"    요약: {summary.split(chr(10))[0][:70]}")
+        pred_summary["results"]["water_quality"] = {
+            "model": result["model_name"],
+            "prediction_count": pred_count,
+        }
+
+    # 예측 요약
+    sub_banner("영향 예측 요약")
+    print(f"    실행된 모델: {len(pred_summary['models_run'])}개 "
+          f"({', '.join(pred_summary['models_run'])})")
+    total_preds = sum(
+        r.get("prediction_count", 0) for r in pred_summary["results"].values()
+    )
+    print(f"    총 예측 결과: {total_preds}건")
+
+    return pred_summary
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1098,6 +1322,7 @@ def step11_summary(
     stats_summary: dict,
     check_summary: dict,
     scaffold_summary: dict,
+    pred_summary: dict,
     llm_summary: dict,
     qa_summary: dict,
     export_result: dict,
@@ -1115,7 +1340,8 @@ def step11_summary(
     connector_total = sum(collect_stats.get("connectors", {}).values())
     manual_total = sum(collect_stats.get("manual", {}).values())
     print(f"  │ 총 증거 건수: {total_evidence}")
-    print(f"  │ 커넥터 수집: {connector_total}건 (6개 커넥터)")
+    connector_count = len(collect_stats.get("connectors", {}))
+    print(f"  │ 커넥터 수집: {connector_total}건 ({connector_count}개 커넥터)")
     print(f"  │ 수동 입력: {manual_total}건 + 연평균 보충 6건")
     print(f"  │ 커넥터: {', '.join(collect_stats.get('connectors', {}).keys())}")
     print()
@@ -1162,7 +1388,22 @@ def step11_summary(
     narrative_count = sum(
         1 for v in scaffold_summary.values() if v.get("has_narrative")
     ) if scaffold_summary else 0
+    prediction_count = sum(
+        1 for v in scaffold_summary.values() if v.get("has_prediction")
+    ) if scaffold_summary else 0
     print(f"  │ 서술문 존재 섹션: {narrative_count}개")
+    print(f"  │ 예측 결과 포함 섹션: {prediction_count}개")
+    print()
+
+    # 영향 예측
+    print("  ┌─ 영향 예측 (Pred-1~2) ──────────────────────────")
+    models_run = pred_summary.get("models_run", [])
+    print(f"  │ 실행된 모델: {len(models_run)}개")
+    for model in models_run:
+        r = pred_summary.get("results", {})
+        for k, v in r.items():
+            if v.get("model") == model:
+                print(f"  │   {model}: {v.get('prediction_count', 0)}건 ({k})")
     print()
 
     # LLM 보강
@@ -1192,20 +1433,21 @@ def step11_summary(
     print()
 
     # 기능 비교 표
-    print("  ┌─ MVP → Post-MVP → 법령 반영 기능 비교 ─────────")
+    print("  ┌─ MVP → Post-MVP → 법령 → 예측·커넥터 기능 비교 ──")
     print("  │")
-    print("  │  기능                 │ MVP (Phase 6)  │ Post-MVP       │ 법령 반영 (Reg)")
-    print("  │  ─────────────────────┼────────────────┼────────────────┼────────────────")
-    print("  │  커넥터 수             │ 2개            │ 6개            │ 6개 (동일)     ")
-    print("  │  통계 엔진             │ 미구현         │ 지표별 기술통계 │ (동일)         ")
-    print("  │  환경기준 비교         │ 미구현         │ 대기/수질/소음  │ +법적 근거 열   ")
-    print("  │  서술문 생성           │ 미구현         │ 템플릿 기반     │ +법적 근거 인용 ")
-    print("  │  QA 규칙              │ 6개            │ 6개            │ 8개(+R007,R008)")
-    print("  │  평가 범위 판단        │ 미구현         │ 미구현          │ 12개 사업유형  ")
-    print("  │  법령 데이터           │ 없음           │ 없음           │ 3개 모듈       ")
-    print("  │  LLM 보강             │ 미구현         │ 3종 adapter    │ (동일)         ")
-    print("  │  문서 포맷             │ 기본 DOCX      │ 표지+목차+부록  │ +필수 섹션 표시 ")
-    print("  │  PDF 출력             │ 미구현         │ reportlab 기반  │ (동일)         ")
+    print("  │  기능                 │ MVP (Phase 6)  │ Post-MVP       │ 법령 (Reg)     │ 최종 (Final)")
+    print("  │  ─────────────────────┼────────────────┼────────────────┼────────────────┼──────────────")
+    print("  │  커넥터 수             │ 2개            │ 6개            │ 6개            │ 8개(+교통,폐기물)")
+    print("  │  통계 엔진             │ 미구현         │ 지표별 기술통계 │ (동일)         │ (동일)       ")
+    print("  │  환경기준 비교         │ 미구현         │ 대기/수질/소음  │ +법적 근거 열   │ (동일)       ")
+    print("  │  서술문 생성           │ 미구현         │ 템플릿 기반     │ +법적 근거 인용 │ +교통/폐기물 ")
+    print("  │  영향 예측             │ 미구현         │ 미구현          │ 미구현          │ 3종 모델     ")
+    print("  │  QA 규칙              │ 6개            │ 6개            │ 8개(+R007,R008)│ 8개(동일)    ")
+    print("  │  평가 범위 판단        │ 미구현         │ 미구현          │ 12개 사업유형   │ (동일)       ")
+    print("  │  법령 데이터           │ 없음           │ 없음           │ 3개 모듈       │ (동일)       ")
+    print("  │  LLM 보강             │ 미구현         │ 3종 adapter    │ (동일)         │ (동일)       ")
+    print("  │  문서 포맷             │ 기본 DOCX      │ 표지+목차+부록  │ +필수 섹션 표시 │ +영향 예측   ")
+    print("  │  PDF 출력             │ 미구현         │ reportlab 기반  │ (동일)         │ +영향 예측   ")
     print("  │")
     print("  └─────────────────────────────────────────────────")
     print()
@@ -1216,11 +1458,11 @@ def step11_summary(
 # ═══════════════════════════════════════════════════════════════
 
 async def main():
-    print("╔══════════════════════════════════════════════════════════════════╗")
-    print("║  EIA Draft Copilot — 법령 반영 통합 데모 (Reg-5)                ║")
-    print("║  시나리오: 서울특별시 강남구 태양광 발전소 건설 프로젝트            ║")
-    print("║  범위: Phase 0~6 + Post-1~Post-11 + Reg-1~Reg-5 전체 기능      ║")
-    print("╚══════════════════════════════════════════════════════════════════╝")
+    print("╔══════════════════════════════════════════════════════════════════════╗")
+    print("║  EIA Draft Copilot — 최종 통합 데모 (Final-1)                      ║")
+    print("║  시나리오: 서울특별시 강남구 태양광 발전소 건설 프로젝트                ║")
+    print("║  범위: Phase 0~6 + Post + Reg + Pred-1~3 + Conn-1 전체 기능       ║")
+    print("╚══════════════════════════════════════════════════════════════════════╝")
     print()
     print(f"  백엔드 URL: {BASE_URL}")
     print(f"  실행 시각: {datetime.now(tz=timezone.utc).isoformat()}")
@@ -1264,8 +1506,11 @@ async def main():
         # ── 단계 6: 환경기준 비교 (Post-2) ──
         check_summary = await step6_standards_check(client, project_id)
 
-        # ── 단계 7: 초안 뼈대 + 서술문 (Post-3) ──
+        # ── 단계 7: 초안 뼈대 + 서술문 (Post-3, Pred-3 예측 포함) ──
         scaffold_summary = await step7_scaffold(client, project_id)
+
+        # ── 단계 7.5: 영향 예측 (Pred-1~2) ──
+        pred_summary = await step7_5_prediction(client, project_id)
 
         # ── 단계 8: LLM 보강 (Post-6) ──
         llm_summary = await step8_llm_enhance(client, project_id)
@@ -1292,6 +1537,7 @@ async def main():
         stats_summary=stats_summary,
         check_summary=check_summary,
         scaffold_summary=scaffold_summary,
+        pred_summary=pred_summary,
         llm_summary=llm_summary,
         qa_summary=qa_summary,
         export_result=export_result,
