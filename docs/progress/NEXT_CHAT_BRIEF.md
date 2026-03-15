@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Doc-1: CLAUDE.md 전면 업데이트** ✅
+**LLM-Enhancement: 서술문 품질 최종 개선** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -12,19 +12,27 @@
 - Final-1~Final-2: 통합 검증 + 문서화 완료 ✅
 - Demo-1~Demo-2: 통합 데모 + QA 해결 + Export 성공 ✅
 - Doc-1: CLAUDE.md 전면 업데이트 ✅
+- LLM-Enhancement: 서술문 품질 최종 개선 ✅
 
-## 완료된 작업 (Doc-1: 2026-03-15)
+## 완료된 작업 (LLM-Enhancement: 2026-03-15)
 
-### CLAUDE.md 전면 업데이트
-- **제품 정체성 갱신**: "환경 현황조사서 자동 생성 + 입지 환경 리스크 스크리닝 내부 도구"로 명확화
-- **면책사항 추가**: 산출물 법적 효력 없음, 전문 3D 모델링 대체 불가, 실무자 최종 검토 필수
-- **시스템 구성 전체 반영**: 서비스 11개, 커넥터 9종, QA 8개 규칙, 예측 모델 3종, LLM 어댑터 3종, 법령 모듈 3종, 섹션 상태 7종
-- **API 엔드포인트 전체 목록 최신화**: 예측, 평가범위, LLM 등 신규 엔드포인트 포함
-- **환경변수 목록 최신화**: DATABASE_URL, API 키 6개, LLM_ADAPTER, CONNECTOR_TIMEOUT 등
-- **디렉토리 구조 최신화**: prediction/, llm/, data/regulations/ 등 신규 디렉토리 반영
-- **다음 작업 계획 추가**: GIS-1, GIS-2, LLM-Enhancement, Deploy, Portfolio 5개 Phase
-- **알려진 제한사항 정리**: 외부 장애, 해양 미커버, 현장조사 필수 분야, 생태자연도 API 한계 등
-- **작업 규칙 갱신**: 한글 작성, 더미 데이터 금지, 에이전트 자율 판단 명시
+### 지표 한글명 매핑 모듈
+- `backend/app/data/indicator_names.py` — 28개 지표 한글 매핑 + 저감방안 매핑
+- 대기(PM10→미세먼지, NO₂→이산화질소 등), 수질(BOD, COD 등), 토양(Cd, Pb 등), 소음(Leq 주간/야간)
+
+### 서술문 템플릿 전면 개선
+- 8개 전용 + 1개 범용 서술문 생성기 전면 개선
+- 한글 지표명, 기준 대비 %, 적합 묶음/초과 분리, 종합 판단문, 「」법률명, 저감방안
+- 범용 서술문 FAIL 판정 버그 수정 (legal_basis 미설정 시 초과 미감지)
+
+### LLM 프롬프트 고도화
+- openai_adapter.py, gemini_adapter.py: 10개 규칙 전문가 프롬프트
+
+### Export/Scaffold 한글 지표명
+- DOCX/PDF 8개소 + scaffold 2개소에 한글 지표명 적용
+
+### 테스트
+- 616개 전체 통과 (기존 612 + 신규 4)
 
 ## 다음 작업 후보
 
@@ -39,10 +47,6 @@
 - MapLibre GL JS 기반 대화형 지도
 - 레이어 토글 (용도지역, 측정소, 문화재, 버퍼 등)
 - 사업 경계 그리기/편집 도구
-
-### Phase LLM-Enhancement: 서술문 품질 최종 개선
-- 지표 한글명 매핑, 기준 대비 백분율 표시
-- LLM 시스템 프롬프트 고도화 (전문가 문체)
 
 ### Phase Deploy: 배포 환경 구성
 - Docker Compose 통합, CI/CD, 환경 분리
@@ -60,12 +64,12 @@
 | draft_scaffold.py | 초안 뼈대 생성 (법적 근거 포함 서술문 우선 → 템플릿 fallback + 예측 결과 포함) |
 | statistics.py | 지표별 기술 통계 (평균, 최대, 최소, 표준편차) |
 | standard_checker.py | 대기/수질/소음/토양 환경기준 비교 + 등급 판정 + 법적 근거 |
-| narrative_generator.py | 섹션별 서술문 템플릿 + 법적 근거 자동 삽입 + 예측 서술문 + 수동입력 가이드 |
+| narrative_generator.py | 섹션별 서술문 템플릿 + 한글 지표명 + 법적 근거 + 기준 대비 % + 저감방안 |
 | similarity.py | 유사사례 가중 유사도 계산 |
 | qa_engine.py | 8개 QA 규칙 (R001~R008) + 사업유형 기반 동적 판단 + 부분충족 WARNING |
-| export_service.py | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 섹션 |
+| export_service.py | DOCX/PDF 생성 + 한글 지표명 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 섹션 |
 | prediction/ | 예측 모듈 (대기 확산 + 소음 전파 + 수질 혼합) |
-| llm/ | LLM 어댑터 (none / openai_paid / gemini_free) |
+| llm/ | LLM 어댑터 (none / openai_paid / gemini_free) + 10규칙 전문가 프롬프트 |
 
 ### 커넥터 (9종 — 6종 가동, 3종 일시 비활성)
 | 커넥터 키 | 대상 API | 상태 | 비고 |
@@ -80,10 +84,10 @@
 | `traffic_volume` | 한국건설기술연구원 교통량 | 가동 | vt_yearly 엔드포인트 |
 | `waste_stats` | 행정안전부 생활쓰레기배출정보 | 가동 | 배출일정/관리 데이터 |
 
-### 테스트 (612개)
+### 테스트 (616개)
 - test_connectors.py (102), test_pred3_integration.py (27), test_prediction_narrative.py (26)
 - test_prediction_noise_water.py (82), test_prediction.py (74), test_regulations.py (95)
-- test_export_format.py (40+), test_narrative_generator.py (51)
+- test_export_format.py (40+), test_narrative_generator.py (55)
 - test_llm_adapter.py (29), test_standard_checker.py (27), test_spec_alignment.py (23)
 - test_statistics.py (16), test_projects.py (9), test_export_pdf.py (4), test_e2e.py (1)
 
@@ -108,7 +112,7 @@ uvicorn app.main:app --reload    # http://localhost:8000
 
 # 테스트
 cd backend
-pytest tests/ -v    # 612개 테스트
+pytest tests/ -v    # 616개 테스트
 
 # 커넥터 실제 API 검증
 python scripts/test_connectors_live.py
@@ -116,7 +120,3 @@ python scripts/test_connectors_live.py
 # 통합 데모 (백엔드 서버 실행 후)
 python scripts/demo_full_scenario.py
 ```
-
-## 생성된 최종 산출물
-- `output/demo_gangnam_solar_20260315_020222.docx` (52.6 KB)
-- `output/demo_gangnam_solar_20260315_020222.pdf` (127.6 KB)

@@ -46,6 +46,7 @@ from reportlab.platypus import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.data.indicator_names import get_korean_name
 from app.data.regulations.required_items import get_required_sections
 from app.models.project import Project
 from app.services.draft_scaffold import (
@@ -803,7 +804,7 @@ def _docx_add_stats_table(doc: Document, indicator_stats, check) -> None:
     for idx, s in enumerate(indicator_stats):
         unit_suffix = f" {s.unit}" if s.unit else ""
         row = table.add_row()
-        row.cells[0].text = s.indicator
+        row.cells[0].text = get_korean_name(s.indicator)
         row.cells[1].text = f"{s.mean:.4g}{unit_suffix}" if s.mean is not None else "-"
         row.cells[2].text = f"{s.max_value:.4g}{unit_suffix}" if s.max_value is not None else "-"
         row.cells[3].text = f"{s.min_value:.4g}{unit_suffix}" if s.min_value is not None else "-"
@@ -873,7 +874,7 @@ def _docx_add_standards_table(doc: Document, check_results) -> None:
 
     for idx, cr in enumerate(check_results):
         row = table.add_row()
-        row.cells[0].text = cr.indicator
+        row.cells[0].text = get_korean_name(cr.indicator)
         row.cells[1].text = cr.time_basis or "-"
         std_unit = cr.standard_unit or ""
         row.cells[2].text = (
@@ -932,7 +933,7 @@ def _docx_add_evidence_table(doc: Document, entries: list[EvidenceEntry]) -> Non
 
     for idx, entry in enumerate(entries):
         row = table.add_row()
-        row.cells[0].text = entry.indicator
+        row.cells[0].text = get_korean_name(entry.indicator)
         row.cells[1].text = entry.value
         row.cells[2].text = entry.unit or "-"
         row.cells[3].text = entry.observed_at[:10] if entry.observed_at else "-"
@@ -1073,7 +1074,7 @@ def _docx_add_appendix_a(doc: Document, ctx: ExportContext) -> None:
         for idx, entry in enumerate(entries):
             row = table.add_row()
             row.cells[0].text = str(idx + 1)
-            row.cells[1].text = entry.indicator
+            row.cells[1].text = get_korean_name(entry.indicator)
             row.cells[2].text = entry.value
             row.cells[3].text = entry.unit or "-"
             row.cells[4].text = entry.observed_at[:10] if entry.observed_at else "-"
@@ -1714,7 +1715,7 @@ def _pdf_add_stats_table(story, font_name, indicator_stats, check):
     for row_idx, s in enumerate(indicator_stats):
         unit_suffix = f" {s.unit}" if s.unit else ""
         row = [
-            Paragraph(s.indicator, cell_s),
+            Paragraph(get_korean_name(s.indicator), cell_s),
             Paragraph(f"{s.mean:.4g}{unit_suffix}" if s.mean is not None else "-", cell_s),
             Paragraph(f"{s.max_value:.4g}{unit_suffix}" if s.max_value is not None else "-", cell_s),
             Paragraph(f"{s.min_value:.4g}{unit_suffix}" if s.min_value is not None else "-", cell_s),
@@ -1779,7 +1780,7 @@ def _pdf_add_standards_table(story, font_name, check_results):
         )
 
         data.append([
-            Paragraph(cr.indicator, cell_s),
+            Paragraph(get_korean_name(cr.indicator), cell_s),
             Paragraph(cr.time_basis or "-", cell_s),
             Paragraph(std_str, cell_s),
             Paragraph(avg_str, cell_s),
@@ -1815,7 +1816,7 @@ def _pdf_add_evidence_table(story, font_name, entries):
     for entry in entries:
         observed = entry.observed_at[:10] if entry.observed_at else "-"
         data.append([
-            Paragraph(entry.indicator, cell_s),
+            Paragraph(get_korean_name(entry.indicator), cell_s),
             Paragraph(entry.value, cell_s),
             Paragraph(entry.unit or "-", cell_s),
             Paragraph(observed, cell_s),
@@ -1953,7 +1954,7 @@ def _pdf_add_appendix_a(story, styles, font_name, ctx: ExportContext):
             observed = entry.observed_at[:10] if entry.observed_at else "-"
             data.append([
                 Paragraph(str(idx + 1), cell_s),
-                Paragraph(entry.indicator, cell_s),
+                Paragraph(get_korean_name(entry.indicator), cell_s),
                 Paragraph(entry.value, cell_s),
                 Paragraph(entry.unit or "-", cell_s),
                 Paragraph(observed, cell_s),

@@ -161,7 +161,7 @@ class TestNoisePredictionNarrative:
         narrative = generate_prediction_narrative("noise_vibration", result)
         any_exceeded = any(item.exceeds_standard for item in result.predictions)
         if any_exceeded:
-            assert "방음대책" in narrative
+            assert "소음저감대책" in narrative or "방음벽" in narrative
 
 
 # ────────────────────────────────────────────

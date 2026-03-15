@@ -6,6 +6,7 @@ LLM을 사용하지 않으며, 모든 서술은 수집된 증거 데이터에 �
 
 Reg-2: 환경기준 비교 서술 시 법적 근거를 자동 삽입한다.
 Pred-3: 예측 모델 결과를 기반으로 영향 예측 서술문을 생성한다.
+LLM-Enhancement: 한글 지표명, 기준 대비 %, 적합 지표 묶기, 종합 판단문, 저감방안 포함.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import re
 from typing import TYPE_CHECKING
 
 from app.data.env_standards import WATER_GRADES
+from app.data.indicator_names import get_korean_name, get_mitigation
 from app.services.section_planner import SectionDefinition
 from app.services.standard_checker import (
     CheckStatus,
@@ -26,23 +28,24 @@ if TYPE_CHECKING:
     from app.services.prediction.base import PredictionItem, PredictionResult
 
 # ────────────────────────────────────────────
-# 섹션별 법적 근거 서술문 접두어
+# 법적 근거 서술문 (「」기호 사용)
 # ────────────────────────────────────────────
 
-_AIR_LEGAL_PREFIX = "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준"
-_WATER_LEGAL_PREFIX = "환경정책기본법 시행령 별표 제1호에 따른 하천 수질 및 수생태계 생활환경기준"
-_NOISE_LEGAL_PREFIX = "환경정책기본법 시행령 별표 제1호에 따른 소음환경기준"
+_AIR_LEGAL_REF = "「환경정책기본법」 시행령 [별표 1]"
+_WATER_LEGAL_REF = "「환경정책기본법」 시행령 [별표 1]"
+_NOISE_LEGAL_REF = "「환경정책기본법」 시행령 [별표 1]"
+_SOIL_LEGAL_REF = "「토양환경보전법」 시행규칙 [별표 3]"
 
 # 법적 근거 문자열 → 서술문용 텍스트 변환 매핑
 _LEGAL_REF_NARRATIVE: dict[str, str] = {
     "환경정책기본법 시행령 별표 제1호 (대기환경기준)":
-        _AIR_LEGAL_PREFIX,
+        f"{_AIR_LEGAL_REF}에서 정한 대기환경기준",
     "환경정책기본법 시행령 별표 제1호 (수질 및 수생태계 환경기준) — 하천 생활환경기준":
-        _WATER_LEGAL_PREFIX,
+        f"{_WATER_LEGAL_REF}에서 정한 하천 수질 및 수생태계 생활환경기준",
     "환경정책기본법 시행령 별표 제1호 (소음환경기준)":
-        _NOISE_LEGAL_PREFIX,
+        f"{_NOISE_LEGAL_REF}에서 정한 소음환경기준",
     "토양환경보전법 시행규칙 별표 제3호 (토양오염우려기준)":
-        "토양환경보전법 시행규칙 별표 제3호에 따른 토양오염우려기준",
+        f"{_SOIL_LEGAL_REF}에 따른 토양오염우려기준",
 }
 
 
@@ -54,6 +57,13 @@ def _fmt(value: float | None, precision: int = 2) -> str:
     if abs(value - round(value)) < 1e-9:
         return str(int(round(value)))
     return f"{value:.{precision}f}"
+
+
+def _pct(measured: float | None, standard: float | None) -> str:
+    """측정값의 기준 대비 백분율을 소수점 1자리로 반환한다."""
+    if measured is None or standard is None or standard == 0:
+        return "-"
+    return f"{(measured / standard) * 100:.1f}"
 
 
 def _period_str(stats: SectionStats) -> str:
@@ -116,17 +126,22 @@ def generate_air_quality_narrative(
 
     # 도입부
     lines.append(
-        f"본 사업지역 인근의 대기질 현황을 분석한 결과, "
+        f"본 사업지역의 대기환경 현황을 파악하기 위하여 "
+        f"사업지 인근 대기오염측정소의 측정자료를 분석하였다. "
         f"{period} 동안 총 {total}건의 측정 데이터를 수집하였다."
     )
 
-    # 지표별 서술 (PM10, PM2.5 우선, 나머지 순서대로)
+    # 지표별 분류 (PM10, PM2.5 우선, 나머지 순서대로)
     priority_order = ["PM10_연평균", "PM2.5_연평균", "NO2_연평균",
                       "SO2_연평균", "CO_연평균", "O3_연평균"]
     stats_map = {s.indicator: s for s in section_stats.indicator_stats}
     check_map: dict[str, IndicatorCheckResult] = {}
     if section_check:
         check_map = {r.indicator: r for r in section_check.indicators}
+
+    # 초과/적합 분리
+    pass_parts: list[str] = []
+    fail_indicators: list[str] = []
 
     for indicator in priority_order:
         stat = stats_map.get(indicator)
@@ -135,37 +150,51 @@ def generate_air_quality_narrative(
 
         unit = stat.unit or "ug/m3"
         avg = _fmt(stat.mean)
+        kr_name = get_korean_name(indicator)
         cr = check_map.get(indicator)
 
         if cr and cr.standard_value is not None:
+            pct = _pct(stat.mean, cr.standard_value)
             std_val = _fmt(cr.standard_value)
-            status = _status_text(cr.status)
-            time_basis = cr.time_basis or "연평균"
-            lines.append(
-                f"{indicator} 평균 {avg} {unit}으로 "
-                f"{_AIR_LEGAL_PREFIX}({time_basis} {std_val} {unit}) {status} 수준이다."
-            )
-        else:
-            lines.append(f"{indicator} 평균 {avg} {unit}이다.")
 
-    # 종합 판정
-    if section_check:
-        fail_indicators = [
-            r.indicator for r in section_check.indicators
-            if r.status == CheckStatus.FAIL
-        ]
-        if fail_indicators:
-            names = ", ".join(fail_indicators)
-            lines.append(
-                f"{names}의 경우 환경기준을 초과하는 것으로 나타나 "
-                f"사업 시행 시 저감대책 수립이 필요하다."
-            )
+            if cr.status == CheckStatus.FAIL:
+                # 초과 지표는 별도 문단으로 강조
+                mitigation = get_mitigation(indicator)
+                lines.append(
+                    f"{kr_name}의 연평균 농도는 {avg} {unit}로서 "
+                    f"{_AIR_LEGAL_REF}에서 정한 대기환경기준"
+                    f"({std_val} {unit}) 대비 {pct}% 수준으로 기준을 초과하고 있어, "
+                    f"{mitigation}의 수립이 요구된다."
+                )
+                fail_indicators.append(kr_name)
+            elif cr.status == CheckStatus.PASS:
+                pass_parts.append(f"{kr_name} {avg} {unit}")
         else:
-            measured = [r for r in section_check.indicators if r.status != CheckStatus.NA]
-            if measured:
-                lines.append("전반적으로 대기환경기준을 만족하는 것으로 나타났다.")
+            pass_parts.append(f"{kr_name} {avg} {unit}")
 
-    return "\n".join(lines)
+    # 적합 지표 한 문장으로 묶기
+    if pass_parts:
+        lines.append(
+            ", ".join(pass_parts)
+            + "으로 모두 환경기준을 만족하는 것으로 나타났다."
+        )
+
+    # 종합 판단문
+    if fail_indicators:
+        fail_names = ", ".join(fail_indicators)
+        lines.append(
+            f"전반적으로 {fail_names}를 제외한 "
+            f"대기오염물질은 양호한 수준으로 판단된다."
+        )
+    else:
+        measured = [r for r in (section_check.indicators if section_check else [])
+                    if r.status != CheckStatus.NA]
+        if measured:
+            lines.append(
+                "전반적으로 본 사업지역의 대기환경은 양호한 수준으로 판단된다."
+            )
+
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -188,7 +217,7 @@ def generate_water_quality_narrative(
     # 도입부
     lines.append(
         f"본 사업지역 인근 수질측정지점의 수질 현황을 분석한 결과, "
-        f"{period} 동안 총 {total}건의 측정 데이터를 수집하였다."
+        f"{period} 동안 총 {total}건의 측정자료를 분석하였다."
     )
 
     # 주요 지표 서술 (BOD, COD 우선)
@@ -201,6 +230,9 @@ def generate_water_quality_narrative(
     bod_stat = stats_map.get("BOD")
     cod_stat = stats_map.get("COD")
 
+    # BOD/COD 초과 여부 추적
+    bod_cod_fail: list[str] = []
+
     if bod_stat and cod_stat and bod_stat.count > 0 and cod_stat.count > 0:
         bod_avg = _fmt(bod_stat.mean)
         cod_avg = _fmt(cod_stat.mean)
@@ -210,49 +242,91 @@ def generate_water_quality_narrative(
         if section_check and section_check.water_grade:
             grade = section_check.water_grade
             grade_name = section_check.water_grade_name or ""
-            # BOD 등급 기준값 조회
             grade_bod = _get_water_grade_bod(grade)
             grade_detail = f", BOD {_fmt(grade_bod)} {unit} 이하" if grade_bod else ""
             lines.append(
-                f"BOD 평균 {bod_avg} {unit}, COD 평균 {cod_avg} {unit}로 "
-                f"{_WATER_LEGAL_PREFIX} {grade}등급"
-                f"({grade_name}{grade_detail}) 수준에 해당한다."
+                f"{get_korean_name('BOD')}은 평균 {bod_avg} {unit}, "
+                f"{get_korean_name('COD')}은 평균 {cod_avg} {unit}로서 "
+                f"{_WATER_LEGAL_REF}에서 정한 하천 수질 및 수생태계 생활환경기준 "
+                f"{grade}등급({grade_name}{grade_detail}) 수준에 해당한다."
             )
         else:
-            lines.append(
-                f"BOD 평균 {bod_avg} {unit}, COD 평균 {cod_avg} {unit}로 측정되었다."
-            )
+            # BOD/COD 초과 여부 확인
+            bod_cr = check_map.get("BOD")
+            cod_cr = check_map.get("COD")
+            bod_fail = bod_cr and bod_cr.status == CheckStatus.FAIL
+            cod_fail = cod_cr and cod_cr.status == CheckStatus.FAIL
 
-    # 기타 지표 서술
+            if bod_fail or cod_fail:
+                for ind_key, stat, cr in [("BOD", bod_stat, bod_cr), ("COD", cod_stat, cod_cr)]:
+                    if cr and cr.status == CheckStatus.FAIL and cr.standard_value is not None:
+                        pct = _pct(stat.mean, cr.standard_value)
+                        lines.append(
+                            f"{get_korean_name(ind_key)}은 평균 {_fmt(stat.mean)} {unit}로 "
+                            f"환경기준({_fmt(cr.standard_value)} {unit}) 대비 {pct}% 수준으로 "
+                            f"기준을 초과하고 있어 수질오염 저감대책의 검토가 필요하다."
+                        )
+                        bod_cod_fail.append(get_korean_name(ind_key))
+            else:
+                lines.append(
+                    f"{get_korean_name('BOD')}은 평균 {bod_avg} {unit}, "
+                    f"{get_korean_name('COD')}은 평균 {cod_avg} {unit}로 측정되었다."
+                )
+
+    # 기타 지표: 적합/초과 분리
     other_indicators = ["SS", "DO", "T-N", "T-P"]
-    indicator_parts: list[str] = []
+    pass_parts: list[str] = []
+    fail_indicators: list[str] = []
+
     for ind in other_indicators:
         stat = stats_map.get(ind)
-        if stat and stat.count > 0:
-            unit = stat.unit or "mg/L"
-            avg = _fmt(stat.mean)
-            indicator_parts.append(f"{ind} {avg} {unit}")
+        if not stat or stat.count == 0:
+            continue
+        unit = stat.unit or "mg/L"
+        avg = _fmt(stat.mean)
+        kr_name = get_korean_name(ind)
+        cr = check_map.get(ind)
 
-    if indicator_parts:
-        lines.append(", ".join(indicator_parts) + "로 측정되었다.")
-
-    # 초과 지표 서술
-    if section_check:
-        fail_indicators = [
-            r.indicator for r in section_check.indicators
-            if r.status == CheckStatus.FAIL
-        ]
-        if fail_indicators:
-            names = ", ".join(fail_indicators)
+        if cr and cr.standard_value is not None and cr.status == CheckStatus.FAIL:
+            std_val = _fmt(cr.standard_value)
+            pct = _pct(stat.mean, cr.standard_value)
             lines.append(
-                f"{names}이(가) 환경기준을 초과하여 수질 관리 대책 수립이 필요하다."
+                f"{kr_name}의 경우 {avg} {unit}로 환경기준({std_val} {unit})을 초과"
+                f"(기준 대비 {pct}%)하고 있어 수질오염 저감대책의 검토가 필요하다."
             )
+            fail_indicators.append(kr_name)
         else:
-            measured = [r for r in section_check.indicators if r.status != CheckStatus.NA]
-            if measured:
-                lines.append("전반적으로 수질환경기준을 만족하는 것으로 나타났다.")
+            pass_parts.append(f"{kr_name} {avg} {unit}")
 
-    return "\n".join(lines)
+    if pass_parts:
+        lines.append(
+            ", ".join(pass_parts)
+            + "는 각각 환경기준을 만족하고 있다."
+        )
+
+    # 종합 판단문
+    all_fail = fail_indicators + bod_cod_fail
+    if section_check and section_check.water_grade:
+        grade = section_check.water_grade
+        grade_name = section_check.water_grade_name or ""
+        lines.append(
+            f"종합적으로 본 사업지역 인근 하천의 수질은 "
+            f"{grade}등급({grade_name}) 수준으로 판단된다."
+        )
+    elif all_fail:
+        fail_names = ", ".join(all_fail)
+        lines.append(
+            f"{fail_names}을 제외한 수질항목은 환경기준을 만족하는 것으로 나타났다."
+        )
+    else:
+        measured = [r for r in (section_check.indicators if section_check else [])
+                    if r.status != CheckStatus.NA]
+        if measured:
+            lines.append(
+                "종합적으로 본 사업지역 인근의 수질환경은 양호한 수준으로 판단된다."
+            )
+
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -274,49 +348,79 @@ def generate_noise_vibration_narrative(
         check_map = {r.indicator: r for r in section_check.indicators}
 
     # 도입부
-    parts: list[str] = []
-    for ind_key, label in [("소음_Leq_주간", "주간 소음도"), ("소음_Leq_야간", "야간 소음도")]:
+    intro_parts: list[str] = []
+    for ind_key in ["소음_Leq_주간", "소음_Leq_야간"]:
         stat = stats_map.get(ind_key)
         if stat and stat.count > 0:
             unit = stat.unit or "dB(A)"
             avg = _fmt(stat.mean)
-            parts.append(f"{label} {avg} {unit}")
+            kr_name = get_korean_name(ind_key)
+            intro_parts.append(f"{kr_name} {avg} {unit}")
 
-    if parts:
+    if intro_parts:
         lines.append(
-            f"본 사업지역의 소음 현황을 조사한 결과, "
-            + ", ".join(parts) + "로 측정되었다."
+            f"본 사업지역의 소음·진동 현황을 조사한 결과, "
+            + ", ".join(intro_parts) + "로 측정되었다."
         )
     else:
-        lines.append("본 사업지역의 소음 현황을 조사하였다.")
+        lines.append("본 사업지역의 소음·진동 현황을 조사하였다.")
 
-    # 판정 서술 (법적 근거 포함)
-    if section_check:
-        for ind_key, label in [("소음_Leq_주간", "주간"), ("소음_Leq_야간", "야간")]:
-            cr = check_map.get(ind_key)
-            if cr and cr.status != CheckStatus.NA and cr.standard_value is not None:
-                std_val = _fmt(cr.standard_value)
-                unit = cr.standard_unit or "dB(A)"
-                if cr.status == CheckStatus.PASS:
-                    lines.append(
-                        f'{label} 소음은 {_NOISE_LEGAL_PREFIX}'
-                        f'(일반지역 "나" {label} {std_val} {unit}) 이내로 적합하다.'
-                    )
-                elif cr.status == CheckStatus.FAIL:
-                    lines.append(
-                        f'{label} 소음은 {_NOISE_LEGAL_PREFIX}'
-                        f'(일반지역 "나" {label} {std_val} {unit})을 초과하므로 '
-                        f'방음대책 수립이 필요하다.'
-                    )
+    # 판정 서술 (법적 근거 포함 + 기준 대비 %)
+    pass_indicators: list[str] = []
+    fail_indicators: list[str] = []
+
+    for ind_key, period_label in [("소음_Leq_주간", "주간"), ("소음_Leq_야간", "야간")]:
+        cr = check_map.get(ind_key)
+        stat = stats_map.get(ind_key)
+        if not cr or cr.status == CheckStatus.NA or cr.standard_value is None:
+            continue
+
+        std_val = _fmt(cr.standard_value)
+        unit = cr.standard_unit or "dB(A)"
+        kr_name = get_korean_name(ind_key)
+        pct = _pct(stat.mean if stat else None, cr.standard_value)
+
+        if cr.status == CheckStatus.PASS:
+            pass_indicators.append(
+                f"{period_label} 소음은 {_NOISE_LEGAL_REF}에서 정한 소음환경기준"
+                f'(일반지역 "나" {period_label} {std_val} {unit}) 대비 {pct}% 수준으로 적합하다'
+            )
+        elif cr.status == CheckStatus.FAIL:
+            mitigation = get_mitigation(ind_key)
+            lines.append(
+                f"{period_label} 소음은 {_NOISE_LEGAL_REF}에서 정한 소음환경기준"
+                f'(일반지역 "나" {period_label} {std_val} {unit}) 대비 {pct}% 수준으로 '
+                f"기준을 초과하고 있어, {mitigation}의 수립이 요구된다."
+            )
+            fail_indicators.append(f"{period_label} 소음")
+
+    if pass_indicators:
+        lines.append(". ".join(pass_indicators) + ".")
 
     # 진동 서술
     vib_stat = stats_map.get("진동_Lv_주간")
     if vib_stat and vib_stat.count > 0:
         unit = vib_stat.unit or "dB(V)"
         avg = _fmt(vib_stat.mean)
-        lines.append(f"진동은 주간 {avg} {unit}로 측정되었다.")
+        kr_name = get_korean_name("진동_Lv_주간")
+        lines.append(f"{kr_name}은 {avg} {unit}로 측정되었다.")
 
-    return "\n".join(lines)
+    # 종합 판단문
+    if fail_indicators:
+        fail_names = ", ".join(fail_indicators)
+        lines.append(
+            f"전반적으로 {fail_names}이 환경기준을 초과하고 있어 "
+            f"소음저감대책의 수립이 필요한 것으로 판단된다."
+        )
+    else:
+        measured = [r for r in (section_check.indicators if section_check else [])
+                    if r.status != CheckStatus.NA]
+        if measured:
+            lines.append(
+                "전반적으로 본 사업지역의 소음·진동 환경은 양호한 수준으로 판단된다."
+            )
+
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -329,7 +433,6 @@ def generate_ecology_narrative(
 ) -> str:
     """생태 섹션 서술문을 생성한다."""
     if section_stats.total_numeric_count == 0:
-        # 비수치 데이터 (종수 등)도 없으면 미수집
         return _no_data_narrative()
 
     lines: list[str] = []
@@ -347,16 +450,20 @@ def generate_ecology_narrative(
 
     if parts:
         lines.append(
-            f"본 사업지역의 생태 현황 조사 결과, "
+            f"본 사업지역의 생태환경 현황 조사 결과, "
             + ", ".join(parts) + "이 확인되었다."
         )
     else:
-        lines.append("본 사업지역의 생태 현황 조사를 실시하였다.")
+        lines.append("본 사업지역의 생태환경 현황 조사를 실시하였다.")
 
     # 녹지자연도
     nci = stats_map.get("녹지자연도")
     if nci and nci.count > 0:
-        lines.append(f"녹지자연도는 {_fmt(nci.mean, 0)}등급이다.")
+        grade = _fmt(nci.mean, 0)
+        lines.append(
+            f"녹지자연도는 {grade}등급으로, "
+            f"「자연환경보전법」에 따른 녹지자연도 등급체계 기준에 해당한다."
+        )
 
     # 법정보호종
     protected = stats_map.get("법정보호종")
@@ -364,14 +471,27 @@ def generate_ecology_narrative(
         count = _fmt(protected.mean, 0)
         if protected.mean is not None and protected.mean > 0:
             lines.append(
-                f"법정보호종은 {count}종이 확인되어 보호 대책 수립이 필요하다."
+                f"법정보호종은 {count}종이 확인되어 "
+                f"「야생생물 보호 및 관리에 관한 법률」에 따른 보호 대책 수립이 필요하다."
             )
         else:
             lines.append("법정보호종은 확인되지 않았다.")
     else:
         lines.append("법정보호종 조사 자료가 수집되지 않았다.")
 
-    return "\n".join(lines)
+    # 종합 판단문
+    has_protected = (protected and protected.mean is not None and protected.mean > 0)
+    if has_protected:
+        lines.append(
+            "종합적으로 본 사업지역에 법정보호종이 서식하고 있어 "
+            "생태계 보전을 위한 저감방안 수립이 필요한 것으로 판단된다."
+        )
+    else:
+        lines.append(
+            "종합적으로 본 사업지역의 생태환경은 특이사항이 없는 것으로 판단된다."
+        )
+
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -382,11 +502,7 @@ def generate_land_use_narrative(
     section_stats: SectionStats,
     section_check: SectionCheckResult | None,
 ) -> str:
-    """토지이용 섹션 서술문을 생성한다.
-
-    토지이용은 비수치형 데이터(지목, 용도지역구분, 용도지구)가 주를 이루므로
-    텍스트 기반 서술문을 생성한다.
-    """
+    """토지이용 섹션 서술문을 생성한다."""
     if not _has_any_data(section_stats):
         return _no_data_narrative()
 
@@ -402,7 +518,10 @@ def generate_land_use_narrative(
     if jmok:
         intro_parts.append(f"지목은 {jmok}이며")
     if yongdo:
-        intro_parts.append(f"용도지역은 {yongdo}으로 지정되어 있다")
+        intro_parts.append(
+            f"「국토의 계획 및 이용에 관한 법률」에 따른 용도지역은 "
+            f"{yongdo}으로 지정되어 있다"
+        )
 
     if intro_parts:
         lines.append(
@@ -421,7 +540,8 @@ def generate_land_use_narrative(
             continue
         unit = f" {stat.unit}" if stat.unit else ""
         avg = _fmt(stat.mean)
-        lines.append(f"{stat.indicator} 평균 {avg}{unit}로 조사되었다.")
+        kr_name = get_korean_name(stat.indicator)
+        lines.append(f"{kr_name}은 평균 {avg}{unit}로 조사되었다.")
 
     # text_map에 포함되지 않은 기타 텍스트 지표 서술
     known_text = {"지목", "용도지역구분", "용도지구"}
@@ -430,7 +550,14 @@ def generate_land_use_narrative(
             values_str = ", ".join(ti.values[:5])
             lines.append(f"{ti.indicator}: {values_str}")
 
-    return "\n".join(lines)
+    # 종합 판단문
+    if yongdo:
+        lines.append(
+            f"종합적으로 본 사업지역은 {yongdo}에 해당하며, "
+            f"관련 법령에 따른 토지이용 규제사항을 검토하여야 한다."
+        )
+
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -441,10 +568,7 @@ def generate_cultural_heritage_narrative(
     section_stats: SectionStats,
     section_check: SectionCheckResult | None,
 ) -> str:
-    """문화재 섹션 서술문을 생성한다.
-
-    문화재명은 비수치형, 이격거리는 수치형으로 혼합된 데이터를 처리한다.
-    """
+    """문화재 섹션 서술문을 생성한다."""
     if not _has_any_data(section_stats):
         return _no_data_narrative()
 
@@ -456,15 +580,26 @@ def generate_cultural_heritage_narrative(
     distance_stat = stats_map.get("이격거리")
 
     if heritage_name:
-        intro = f"본 사업지역 인근의 문화재 현황을 조사한 결과, {heritage_name}이(가) 확인되었다."
-        lines.append(intro)
+        lines.append(
+            f"본 사업지역 인근의 문화재 현황을 「문화재보호법」에 따라 조사한 결과, "
+            f"{heritage_name}이(가) 확인되었다."
+        )
     else:
-        lines.append("본 사업지역 인근의 문화재 현황을 조사하였다.")
+        lines.append(
+            "본 사업지역 인근의 문화재 현황을 「문화재보호법」에 따라 조사하였다."
+        )
 
     if distance_stat and distance_stat.count > 0:
         unit = distance_stat.unit or "m"
         avg = _fmt(distance_stat.mean, 0)
         lines.append(f"사업지역과의 이격거리는 약 {avg} {unit}이다.")
+
+        # 500m 이내인 경우 보호구역 확인 안내
+        if distance_stat.min_value is not None and distance_stat.min_value < 500:
+            lines.append(
+                "일부 문화재가 사업지역에서 500m 이내에 위치하고 있어 "
+                "「문화재보호법」에 따른 현상변경 허가 대상 여부 확인이 필요하다."
+            )
 
     # 기타 텍스트 지표 (종별, 소재지 등)
     known_text = {"문화재명"}
@@ -479,9 +614,16 @@ def generate_cultural_heritage_narrative(
             continue
         unit = f" {stat.unit}" if stat.unit else ""
         avg = _fmt(stat.mean)
-        lines.append(f"{stat.indicator} 평균 {avg}{unit}로 조사되었다.")
+        lines.append(f"{stat.indicator}은 평균 {avg}{unit}로 조사되었다.")
 
-    return "\n".join(lines)
+    # 종합 판단문
+    if heritage_name:
+        lines.append(
+            "종합적으로 사업 시행에 따른 문화재 영향 여부를 면밀히 검토하고, "
+            "필요시 문화재청과의 사전 협의를 추진하여야 한다."
+        )
+
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -492,10 +634,7 @@ def generate_traffic_narrative(
     section_stats: SectionStats,
     section_check: SectionCheckResult | None,
 ) -> str:
-    """교통 섹션 서술문을 생성한다.
-
-    교통량(AADT), 도로명, 도로등급 등 혼합 데이터를 처리한다.
-    """
+    """교통 섹션 서술문을 생성한다."""
     if not _has_any_data(section_stats):
         return _no_data_narrative("traffic")
 
@@ -541,7 +680,8 @@ def generate_traffic_narrative(
             continue
         unit_str = f" {stat.unit}" if stat.unit else ""
         avg = _fmt(stat.mean)
-        lines.append(f"{stat.indicator} 평균 {avg}{unit_str}로 조사되었다.")
+        kr_name = get_korean_name(stat.indicator)
+        lines.append(f"{kr_name}은 평균 {avg}{unit_str}로 조사되었다.")
 
     # 기타 텍스트 지표
     known_text = {"도로명", "도로등급"}
@@ -550,7 +690,13 @@ def generate_traffic_narrative(
             values_str = ", ".join(ti.values[:5])
             lines.append(f"{ti.indicator}: {values_str}")
 
-    return "\n".join(lines)
+    # 종합 판단문
+    lines.append(
+        "종합적으로 사업 시행에 따른 공사 차량 및 운영 차량에 의한 "
+        "교통량 증가 영향을 검토하여야 한다."
+    )
+
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -571,7 +717,7 @@ def generate_waste_narrative(
     # 도입부
     total = section_stats.total_numeric_count + section_stats.total_text_count
     lines.append(
-        f"본 사업지역의 폐기물 발생 현황을 조사한 결과, "
+        f"본 사업지역의 폐기물 발생 현황을 「폐기물관리법」에 따라 조사한 결과, "
         f"총 {total}건의 데이터를 수집하였다."
     )
 
@@ -589,7 +735,7 @@ def generate_waste_narrative(
     if food_stat and food_stat.count > 0:
         unit = food_stat.unit or "톤/일"
         avg = _fmt(food_stat.mean)
-        lines.append(f"음식물쓰레기 발생량은 평균 {avg} {unit}이다.")
+        lines.append(f"음식물류 폐기물 발생량은 평균 {avg} {unit}이다.")
 
     # 재활용
     recycle_stat = stats_map.get("재활용_발생량")
@@ -601,7 +747,7 @@ def generate_waste_narrative(
     # 건설폐기물 (수동 입력 항목)
     construction_stat = stats_map.get("건설폐기물_발생량")
     if construction_stat and construction_stat.count > 0:
-        unit = construction_stat.unit or "m³/일"
+        unit = construction_stat.unit or "m\u00b3/일"
         avg = _fmt(construction_stat.mean)
         lines.append(f"건설폐기물 예상 발생량은 {avg} {unit}이다.")
     else:
@@ -615,7 +761,13 @@ def generate_waste_narrative(
             values_str = ", ".join(ti.values[:5])
             lines.append(f"{ti.indicator}: {values_str}")
 
-    return "\n".join(lines)
+    # 종합 판단문
+    lines.append(
+        "종합적으로 사업 시행에 따른 건설폐기물 및 생활폐기물 처리 계획을 수립하고, "
+        "「폐기물관리법」에 따른 적정 처리방안을 마련하여야 한다."
+    )
+
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -627,9 +779,9 @@ def generate_generic_narrative(
     section_stats: SectionStats,
     section_check: SectionCheckResult | None,
 ) -> str:
-    """환경기준 비교 대상이 아닌 범용 섹션의 서술문을 생성한다.
+    """환경기준 비교 대상이 있는 범용 섹션의 서술문을 생성한다.
 
-    환경기준이 있는 지표에 대해서는 법적 근거를 포함하여 서술한다.
+    환경기준이 있는 지표에 대해서는 법적 근거 + 기준 대비 %를 포함하여 서술한다.
     """
     if not _has_any_data(section_stats):
         return _no_data_narrative()
@@ -655,26 +807,50 @@ def generate_generic_narrative(
     if section_check:
         check_map = {r.indicator: r for r in section_check.indicators}
 
-    # 수치형 지표별 서술 (법적 근거 포함)
+    # 적합/초과 분리
+    pass_parts: list[str] = []
+    fail_indicators: list[str] = []
+
     for stat in section_stats.indicator_stats:
         if stat.count == 0:
             continue
         unit_str = f" {stat.unit}" if stat.unit else ""
         avg = _fmt(stat.mean)
+        kr_name = get_korean_name(stat.indicator)
 
         cr = check_map.get(stat.indicator)
-        if cr and cr.standard_value is not None and cr.status != CheckStatus.NA and cr.legal_basis:
+        if cr and cr.standard_value is not None and cr.status != CheckStatus.NA:
             std_val = _fmt(cr.standard_value)
             legal_ref = _format_legal_ref(cr.legal_basis)
-            status = _status_text(cr.status)
+            pct = _pct(stat.mean, cr.standard_value)
             area = _extract_area_from_description(cr.description)
             detail = f"{area} " if area else ""
-            lines.append(
-                f"{stat.indicator} 평균 {avg}{unit_str}로 "
-                f"{legal_ref}({detail}{std_val}{unit_str}) {status} 수준이다."
-            )
+
+            if cr.status == CheckStatus.FAIL:
+                mitigation = get_mitigation(stat.indicator)
+                lines.append(
+                    f"{kr_name}은 평균 {avg}{unit_str}로 "
+                    f"{legal_ref}({detail}{std_val}{unit_str}) 대비 {pct}% 수준으로 "
+                    f"기준을 초과하고 있어, {mitigation}의 수립이 요구된다."
+                )
+                fail_indicators.append(kr_name)
+            elif cr.status == CheckStatus.PASS:
+                if cr.legal_basis:
+                    lines.append(
+                        f"{kr_name}은 평균 {avg}{unit_str}로 "
+                        f"{legal_ref}({detail}{std_val}{unit_str}) 대비 {pct}% 수준으로 "
+                        f"기준 이내이다."
+                    )
+                else:
+                    pass_parts.append(f"{kr_name} {avg}{unit_str}")
         else:
-            lines.append(f"{stat.indicator} 평균 {avg}{unit_str}로 조사되었다.")
+            pass_parts.append(f"{kr_name} {avg}{unit_str}")
+
+    # 적합 지표 묶음
+    if pass_parts:
+        lines.append(
+            ", ".join(pass_parts) + "로 조사되었으며, 환경기준을 만족하고 있다."
+        )
 
     # 비수치형 지표 서술 (값 목록 형태)
     for ti in section_stats.text_indicators:
@@ -683,19 +859,20 @@ def generate_generic_narrative(
             suffix = f" 외 {len(ti.values) - 5}건" if len(ti.values) > 5 else ""
             lines.append(f"{ti.indicator}: {values_str}{suffix}")
 
-    # 환경기준 비교 결과 (있는 경우)
-    if section_check and section_check.has_exceedance:
-        fail_names = [
-            r.indicator for r in section_check.indicators
-            if r.status == CheckStatus.FAIL
-        ]
-        if fail_names:
-            lines.append(
-                f"{', '.join(fail_names)}이(가) 환경기준을 초과하여 "
-                f"관리 대책 검토가 필요하다."
-            )
+    # 종합 판단문
+    if fail_indicators:
+        fail_names = ", ".join(fail_indicators)
+        lines.append(
+            f"전반적으로 {fail_names}이(가) 환경기준을 초과하고 있어 "
+            f"관리 대책 수립이 필요한 것으로 판단된다."
+        )
+    else:
+        lines.append(
+            f"전반적으로 본 사업지역의 {section_def.title} 환경은 "
+            f"양호한 수준으로 판단된다."
+        )
 
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 # ────────────────────────────────────────────
@@ -773,22 +950,16 @@ def _text_indicator_map(section_stats: SectionStats) -> dict[str, str]:
 # ────────────────────────────────────────────
 
 def _generate_air_prediction_narrative(prediction_result: "PredictionResult") -> str:
-    """대기질 영향 예측 서술문을 생성한다.
-
-    가우시안 플룸 모델 결과를 기반으로 오염물질별 100m 지점 기여농도,
-    현황 농도, 합산 농도, 환경기준 초과 여부를 서술한다.
-    """
+    """대기질 영향 예측 서술문을 생성한다."""
     lines: list[str] = []
     lines.append(
         "가우시안 플룸 모델을 적용하여 대기오염물질 확산을 예측한 결과는 다음과 같다."
     )
 
-    # 오염물질별 100m 지점 결과 추출
     target_pollutants = ["PM10", "PM2.5", "NO2", "SO2"]
     exceeded_items: list[str] = []
 
     for pollutant in target_pollutants:
-        # 100m 지점 우선; 없으면 첫 번째 예측값 사용
         items_100m = [
             p for p in prediction_result.predictions
             if p.pollutant == pollutant and p.distance_m == 100.0
@@ -801,40 +972,39 @@ def _generate_air_prediction_narrative(prediction_result: "PredictionResult") ->
             continue
 
         item = items_100m[0] if items_100m else items_all[0]
+        kr_name = get_korean_name(pollutant)
         label = "사업지 경계(100m 지점)" if item.distance_m == 100.0 else f"{item.label} 지점"
 
         if item.standard_value is not None:
+            pct = f"{(item.total_concentration / item.standard_value) * 100:.1f}" if item.standard_value > 0 else "-"
             judgment = "초과이다" if item.exceeds_standard else "이내이다"
             lines.append(
-                f"{pollutant}: {label}에서 기여농도 {item.predicted_concentration:.2f} {item.unit}으로 "
+                f"{kr_name}: {label}에서 기여농도 {item.predicted_concentration:.2f} {item.unit}으로 "
                 f"현황 농도({item.background_concentration:.2f} {item.unit})와 합산 시 "
-                f"{item.total_concentration:.2f} {item.unit}으로 "
-                f"환경정책기본법 시행령 별표 제1호에 따른 대기환경기준"
-                f"({item.standard_value:.4g} {item.unit}) {judgment}."
+                f"{item.total_concentration:.2f} {item.unit}(기준 대비 {pct}%)으로 "
+                f"{_AIR_LEGAL_REF}에서 정한 대기환경기준"
+                f"({item.standard_value:.4g} {item.unit}) {judgment}"
             )
         else:
             lines.append(
-                f"{pollutant}: {label}에서 기여농도 {item.predicted_concentration:.2f} {item.unit}, "
+                f"{kr_name}: {label}에서 기여농도 {item.predicted_concentration:.2f} {item.unit}, "
                 f"합산 {item.total_concentration:.2f} {item.unit}으로 예측되었다."
             )
 
         if item.exceeds_standard:
-            exceeded_items.append(pollutant)
+            exceeded_items.append(kr_name)
 
     if exceeded_items:
         names = ", ".join(exceeded_items)
         lines.append(
-            f"{names}의 경우 환경기준을 초과하므로 저감대책 검토 필요하다."
+            f"{names}의 경우 환경기준을 초과하므로 저감대책 검토가 필요하다."
         )
 
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def _generate_noise_prediction_narrative(prediction_result: "PredictionResult") -> str:
-    """소음 영향 예측 서술문을 생성한다.
-
-    점음원 거리감쇠 모델 결과를 기반으로 주간/야간 소음도를 서술한다.
-    """
+    """소음 영향 예측 서술문을 생성한다."""
     lines: list[str] = []
     lines.append(
         "점음원 거리감쇠 모델을 적용하여 소음 전파를 예측한 결과는 다음과 같다."
@@ -851,19 +1021,19 @@ def _generate_noise_prediction_narrative(prediction_result: "PredictionResult") 
         if not items:
             continue
 
-        # 가장 가까운 수음점 (최대 소음 지점)
         nearest = min(items, key=lambda x: x.distance_m if x.distance_m > 0 else float("inf"))
 
         if nearest.standard_value is not None:
             if nearest.exceeds_standard:
-                judgment = "초과하므로 방음대책 검토가 필요하다"
+                mitigation = get_mitigation(period_key)
+                judgment = f"초과하므로 {mitigation}의 수립이 필요하다"
             else:
                 judgment = "환경기준 이내이다"
             lines.append(
                 f"{period_label}: 가장 가까운 수음점({nearest.label})에서 예측 소음도는 "
                 f"{nearest.predicted_concentration:.1f} dB(A)이다. "
                 f"현황 소음({nearest.background_concentration:.1f} dB(A))과 에너지 합산 시 "
-                f"{nearest.total_concentration:.1f} dB(A)로 {judgment}."
+                f"{nearest.total_concentration:.1f} dB(A)로 {judgment}"
             )
         else:
             lines.append(
@@ -871,20 +1041,16 @@ def _generate_noise_prediction_narrative(prediction_result: "PredictionResult") 
                 f"합산 소음도 {nearest.total_concentration:.1f} dB(A)로 예측되었다."
             )
 
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def _generate_water_prediction_narrative(prediction_result: "PredictionResult") -> str:
-    """수질 영향 예측 서술문을 생성한다.
-
-    완전혼합 희석 모델 결과를 기반으로 BOD, COD 등 혼합 후 농도를 서술한다.
-    """
+    """수질 영향 예측 서술문을 생성한다."""
     lines: list[str] = []
     lines.append(
         "완전혼합 희석 모델을 적용하여 방류수 혼합 후 수질을 예측한 결과는 다음과 같다."
     )
 
-    # BOD, COD 병합 서술
     bod_item = next(
         (p for p in prediction_result.predictions if p.pollutant == "BOD"), None
     )
@@ -894,15 +1060,15 @@ def _generate_water_prediction_narrative(prediction_result: "PredictionResult") 
 
     if bod_item and cod_item:
         lines.append(
-            f"BOD {bod_item.total_concentration:.2f} {bod_item.unit}, "
-            f"COD {cod_item.total_concentration:.2f} {cod_item.unit}로 하천 생활환경기준 수준이다."
+            f"{get_korean_name('BOD')} {bod_item.total_concentration:.2f} {bod_item.unit}, "
+            f"{get_korean_name('COD')} {cod_item.total_concentration:.2f} {cod_item.unit}로 "
+            f"하천 생활환경기준 수준이다."
         )
     elif bod_item:
         lines.append(
-            f"BOD {bod_item.total_concentration:.2f} {bod_item.unit}으로 예측되었다."
+            f"{get_korean_name('BOD')} {bod_item.total_concentration:.2f} {bod_item.unit}으로 예측되었다."
         )
 
-    # 기타 항목 서술
     other_pollutants = ["SS", "T-N", "T-P"]
     other_parts: list[str] = []
     for pollutant in other_pollutants:
@@ -911,34 +1077,29 @@ def _generate_water_prediction_narrative(prediction_result: "PredictionResult") 
         )
         if item:
             other_parts.append(
-                f"{pollutant} {item.total_concentration:.2f} {item.unit}"
+                f"{get_korean_name(pollutant)} {item.total_concentration:.2f} {item.unit}"
             )
     if other_parts:
         lines.append(", ".join(other_parts) + "로 예측되었다.")
 
-    # 초과 항목 서술
     exceeded = [
         p for p in prediction_result.predictions
         if p.exceeds_standard
     ]
     if exceeded:
-        names = ", ".join(p.pollutant for p in exceeded)
+        names = ", ".join(get_korean_name(p.pollutant) for p in exceeded)
         lines.append(
             f"{names}의 경우 환경기준을 초과하므로 추가 처리 대책 검토가 필요하다."
         )
 
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def generate_prediction_narrative(
     section_key: str,
     prediction_result: "PredictionResult",
 ) -> str:
-    """예측 모델 결과를 기반으로 영향 예측 서술문을 생성한다.
-
-    섹션 키에 따라 대기질/소음/수질 전용 서술문을 생성하며,
-    해당 없는 섹션은 전문 분석 필요 안내 문구를 반환한다.
-    """
+    """예측 모델 결과를 기반으로 영향 예측 서술문을 생성한다."""
     if section_key == "air_quality":
         return _generate_air_prediction_narrative(prediction_result)
     elif section_key == "noise_vibration":

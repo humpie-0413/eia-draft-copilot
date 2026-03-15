@@ -1873,3 +1873,82 @@
 - `CLAUDE.md` — 전면 재작성
 - `docs/progress/NEXT_CHAT_BRIEF.md` — Doc-1 반영
 - `docs/progress/WORKLOG.md` — Doc-1 항목 추가
+
+---
+
+## LLM-Enhancement: 서술문 품질 최종 개선 ✅
+
+### 완료 항목
+
+#### 1. 지표 한글명 매핑 모듈 (신규)
+- `backend/app/data/indicator_names.py` 신규 생성
+- `INDICATOR_KOREAN_NAMES` 딕셔너리: 28개 지표 한글 매핑
+  - 대기: PM10→미세먼지(PM10), NO2→이산화질소(NO₂), SO2→아황산가스(SO₂), O3→오존(O₃) 등
+  - 수질: BOD→생물화학적산소요구량(BOD), COD→화학적산소요구량(COD), T-P→총인(T-P) 등
+  - 토양: Cd→카드뮴(Cd), Pb→납(Pb), Cr6+→6가크롬(Cr⁶⁺), pH→수소이온농도(pH) 등
+  - 소음: 소음_Leq_주간→주간 등가소음도(Leq), 소음_Leq_야간→야간 등가소음도(Leq)
+- `MITIGATION_MEASURES` 딕셔너리: 지표별 저감방안 기본 문구
+  - PM10/PM2.5: 비산먼지 저감대책(살수, 세륜시설)
+  - NO2: 저녹스(Low-NOx) 버너
+  - 소음: 방음벽, 방음림, 저소음 장비
+  - 토양: 정밀조사 및 오염토양 정화대책
+- `get_korean_name()`, `get_mitigation()` 함수 제공
+
+#### 2. 서술문 템플릿 전면 개선 (narrative_generator.py)
+- **공통 개선사항**:
+  - 한글 지표명 적용 (`get_korean_name()`)
+  - 기준 대비 백분율(%) 표시 (`_pct()` 함수)
+  - 적합 지표 한 문장 묶기 (pass_parts)
+  - 초과 지표 별도 문단 + 저감방안 (`get_mitigation()`)
+  - 종합 판단문 필수 포함
+  - 법률명에 「」기호 적용: 「환경정책기본법」, 「토양환경보전법」 등
+  - 문단 구분 `\n` → `\n\n` 변경
+- **섹션별 전용 서술문**:
+  - 대기질: PM10/PM2.5 우선, 초과 시 "기준 대비 N% 수준으로 초과"
+  - 수질: BOD/COD 병합 서술 + 등급 판정, 기타 지표 적합/초과 분리
+  - 소음·진동: 주간/야간 분리, 법적 지역 기준 포함, 진동 추가 서술
+  - 생태: 「자연환경보전법」, 「야생생물 보호 및 관리에 관한 법률」 참조
+  - 토지이용: 「국토의 계획 및 이용에 관한 법률」 참조
+  - 문화재: 「문화재보호법」 참조, 500m 이내 현상변경 허가 안내
+  - 교통: AADT, 도로등급, 교통 영향 종합 판단
+  - 폐기물: 「폐기물관리법」 참조, 건설/생활/음식물 분리 서술
+  - 범용(토양 등): 법적 근거 있으면 개별 상세 서술, 없으면 묶음 서술
+- **범용 서술문 버그 수정**: FAIL 상태 판정이 `legal_basis` 존재 여부에 의존하던 문제 수정
+
+#### 3. LLM 시스템 프롬프트 고도화
+- `openai_adapter.py`, `gemini_adapter.py` 공통 10개 규칙 프롬프트 적용:
+  1. 수치 변경 금지
+  2. 데이터에 없는 내용 추가 금지
+  3. 「」 기호 법적 근거 유지
+  4. 한글 공식 지표명 사용
+  5. 환경기준 대비 백분율 포함
+  6. 적합 지표 한 문장 묶기
+  7. 초과 지표 저감방안 언급
+  8. 종합 판단문 필수
+  9. 전문적·객관적 보고서 문체
+  10. 평가서 특유 어미 사용
+
+#### 4. Export 한글 지표명 적용 (export_service.py)
+- DOCX 4개소: 통계 테이블, 환경기준 테이블, 증거 테이블, 부록 A 테이블
+- PDF 4개소: 동일 구조
+
+#### 5. Scaffold 한글 지표명 적용 (draft_scaffold.py)
+- 통계 요약 테이블 + 상세 샘플에 한글 지표명 적용
+
+#### 6. 예측 서술문 저감방안 매핑 반영 (test_prediction_narrative.py)
+- 소음 초과 시 "방음대책" → "소음저감대책" 또는 "방음벽" 검증으로 수정
+
+### 테스트
+- 616개 전체 통과 (기존 612 + 신규 4)
+  - `TestIndicatorKoreanNames`: 한글 매핑 4개 테스트
+  - 기존 55개 서술문 테스트 전면 갱신 (새 포맷 반영)
+
+### 주요 파일
+- `backend/app/data/indicator_names.py` (신규)
+- `backend/app/services/narrative_generator.py` (전면 개선)
+- `backend/app/llm/openai_adapter.py` (프롬프트 교체)
+- `backend/app/llm/gemini_adapter.py` (프롬프트 교체)
+- `backend/app/services/export_service.py` (한글 지표명 8개소)
+- `backend/app/services/draft_scaffold.py` (한글 지표명 적용)
+- `backend/tests/test_narrative_generator.py` (전면 갱신)
+- `backend/tests/test_prediction_narrative.py` (저감방안 검증 수정)

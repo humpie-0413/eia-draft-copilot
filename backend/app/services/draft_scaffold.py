@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.data.indicator_names import get_korean_name
 from app.crud import draft_narrative as draft_narrative_crud
 from app.models.evidence import Evidence
 from app.models.project import Project
@@ -167,12 +168,12 @@ def _format_stats_summary(
                     status_str = "-"
                     legal_short = "-"
                 lines.append(
-                    f"{s.indicator} | {mean_str} | {max_str} | {min_str} | "
+                    f"{get_korean_name(s.indicator)} | {mean_str} | {max_str} | {min_str} | "
                     f"{s.count} | {std_str} | {status_str} | {legal_short} | {period}"
                 )
             else:
                 lines.append(
-                    f"{s.indicator} | {mean_str} | {max_str} | {min_str} | {s.count} | {period}"
+                    f"{get_korean_name(s.indicator)} | {mean_str} | {max_str} | {min_str} | {s.count} | {period}"
                 )
         lines.append("")
 
@@ -202,7 +203,7 @@ def _format_stats_summary(
     for entry in sample_entries:
         date_part = f" (관측: {entry.observed_at[:10]})" if entry.observed_at else ""
         unit_part = f" {entry.unit}" if entry.unit else ""
-        lines.append(f"  - {entry.indicator}: {entry.value}{unit_part}{date_part}")
+        lines.append(f"  - {get_korean_name(entry.indicator)}: {entry.value}{unit_part}{date_part}")
 
     if len(entries) > MAX_DETAIL_SAMPLES:
         lines.append(f"  ... 외 {len(entries) - MAX_DETAIL_SAMPLES}건은 별첨 참조")
@@ -330,7 +331,8 @@ async def generate_section_scaffold(
         db, project_id, section_key
     )
     if saved_narrative:
-        _LEGAL_KEYWORDS = ("환경정책기본법", "토양환경보전법", "환경영향평가법")
+        _LEGAL_KEYWORDS = ("환경정책기본법", "토양환경보전법", "환경영향평가법",
+                           "「환경정책기본법」", "「토양환경보전법」", "「환경영향평가법」")
         if any(kw in saved_narrative.narrative_text for kw in _LEGAL_KEYWORDS):
             narrative = saved_narrative.narrative_text
         else:

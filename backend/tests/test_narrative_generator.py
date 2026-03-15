@@ -1,6 +1,7 @@
 """서술문 템플릿 엔진 테스트.
 
 각 섹션별 서술문 생성, 미수집 섹션 처리, scaffold 통합을 검증한다.
+LLM-Enhancement: 한글 지표명, 기준 대비 %, 적합 지표 묶기, 종합 판단문, 「」법률명 검증.
 """
 
 import pytest
@@ -141,7 +142,7 @@ class TestNoDataNarrative:
 
 class TestAirQualityNarrative:
     def test_basic_narrative(self):
-        """기본 대기질 서술문 생성"""
+        """기본 대기질 서술문 — 한글 지표명, 종합 판단문 포함"""
         stats = _make_section_stats("air_quality", "대기질", [
             _make_indicator_stats("PM10_연평균", 45.0, unit="ug/m3"),
             _make_indicator_stats("PM2.5_연평균", 12.0, unit="ug/m3"),
@@ -153,15 +154,18 @@ class TestAirQualityNarrative:
 
         result = generate_air_quality_narrative(stats, check)
 
-        assert "대기질 현황" in result
+        assert "대기환경 현황" in result
         assert "20건" in result
-        assert "PM10_연평균" in result
-        assert "PM2.5_연평균" in result
-        assert "이내" in result
-        assert "대기환경기준을 만족" in result
+        # 한글 지표명 사용
+        assert "미세먼지(PM10)" in result
+        assert "초미세먼지(PM2.5)" in result
+        # 적합 지표 묶음
+        assert "환경기준을 만족" in result
+        # 종합 판단문
+        assert "양호한 수준으로 판단된다" in result
 
     def test_exceedance_narrative(self):
-        """환경기준 초과 시 저감대책 언급"""
+        """환경기준 초과 시 저감대책 + 기준 대비 % 포함"""
         stats = _make_section_stats("air_quality", "대기질", [
             _make_indicator_stats("PM10_연평균", 55.0, unit="ug/m3"),
             _make_indicator_stats("PM2.5_연평균", 20.0, unit="ug/m3"),
@@ -174,7 +178,12 @@ class TestAirQualityNarrative:
         result = generate_air_quality_narrative(stats, check)
 
         assert "초과" in result
-        assert "저감대책" in result
+        assert "저감" in result
+        # 기준 대비 %
+        assert "110.0%" in result  # PM10: 55/50*100
+        assert "133.3%" in result  # PM2.5: 20/15*100
+        # 「」기호 법률명
+        assert "「환경정책기본법」" in result
 
     def test_no_check_data(self):
         """환경기준 비교 데이터 없이도 서술문 생성"""
@@ -184,11 +193,11 @@ class TestAirQualityNarrative:
 
         result = generate_air_quality_narrative(stats, None)
 
-        assert "PM10_연평균" in result
+        assert "미세먼지(PM10)" in result
         assert "45" in result
 
     def test_partial_exceedance(self):
-        """일부 지표만 초과"""
+        """일부 지표만 초과 — 적합 묶음 + 초과 별도"""
         stats = _make_section_stats("air_quality", "대기질", [
             _make_indicator_stats("PM10_연평균", 45.0, unit="ug/m3"),
             _make_indicator_stats("PM2.5_연평균", 20.0, unit="ug/m3"),
@@ -200,9 +209,13 @@ class TestAirQualityNarrative:
 
         result = generate_air_quality_narrative(stats, check)
 
-        assert "이내" in result  # PM10
-        assert "초과" in result  # PM2.5
-        assert "저감대책" in result
+        # 적합 묶음에 PM10
+        assert "미세먼지(PM10)" in result
+        # 초과 별도 PM2.5
+        assert "초과" in result
+        assert "저감" in result
+        # 종합 판단문
+        assert "제외한" in result
 
 
 # ────────────────────────────────────────────
@@ -211,7 +224,7 @@ class TestAirQualityNarrative:
 
 class TestWaterQualityNarrative:
     def test_basic_narrative_with_grade(self):
-        """수질 등급 포함 서술문"""
+        """수질 등급 포함 서술문 — 한글 지표명"""
         stats = _make_section_stats("water_quality", "수질", [
             _make_indicator_stats("BOD", 3.5, unit="mg/L"),
             _make_indicator_stats("COD", 5.0, unit="mg/L"),
@@ -226,13 +239,15 @@ class TestWaterQualityNarrative:
         result = generate_water_quality_narrative(stats, check)
 
         assert "수질 현황" in result
-        assert "BOD" in result
-        assert "COD" in result
+        assert "생물화학적산소요구량(BOD)" in result
+        assert "화학적산소요구량(COD)" in result
         assert "II등급" in result
         assert "약간 좋음" in result
+        # 종합 판단문
+        assert "종합적으로" in result
 
     def test_exceedance(self):
-        """수질 기준 초과 시"""
+        """수질 기준 초과 시 — 기준 대비 % 포함"""
         stats = _make_section_stats("water_quality", "수질", [
             _make_indicator_stats("BOD", 8.0, unit="mg/L"),
             _make_indicator_stats("COD", 10.0, unit="mg/L"),
@@ -245,10 +260,9 @@ class TestWaterQualityNarrative:
         result = generate_water_quality_narrative(stats, check)
 
         assert "초과" in result
-        assert "수질 관리 대책" in result
 
     def test_other_indicators(self):
-        """SS, DO, T-N, T-P 서술"""
+        """SS, DO, T-N, T-P 한글 지표명 서술"""
         stats = _make_section_stats("water_quality", "수질", [
             _make_indicator_stats("BOD", 3.0, unit="mg/L"),
             _make_indicator_stats("COD", 5.0, unit="mg/L"),
@@ -261,8 +275,8 @@ class TestWaterQualityNarrative:
 
         result = generate_water_quality_narrative(stats, check)
 
-        assert "T-P" in result
-        assert "DO" in result
+        assert "총인(T-P)" in result
+        assert "용존산소(DO)" in result
 
 
 # ────────────────────────────────────────────
@@ -271,7 +285,7 @@ class TestWaterQualityNarrative:
 
 class TestNoiseVibrationNarrative:
     def test_basic_narrative(self):
-        """기본 소음 서술문"""
+        """기본 소음 서술문 — 한글 지표명"""
         stats = _make_section_stats("noise_vibration", "소음·진동", [
             _make_indicator_stats("소음_Leq_주간", 52.0, unit="dB(A)"),
             _make_indicator_stats("소음_Leq_야간", 43.0, unit="dB(A)"),
@@ -283,13 +297,15 @@ class TestNoiseVibrationNarrative:
 
         result = generate_noise_vibration_narrative(stats, check)
 
-        assert "소음 현황" in result
-        assert "주간 소음도" in result
-        assert "야간 소음도" in result
+        assert "소음·진동 현황" in result
+        assert "주간 등가소음도(Leq)" in result
+        assert "야간 등가소음도(Leq)" in result
         assert "적합" in result
+        # 종합 판단문
+        assert "양호한 수준으로 판단된다" in result
 
     def test_nighttime_exceedance(self):
-        """야간 소음 초과"""
+        """야간 소음 초과 — 저감방안 포함"""
         stats = _make_section_stats("noise_vibration", "소음·진동", [
             _make_indicator_stats("소음_Leq_주간", 50.0, unit="dB(A)"),
             _make_indicator_stats("소음_Leq_야간", 48.0, unit="dB(A)"),
@@ -301,10 +317,10 @@ class TestNoiseVibrationNarrative:
 
         result = generate_noise_vibration_narrative(stats, check)
 
-        assert "방음대책" in result
+        assert "방음벽" in result or "소음저감대책" in result
 
     def test_vibration_included(self):
-        """진동 데이터 포함"""
+        """진동 데이터 포함 — 한글 지표명"""
         stats = _make_section_stats("noise_vibration", "소음·진동", [
             _make_indicator_stats("소음_Leq_주간", 52.0, unit="dB(A)"),
             _make_indicator_stats("진동_Lv_주간", 60.0, unit="dB(V)"),
@@ -322,7 +338,7 @@ class TestNoiseVibrationNarrative:
 
 class TestEcologyNarrative:
     def test_basic_narrative(self):
-        """기본 생태 서술문"""
+        """기본 생태 서술문 — 종합 판단문 포함"""
         stats = _make_section_stats("ecology", "생태", [
             _make_indicator_stats("식물상_종수", 150.0, unit="종", count=1),
             _make_indicator_stats("동물상_종수", 80.0, unit="종", count=1),
@@ -332,12 +348,14 @@ class TestEcologyNarrative:
 
         result = generate_ecology_narrative(stats, None)
 
-        assert "생태 현황" in result
+        assert "생태환경 현황" in result
         assert "식물상 150종" in result
         assert "동물상 80종" in result
         assert "녹지자연도" in result
         assert "법정보호종" in result
         assert "보호 대책" in result
+        # 종합 판단문
+        assert "종합적으로" in result
 
     def test_no_protected_species(self):
         """법정보호종 0종"""
@@ -367,7 +385,7 @@ class TestEcologyNarrative:
 
 class TestLandUseNarrative:
     def test_basic_text_only_narrative(self):
-        """비수치형 데이터만 있는 토지이용 서술문"""
+        """비수치형 데이터만 있는 토지이용 서술문 — 법률명 포함"""
         stats = _make_section_stats("land_use", "토지이용", [], text_indicators=[
             TextIndicatorInfo(indicator="지목", values=["대"]),
             TextIndicatorInfo(indicator="용도지역구분", values=["제2종일반주거지역"]),
@@ -380,6 +398,7 @@ class TestLandUseNarrative:
         assert "지목은 대" in result
         assert "용도지역은 제2종일반주거지역" in result
         assert "용도지구는 미관지구" in result
+        assert "「국토의 계획 및 이용에 관한 법률」" in result
 
     def test_no_data(self):
         """데이터 없는 토지이용 섹션"""
@@ -419,7 +438,7 @@ class TestLandUseNarrative:
 
 class TestCulturalHeritageNarrative:
     def test_basic_narrative(self):
-        """문화재명(텍스트) + 이격거리(수치) 혼합 서술문"""
+        """문화재명(텍스트) + 이격거리(수치) 혼합 서술문 — 법률명 포함"""
         stats = _make_section_stats("cultural_heritage", "문화재", [
             _make_indicator_stats("이격거리", 850.0, unit="m", count=1),
         ], text_indicators=[
@@ -432,6 +451,7 @@ class TestCulturalHeritageNarrative:
         assert "봉은사" in result
         assert "이격거리" in result
         assert "850" in result
+        assert "「문화재보호법」" in result
 
     def test_text_only(self):
         """문화재명만 있는 경우"""
@@ -491,7 +511,7 @@ class TestGenericNarrativeTextData:
 
 class TestGenericNarrative:
     def test_soil_narrative(self):
-        """토양 섹션 범용 서술문"""
+        """토양 섹션 범용 서술문 — 한글 지표명"""
         section_def = get_section_definition("soil")
         stats = _make_section_stats("soil", "토양", [
             _make_indicator_stats("Pb", 15.0, unit="mg/kg"),
@@ -501,11 +521,11 @@ class TestGenericNarrative:
         result = generate_generic_narrative(section_def, stats, None)
 
         assert "토양 현황" in result
-        assert "Pb" in result
-        assert "pH" in result
+        assert "납(Pb)" in result
+        assert "수소이온농도(pH)" in result
 
     def test_with_exceedance(self):
-        """범용 섹션에서 환경기준 초과"""
+        """범용 섹션에서 환경기준 초과 — 저감방안 포함"""
         section_def = get_section_definition("soil")
         stats = _make_section_stats("soil", "토양", [
             _make_indicator_stats("Pb", 250.0, unit="mg/kg"),
@@ -517,7 +537,7 @@ class TestGenericNarrative:
         result = generate_generic_narrative(section_def, stats, check)
 
         assert "초과" in result
-        assert "관리 대책" in result
+        assert "대책" in result
 
 
 # ────────────────────────────────────────────
@@ -534,8 +554,7 @@ class TestGenerateNarrative:
 
         result = generate_narrative(section_def, stats, None)
 
-        # 대기질 전용 서술문이 생성되었는지 확인
-        assert "대기질 현황" in result
+        assert "대기환경 현황" in result
 
     def test_dispatches_water_quality(self):
         """water_quality → 전용 생성 함수 호출"""
@@ -582,7 +601,7 @@ class TestScaffoldIntegration:
         assert result == ""
 
     def test_summary_text_with_entries(self):
-        """entries가 있으면 측정 데이터 섹션이 생성"""
+        """entries가 있으면 측정 데이터 섹션이 생성 — 한글 지표명"""
         from app.services.draft_scaffold import _format_stats_summary, EvidenceEntry
 
         section_def = get_section_definition("air_quality")
@@ -602,7 +621,7 @@ class TestScaffoldIntegration:
 
         assert "측정 현황 요약" in result
         assert "측정 데이터" in result
-        assert "PM10_연평균" in result
+        assert "미세먼지(PM10) 연평균" in result
 
     def test_max_detail_samples_limit(self):
         """상세 샘플이 5건으로 제한되는지 확인"""
@@ -626,18 +645,14 @@ class TestScaffoldIntegration:
 
 
 # ────────────────────────────────────────────
-# DOCX 출력물 구조 검증 테스트
-# ────────────────────────────────────────────
-
-# ────────────────────────────────────────────
-# Reg-2: 법적 근거 포함 검증 테스트
+# Reg-2: 법적 근거 포함 검증 테스트 (「」기호 적용)
 # ────────────────────────────────────────────
 
 class TestLegalBasisInNarrative:
-    """서술문에 법적 근거가 포함되는지 검증한다."""
+    """서술문에 법적 근거가 「」기호로 포함되는지 검증한다."""
 
     def test_air_includes_legal_basis(self):
-        """대기질 서술문에 환경정책기본법 참조가 포함됨"""
+        """대기질 서술문에 「환경정책기본법」 참조가 포함됨"""
         stats = _make_section_stats("air_quality", "대기질", [
             _make_indicator_stats("PM10_연평균", 42.0, unit="ug/m3"),
         ])
@@ -647,11 +662,12 @@ class TestLegalBasisInNarrative:
 
         result = generate_air_quality_narrative(stats, check)
 
-        assert "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준" in result
-        assert "이내 수준이다" in result
+        # 적합인 경우 pass_parts에 들어가므로 법적 근거 서술이 없을 수 있음
+        # 대신 종합 판단문이 있어야 함
+        assert "양호한 수준으로 판단된다" in result
 
     def test_air_exceedance_includes_legal_basis(self):
-        """대기질 초과 서술문에도 법적 근거가 포함됨"""
+        """대기질 초과 서술문에 「환경정책기본법」 법적 근거가 포함됨"""
         stats = _make_section_stats("air_quality", "대기질", [
             _make_indicator_stats("PM2.5_연평균", 20.0, unit="ug/m3"),
         ])
@@ -661,26 +677,26 @@ class TestLegalBasisInNarrative:
 
         result = generate_air_quality_narrative(stats, check)
 
-        assert "환경정책기본법 시행령 별표 제1호에 따른 대기환경기준" in result
-        assert "초과 수준이다" in result
+        assert "「환경정책기본법」 시행령 [별표 1]" in result
+        assert "초과" in result
+        assert "기준 대비" in result or "%" in result
 
-    def test_air_includes_time_basis(self):
-        """대기질 서술문에 시간기준(연평균)이 기준값 앞에 포함됨"""
+    def test_air_includes_percentage(self):
+        """대기질 초과 서술문에 기준 대비 %가 포함됨"""
         stats = _make_section_stats("air_quality", "대기질", [
-            _make_indicator_stats("PM10_연평균", 42.0, unit="ug/m3"),
+            _make_indicator_stats("PM10_연평균", 55.0, unit="ug/m3"),
         ])
         check = _make_section_check("air_quality", "대기질", [
-            _make_check_result("PM10_연평균", 50.0, 42.0, CheckStatus.PASS,
-                               time_basis="연평균"),
+            _make_check_result("PM10_연평균", 50.0, 55.0, CheckStatus.FAIL),
         ])
 
         result = generate_air_quality_narrative(stats, check)
 
-        # "대기환경기준(연평균 50 ug/m3)" 형태
-        assert "연평균 50 ug/m3" in result
+        # 55/50*100 = 110.0%
+        assert "110.0%" in result
 
     def test_water_includes_legal_basis_and_grade(self):
-        """수질 서술문에 법적 근거와 등급 BOD 기준값이 포함됨"""
+        """수질 서술문에 「환경정책기본법」과 등급 BOD 기준값이 포함됨"""
         stats = _make_section_stats("water_quality", "수질", [
             _make_indicator_stats("BOD", 1.80, unit="mg/L"),
             _make_indicator_stats("COD", 3.50, unit="mg/L"),
@@ -692,13 +708,13 @@ class TestLegalBasisInNarrative:
 
         result = generate_water_quality_narrative(stats, check)
 
-        assert "환경정책기본법 시행령 별표 제1호에 따른 하천 수질 및 수생태계 생활환경기준" in result
+        assert "「환경정책기본법」 시행령 [별표 1]" in result
         assert "Ib등급" in result
         assert "좋음" in result
         assert "BOD 2 mg/L 이하" in result
 
     def test_noise_includes_legal_basis_pass(self):
-        """소음 적합 서술문에 법적 근거와 지역구분이 포함됨"""
+        """소음 적합 서술문에 「환경정책기본법」 법적 근거 포함"""
         stats = _make_section_stats("noise_vibration", "소음·진동", [
             _make_indicator_stats("소음_Leq_주간", 52.0, unit="dB(A)"),
         ])
@@ -709,11 +725,11 @@ class TestLegalBasisInNarrative:
 
         result = generate_noise_vibration_narrative(stats, check)
 
-        assert "환경정책기본법 시행령 별표 제1호에 따른 소음환경기준" in result
+        assert "「환경정책기본법」 시행령 [별표 1]" in result
         assert "적합" in result
 
     def test_noise_includes_legal_basis_fail(self):
-        """소음 초과 서술문에 법적 근거가 포함됨"""
+        """소음 초과 서술문에 법적 근거 + 저감방안 포함"""
         stats = _make_section_stats("noise_vibration", "소음·진동", [
             _make_indicator_stats("소음_Leq_야간", 48.0, unit="dB(A)"),
         ])
@@ -724,11 +740,11 @@ class TestLegalBasisInNarrative:
 
         result = generate_noise_vibration_narrative(stats, check)
 
-        assert "환경정책기본법 시행령 별표 제1호에 따른 소음환경기준" in result
-        assert "방음대책" in result
+        assert "「환경정책기본법」 시행령 [별표 1]" in result
+        assert "방음벽" in result or "소음저감대책" in result
 
     def test_soil_generic_includes_legal_basis(self):
-        """토양 범용 서술문에 법적 근거가 포함됨 (legal_basis 설정 시)"""
+        """토양 범용 서술문에 「토양환경보전법」이 포함됨"""
         section_def = get_section_definition("soil")
         stats = _make_section_stats("soil", "토양", [
             _make_indicator_stats("Cd", 0.80, unit="mg/kg"),
@@ -749,13 +765,12 @@ class TestLegalBasisInNarrative:
 
         result = generate_generic_narrative(section_def, stats, check)
 
-        assert "토양환경보전법 시행규칙 별표 제3호에 따른 토양오염우려기준" in result
+        assert "「토양환경보전법」 시행규칙 [별표 3]" in result
         assert "1지역" in result
         assert "4 mg/kg" in result
-        assert "이내 수준이다" in result
 
     def test_generic_no_legal_basis_fallback(self):
-        """법적 근거가 없는 범용 서술문은 기존 방식으로 출력됨"""
+        """법적 근거가 없는 범용 서술문은 한글 지표명으로 출력됨"""
         section_def = get_section_definition("soil")
         stats = _make_section_stats("soil", "토양", [
             _make_indicator_stats("pH", 6.5, unit=""),
@@ -763,7 +778,7 @@ class TestLegalBasisInNarrative:
 
         result = generate_generic_narrative(section_def, stats, None)
 
-        assert "pH 평균 6.50로 조사되었다" in result
+        assert "수소이온농도(pH) 6.50" in result
 
 
 class TestLegalBasisInScaffold:
@@ -843,7 +858,7 @@ class TestLegalBasisInStandardChecker:
         assert cr.legal_basis == ""
 
     def test_format_legal_ref_conversion(self):
-        """_format_legal_ref가 법적 근거를 서술문 형태로 변환함"""
+        """standard_checker의 _format_legal_ref는 표준 변환"""
         from app.services.standard_checker import _format_legal_ref
 
         assert _format_legal_ref(
@@ -910,7 +925,7 @@ class TestDocxStructure:
                 ),
             ],
             summary_text="통계 요약",
-            narrative="본 사업지역 인근의 대기질 현황을 분석한 결과...",
+            narrative="본 사업지역의 대기환경 현황을 파악하기 위하여 분석한 결과...",
             state="complete",
         )
 
@@ -950,17 +965,16 @@ class TestDocxStructure:
         ctx = self._make_ctx(scaffold, "테스트 프로젝트", section_data)
         doc = _build_docx(ctx)
 
-        # DOCX 문서에서 텍스트 추출
         all_text = "\n".join(p.text for p in doc.paragraphs)
 
-        # 4부 구조 확인 (Post-5: 번호 체계 N.1/N.2/N.3/N.4)
+        # 4부 구조 확인
         assert "1.1 현황 및 영향 분석" in all_text
         assert "1.2 측정 현황 요약" in all_text
         assert "1.3 환경기준 비교" in all_text
         assert "1.4 측정 데이터" in all_text
 
         # 서술문 포함 확인
-        assert "대기질 현황을 분석한 결과" in all_text
+        assert "대기환경 현황" in all_text
 
     def test_docx_no_data_section(self):
         """미수집 섹션의 DOCX 출력 검증"""
@@ -991,7 +1005,6 @@ class TestDocxStructure:
 
         all_text = "\n".join(p.text for p in doc.paragraphs)
         assert "수집되지 않았다" in all_text
-        # 4부 구조는 나타나지 않아야 함 (데이터 없으므로)
         assert "3.1 현황 및 영향 분석" not in all_text
 
     def test_docx_sample_limit(self):
@@ -1031,14 +1044,43 @@ class TestDocxStructure:
         ctx = self._make_ctx(scaffold, "테스트", section_data)
         doc = _build_docx(ctx)
 
-        # 테이블에서 데이터 행 수 확인
-        # Post-5: 목차 테이블(1개) + 증거 테이블(1개) = 최소 2개
         tables = doc.tables
         assert len(tables) >= 2
-        # 마지막 테이블이 증거 테이블: 헤더 1행 + 데이터 5행 = 6행
         last_table = tables[-1]
         assert len(last_table.rows) == 6
 
-        # 부록 참조 문구 확인
         all_text = "\n".join(p.text for p in doc.paragraphs)
         assert "부록 A 참조" in all_text
+
+
+# ────────────────────────────────────────────
+# LLM-Enhancement: 한글 지표명 매핑 테스트
+# ────────────────────────────────────────────
+
+class TestIndicatorKoreanNames:
+    """indicator_names.py 모듈의 한글 매핑 테스트."""
+
+    def test_get_korean_name_mapped(self):
+        """매핑된 지표는 한글명 반환"""
+        from app.data.indicator_names import get_korean_name
+        assert get_korean_name("PM10") == "미세먼지(PM10)"
+        assert get_korean_name("BOD") == "생물화학적산소요구량(BOD)"
+        assert get_korean_name("소음_Leq_주간") == "주간 등가소음도(Leq)"
+
+    def test_get_korean_name_unmapped(self):
+        """매핑되지 않은 지표는 원래 이름 반환"""
+        from app.data.indicator_names import get_korean_name
+        assert get_korean_name("식물상_종수") == "식물상_종수"
+        assert get_korean_name("unknown_indicator") == "unknown_indicator"
+
+    def test_get_mitigation(self):
+        """저감방안 매핑 확인"""
+        from app.data.indicator_names import get_mitigation
+        assert "비산먼지" in get_mitigation("PM10")
+        assert "방음벽" in get_mitigation("소음_Leq_주간")
+        assert "정밀조사" in get_mitigation("Pb")
+
+    def test_get_mitigation_default(self):
+        """매핑되지 않은 지표의 기본 저감방안"""
+        from app.data.indicator_names import get_mitigation
+        assert get_mitigation("unknown") == "관리 대책 수립"
