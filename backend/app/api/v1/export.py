@@ -104,11 +104,13 @@ async def export_docx(
     include_appendix_a: bool = Query(True, description="부록 A: 상세 측정 데이터 포함"),
     include_appendix_b: bool = Query(True, description="부록 B: 유사사례 매칭 결과 포함"),
     include_appendix_c: bool = Query(True, description="부록 C: QA 검사 결과 포함"),
+    skip_qa_check: bool = Query(False, description="QA 검사 건너뛰기 (데모/테스트용)"),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """초안 뼈대를 DOCX 문서로 출력한다.
 
     critical QA 이슈가 있으면 export가 차단된다(Export Gate).
+    skip_qa_check=true 시 QA 검사를 건너뛴다.
     """
     project = await get_project(db, project_id)
     if project is None:
@@ -122,7 +124,7 @@ async def export_docx(
 
     try:
         buffer, filename = await generate_docx(
-            db, project, options=options
+            db, project, options=options, skip_qa_check=skip_qa_check
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -148,11 +150,13 @@ async def export_pdf(
     include_appendix_a: bool = Query(True, description="부록 A: 상세 측정 데이터 포함"),
     include_appendix_b: bool = Query(True, description="부록 B: 유사사례 매칭 결과 포함"),
     include_appendix_c: bool = Query(True, description="부록 C: QA 검사 결과 포함"),
+    skip_qa_check: bool = Query(False, description="QA 검사 건너뛰기 (데모/테스트용)"),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """초안 뼈대를 PDF 문서로 출력한다.
 
     critical QA 이슈가 있으면 export가 차단된다(Export Gate).
+    skip_qa_check=true 시 QA 검사를 건너뛴다.
     """
     project = await get_project(db, project_id)
     if project is None:
@@ -166,7 +170,7 @@ async def export_pdf(
 
     try:
         buffer, filename = await generate_pdf(
-            db, project, options=options
+            db, project, options=options, skip_qa_check=skip_qa_check
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
