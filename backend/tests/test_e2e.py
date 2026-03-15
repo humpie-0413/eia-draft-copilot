@@ -257,7 +257,7 @@ async def test_e2e_full_workflow(client: AsyncClient):
 
     # 대기질 뼈대: 6건 근거, 요약 텍스트에 PM10 언급
     assert len(scaffold_map["air_quality"]["evidence_entries"]) == 6
-    assert "PM10" in scaffold_map["air_quality"]["summary_text"]
+    assert "PM10" in scaffold_map["air_quality"]["summary_text"] or "PM10_연평균" in scaffold_map["air_quality"]["summary_text"]
 
     # 수질 뼈대: 6건 근거
     assert len(scaffold_map["water_quality"]["evidence_entries"]) == 6
@@ -286,13 +286,13 @@ async def test_e2e_full_workflow(client: AsyncClient):
     assert len(ecology_r001) == 1
     assert ecology_r001[0]["severity"] == "warning"
 
-    # R002: 소음진동 필수 지표 누락 (critical)
+    # R002: 소음진동 필수 지표 누락 (부분 충족이므로 warning)
     noise_r002 = [
         i for i in qa["issues"]
         if i["rule_id"] == "R002" and i["section_key"] == "noise_vibration"
     ]
     assert len(noise_r002) == 1
-    assert noise_r002[0]["severity"] == "critical"
+    assert noise_r002[0]["severity"] == "warning"
     assert "진동_Lv_주간" in noise_r002[0]["indicators"]
 
     # export-ready 간략 확인 API

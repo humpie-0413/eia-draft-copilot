@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     LLM_ADAPTER: str = "none"
 
     # API 호출 타임아웃 (초)
-    CONNECTOR_TIMEOUT: int = 30
+    CONNECTOR_TIMEOUT: int = 60
 
     # Sync URL for Alembic (asyncpg → psycopg2)
     @property

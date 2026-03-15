@@ -94,7 +94,7 @@ class TestKecoAirConnector:
             snapshot_id=self.snapshot_id,
         )
 
-        pm10 = next(e for e in evidences if e.indicator == "PM10")
+        pm10 = next(e for e in evidences if e.indicator == "PM10_연평균")
         assert pm10.value == "45"
         assert pm10.numeric_value == 45.0
         assert pm10.unit == "ug/m3"
@@ -138,7 +138,7 @@ class TestKecoAirConnector:
         second_pm25 = [
             e
             for e in evidences
-            if e.indicator == "PM2.5"
+            if e.indicator == "PM2.5_연평균"
             and e.metadata_json.get("data_time") == "2026-03-12 13:00"
         ]
         assert len(second_pm25) == 0

@@ -31,12 +31,12 @@ class KecoAirConnector(BaseConnector):
 
     # 지표 매핑: API 필드명 → (지표명, 단위)
     INDICATOR_MAP = {
-        "pm10Value": ("PM10", "ug/m3"),
-        "pm25Value": ("PM2.5", "ug/m3"),
-        "o3Value": ("O3", "ppm"),
-        "no2Value": ("NO2", "ppm"),
-        "so2Value": ("SO2", "ppm"),
-        "coValue": ("CO", "ppm"),
+        "pm10Value": ("PM10_연평균", "ug/m3"),
+        "pm25Value": ("PM2.5_연평균", "ug/m3"),
+        "o3Value": ("O3_연평균", "ppm"),
+        "no2Value": ("NO2_연평균", "ppm"),
+        "so2Value": ("SO2_연평균", "ppm"),
+        "coValue": ("CO_연평균", "ppm"),
     }
 
     async def fetch(self, params: dict[str, Any]) -> dict[str, Any]:

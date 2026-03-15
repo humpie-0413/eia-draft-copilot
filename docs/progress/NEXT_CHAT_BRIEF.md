@@ -1,34 +1,54 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Demo-1: 통합 데모 전체 실행 성공 + 버그 수정** ✅
+**Doc-1: CLAUDE.md 전면 업데이트** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
 - Post-0.5 ~ Post-11: Post-MVP 개선 완료 ✅
 - Reg-0~Reg-5: 법령 반영 완료 ✅
-- Pred-1: 예측 모듈 + 대기 확산 모델 ✅
-- Pred-2: 소음 전파 + 수질 혼합 모델 ✅
-- Pred-3: 예측 결과 통합 — ScaffoldSection + Export + API 스키마 ✅
-- Conn-1: 추가 커넥터 확장 — 교통/폐기물 커넥터 + 미수집 서술문 개선 ✅
-- Final-1: 통합 검증 + 문서화 ✅
-- Final-2: 배포 전 최종 검증 + 문서 갱신 ✅
-- Conn-2: 비활성 커넥터 복구 + 토지이용규제정보 커넥터 추가 ✅
-- Demo-1: 통합 데모 전체 실행 성공 + 버그 수정 ✅
+- Pred-1~Pred-3: 예측 모듈 통합 완료 ✅
+- Conn-1~Conn-2: 커넥터 확장 완료 ✅
+- Final-1~Final-2: 통합 검증 + 문서화 완료 ✅
+- Demo-1~Demo-2: 통합 데모 + QA 해결 + Export 성공 ✅
+- Doc-1: CLAUDE.md 전면 업데이트 ✅
 
-## 완료된 작업 (Demo-1: 2026-03-14)
+## 완료된 작업 (Doc-1: 2026-03-15)
 
-### 1. 버그 수정
-- `narrative_generator.py:525`: `IndicatorStats.max`/`.min` → `.max_value`/`.min_value` 속성명 불일치 수정
-- `demo_full_scenario.py`: httpx 타임아웃 120s → 300s (대용량 데이터 처리 시 타임아웃 방지)
+### CLAUDE.md 전면 업데이트
+- **제품 정체성 갱신**: "환경 현황조사서 자동 생성 + 입지 환경 리스크 스크리닝 내부 도구"로 명확화
+- **면책사항 추가**: 산출물 법적 효력 없음, 전문 3D 모델링 대체 불가, 실무자 최종 검토 필수
+- **시스템 구성 전체 반영**: 서비스 11개, 커넥터 9종, QA 8개 규칙, 예측 모델 3종, LLM 어댑터 3종, 법령 모듈 3종, 섹션 상태 7종
+- **API 엔드포인트 전체 목록 최신화**: 예측, 평가범위, LLM 등 신규 엔드포인트 포함
+- **환경변수 목록 최신화**: DATABASE_URL, API 키 6개, LLM_ADAPTER, CONNECTOR_TIMEOUT 등
+- **디렉토리 구조 최신화**: prediction/, llm/, data/regulations/ 등 신규 디렉토리 반영
+- **다음 작업 계획 추가**: GIS-1, GIS-2, LLM-Enhancement, Deploy, Portfolio 5개 Phase
+- **알려진 제한사항 정리**: 외부 장애, 해양 미커버, 현장조사 필수 분야, 생태자연도 API 한계 등
+- **작업 규칙 갱신**: 한글 작성, 더미 데이터 금지, 에이전트 자율 판단 명시
 
-### 2. 통합 데모 전체 실행 성공 (11단계)
-- 프로젝트 생성 → 데이터 수집(API 7/9 성공, 3,205건) → 유사사례(3건)
-- 섹션 플래너(완료 4 + 부분 4) → 법령 검증 → 통계(2,545건) → 환경기준(초과 2건)
-- 초안 서술문(11개 섹션) → 영향 예측 3종(41건) → QA(critical 2, warning 10, info 10)
-- Export 정상 차단(critical 이슈) + 문서 구조 미리보기
+## 다음 작업 후보
 
-### 3. 테스트 612개 전체 통과
+### Phase GIS-1: GIS 공간 분석 및 도면 생성
+- PostGIS 기반 버퍼 분석 (ST_Buffer 1km/5km)
+- 사업 경계 기준 규제 항목 중첩 분석 (ST_Intersection)
+- geopandas + matplotlib 기반 정적 도면 렌더링 (위치도, 토지이용현황도, 생태자연도, 대기질 측정소, 문화재 분포도, 소음 등고선도)
+- 도면을 DOCX/PDF에 자동 삽입
+- SHP/GeoJSON 파일 업로드 지원
+
+### Phase GIS-2: 프론트엔드 지도 시각화
+- MapLibre GL JS 기반 대화형 지도
+- 레이어 토글 (용도지역, 측정소, 문화재, 버퍼 등)
+- 사업 경계 그리기/편집 도구
+
+### Phase LLM-Enhancement: 서술문 품질 최종 개선
+- 지표 한글명 매핑, 기준 대비 백분율 표시
+- LLM 시스템 프롬프트 고도화 (전문가 문체)
+
+### Phase Deploy: 배포 환경 구성
+- Docker Compose 통합, CI/CD, 환경 분리
+
+### Phase Portfolio: 포트폴리오 문서 정리
+- GIS 도면 산출물, 아키텍처 다이어그램, Before/After 비교
 
 ## 시스템 전체 현황
 
@@ -42,20 +62,21 @@
 | standard_checker.py | 대기/수질/소음/토양 환경기준 비교 + 등급 판정 + 법적 근거 |
 | narrative_generator.py | 섹션별 서술문 템플릿 + 법적 근거 자동 삽입 + 예측 서술문 + 수동입력 가이드 |
 | similarity.py | 유사사례 가중 유사도 계산 |
-| qa_engine.py | 8개 QA 규칙 (R001~R008) + 사업유형 기반 동적 판단 |
+| qa_engine.py | 8개 QA 규칙 (R001~R008) + 사업유형 기반 동적 판단 + 부분충족 WARNING |
 | export_service.py | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 섹션 |
 | prediction/ | 예측 모듈 (대기 확산 + 소음 전파 + 수질 혼합) |
+| llm/ | LLM 어댑터 (none / openai_paid / gemini_free) |
 
-### 커넥터 (9종 — 8종 가동, 1종 일시 비활성)
+### 커넥터 (9종 — 6종 가동, 3종 일시 비활성)
 | 커넥터 키 | 대상 API | 상태 | 비고 |
 |-----------|----------|------|------|
-| `keco_air` | 에어코리아 대기오염정보 | 가동 | PM10, PM2.5 등 실측 |
+| `keco_air` | 에어코리아 대기오염정보 | 가동 | PM10_연평균 등 6개 지표 |
 | `water_info` | 국립환경과학원 수질 DB | 가동 | BOD, COD 등 실측 |
 | `soil_info` | 국립환경과학원 토양측정망 | 비활성 | 서버 장애 (HTTP 500) |
-| `kma_weather` | 기상청 ASOS 일자료 | 가동 | 평균기온, 강수량, 풍속 |
+| `kma_weather` | 기상청 ASOS 일자료 | 비활성 | 서버 장애 (HTTP 500) |
 | `vworld_land_use` | V-world 2D데이터 | 가동 | LT_C_UQ111 용도지역 |
 | `land_use_regulation` | 국토교통부 토지이용규제정보서비스 | 가동 | 행위제한 정보 |
-| `cultural_heritage` | 국가유산청 Open API | 가동 | 키 불필요 |
+| `cultural_heritage` | 국가유산청 Open API | 비활성 | 네트워크 오류 (일시적) |
 | `traffic_volume` | 한국건설기술연구원 교통량 | 가동 | vt_yearly 엔드포인트 |
 | `waste_stats` | 행정안전부 생활쓰레기배출정보 | 가동 | 배출일정/관리 데이터 |
 
@@ -96,16 +117,6 @@ python scripts/test_connectors_live.py
 python scripts/demo_full_scenario.py
 ```
 
-## 비활성 커넥터 활성화 방법
-1. **토양측정망**: 공공데이터포털 API 서버 정상화 대기
-
-## 알려진 제한사항 및 향후 과제
-- 프론트엔드 프로젝트 생성 폼 미구현 (API를 통해서만 생성 가능)
-- 예측 모델은 간이 모델 — 정밀 모사에는 전문 소프트웨어 필요
-- PROCEDURE_PENDING 상태 미구현 (외부 절차 연동 필요)
-- spatialRelation, confidence 필드 미구현 (현재 작동에 영향 없음)
-- Draft claim contract 미구현 (LLM 연동 심화 시 구현 예정)
-- 실시간 협업, 테넌트 인증, 빌링 미지원 (MVP 비목표)
-- 폐기물 커넥터는 배출량이 아닌 배출일정 데이터 제공 (환경부 폐기물발생 API 별도 연동 필요)
-- 데모 실행 시 백엔드 서버 재시작 필요 (코드 변경 후 `--reload` 옵션 사용)
-- 데모 실행 시 VWORLD_API_KEY가 backend/.env에 설정되어 있어야 V-world 토지이용 커넥터 동작
+## 생성된 최종 산출물
+- `output/demo_gangnam_solar_20260315_020222.docx` (52.6 KB)
+- `output/demo_gangnam_solar_20260315_020222.pdf` (127.6 KB)

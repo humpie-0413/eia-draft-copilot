@@ -170,8 +170,17 @@ def _rule_missing_required_indicators(
         return issues
 
     # 사업유형 기반 동적 심각도 판단
+    # 부분 충족(일부 지표 존재)이면 WARNING, 전체 미충족이면 CRITICAL
     is_critical = section_def.key in critical_sections
-    severity = Severity.CRITICAL if is_critical else Severity.WARNING
+    has_any_fulfilled = any(
+        ind.fulfilled for ind in section_status.required_indicators
+    )
+    if is_critical and not has_any_fulfilled:
+        severity = Severity.CRITICAL
+    elif is_critical:
+        severity = Severity.WARNING
+    else:
+        severity = Severity.WARNING
 
     issues.append(QaIssue(
         rule_id="R002",

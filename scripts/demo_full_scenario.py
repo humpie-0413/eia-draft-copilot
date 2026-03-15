@@ -92,7 +92,11 @@ async def api_call(
 ) -> dict | bytes | None:
     """API 호출 공통 래퍼. 오류 시 상세 메시지를 출력한다."""
     url = f"{BASE_URL}{path}"
-    resp = await client.request(method, url, json=json)
+    try:
+        resp = await client.request(method, url, json=json)
+    except (httpx.TimeoutException, httpx.TransportError) as e:
+        print(f"    [네트워크 오류] {label or path}: {type(e).__name__}: {e}")
+        return None
 
     if resp.status_code != expected:
         print(f"    [오류] {label or path}: HTTP {resp.status_code}")
@@ -1400,7 +1404,7 @@ async def main():
     print(f"  실행 시각: {datetime.now(tz=timezone.utc).isoformat()}")
 
     # 서버 연결 확인
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=600) as client:
         try:
             resp = await client.get(f"{BASE_URL}/health")
             if resp.status_code != 200:
