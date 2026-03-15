@@ -1952,3 +1952,72 @@
 - `backend/app/services/draft_scaffold.py` (한글 지표명 적용)
 - `backend/tests/test_narrative_generator.py` (전면 갱신)
 - `backend/tests/test_prediction_narrative.py` (저감방안 검증 수정)
+
+---
+
+## GIS-1: GIS 공간 분석 및 도면 생성 ✅
+
+### 완료 항목
+
+#### 1. 공간 분석 서비스 (`backend/app/services/spatial_analysis.py`)
+- shapely + pyproj 기반 버퍼 생성 (EPSG:4326 → 5179 → buffer → 4326)
+- 1km/5km 버퍼 GeoJSON 생성 + 면적(km²) 계산
+- evidence 좌표 기반 중첩 분석 (측정소, 문화재, 생태조사지점 거리 계산)
+- Haversine 거리 계산 함수
+- 데이터클래스: `BufferResult`, `OverlayItem`, `OverlayResult`
+- 함수: `compute_buffer()`, `get_project_buffer()`, `get_overlay_items()`
+
+#### 2. 도면 렌더링 서비스 (`backend/app/services/map_renderer.py`)
+- matplotlib + shapely 기반 5종 정적 도면 생성 (A4 가로, 150 DPI)
+- **사업대상지 위치도**: 사업 경계 + 1km/5km 버퍼 + 측정소/문화재 마커
+- **토지이용현황도**: 용도지역별 색상 구분 (주거=노랑, 상업=빨강, 공업=보라, 녹지=초록)
+- **환경측정소 분포도**: 대기(빨간 △), 수질(파란 ○), 소음(노란 □) 분류
+- **소음 예측 등고선도**: 주간/야간 기준선 + 농도 등고면 + 음원 표시
+- **대기확산 예측도**: 가우시안 플룸 등고면 + 기준 초과 영역 + 풍향 화살표
+- 한글 폰트 자동 감지 (맑은 고딕 / 나눔고딕)
+- 방위표, 축척, 범례 자동 삽입
+
+#### 3. API 엔드포인트 (`backend/app/api/v1/spatial.py`)
+- `GET /projects/{id}/spatial/buffer?radius=1000` — 버퍼 GeoJSON
+- `GET /projects/{id}/spatial/overlay?radius=1000` — 버퍼 내 규제 항목
+- `GET /projects/{id}/maps` — 사용 가능한 도면 목록
+- `GET /projects/{id}/maps/{map_type}` — 도면 PNG 반환
+  - map_type: location, land_use, monitoring_stations, noise_contour, air_dispersion
+
+#### 4. DOCX/PDF 도면 자동 삽입 (`backend/app/services/export_service.py`)
+- 표지 다음: 사업대상지 위치도 (그림 0-1)
+- 제1장 대기질: 환경측정소 분포도 + 대기확산 예측도
+- 제4장 소음·진동: 소음 예측 등고선도
+- 제6장 토지이용: 토지이용현황도
+- python-docx `add_picture()` + reportlab `Image` 삽입
+- 이미지 크기: 15cm, 캡션 자동 부여 (그림 X-Y. 제목)
+
+#### 5. 프론트엔드 (`src/app/projects/[id]/maps/page.tsx`)
+- 5종 도면 그리드 표시
+- 전체 화면 모달 + PNG 다운로드
+- 초안 뼈대 페이지에 "GIS 도면" 버튼 추가
+- API 클라이언트: `src/lib/spatial-api.ts`
+
+#### 6. 데모 스크립트 업데이트 (`scripts/demo_full_scenario.py`)
+- 단계 9.5: 버퍼 분석 → 중첩 분석 → 5종 도면 생성 → output/maps/ 저장
+- 단계 11 요약에 GIS 도면 현황 추가
+
+#### 7. 의존성 추가 (`backend/requirements.txt`)
+- matplotlib>=3.9.0, geopandas>=1.0.0, pyproj>=3.6.0
+
+### 테스트
+- 644개 전체 통과 (기존 616 + 신규 28)
+- `test_spatial_maps.py`: Haversine(4) + Buffer(4) + Overlay(4) + MapRenderer(7) + Interpolation(5) + Model(4)
+
+### 주요 파일
+- `backend/app/services/spatial_analysis.py` (신규)
+- `backend/app/services/map_renderer.py` (신규)
+- `backend/app/api/v1/spatial.py` (신규)
+- `backend/tests/test_spatial_maps.py` (신규)
+- `src/app/projects/[id]/maps/page.tsx` (신규)
+- `src/lib/spatial-api.ts` (신규)
+- `backend/app/services/export_service.py` (수정 — 도면 삽입)
+- `backend/app/main.py` (수정 — spatial 라우터 등록)
+- `backend/requirements.txt` (수정 — 3개 의존성 추가)
+- `scripts/demo_full_scenario.py` (수정 — 도면 생성 단계 추가)
+- `src/app/projects/[id]/draft/page.tsx` (수정 — GIS 도면 버튼)

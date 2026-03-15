@@ -52,7 +52,7 @@
 
 ## 시스템 구성 현황
 
-### 백엔드 서비스 (11개)
+### 백엔드 서비스 (13개)
 | 서비스 | 역할 |
 |--------|------|
 | `section_planner.py` | 11개 섹션 정의 + 필수 지표 충족도 계산 + 평가 범위 연동 |
@@ -63,9 +63,11 @@
 | `narrative_generator.py` | 섹션별 서술문 템플릿 + 법적 근거 자동 삽입 + 예측 서술문 + 수동입력 가이드 |
 | `similarity.py` | 유사사례 가중 유사도 계산 |
 | `qa_engine.py` | 8개 QA 규칙 (R001~R008) + 사업유형 기반 동적 판단 + 부분충족 WARNING |
-| `export_service.py` | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 섹션 |
+| `export_service.py` | DOCX/PDF 생성 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 섹션 + **GIS 도면 삽입** |
 | `prediction/` | 예측 모듈 — 가우시안 플룸(대기), 소음 거리감쇠, 수질 완전혼합 |
 | `llm/` | LLM 어댑터 계층 — none / openai_paid / gemini_free |
+| `spatial_analysis.py` | 버퍼 분석 (EPSG:5179 변환) + 규제 항목 중첩 탐색 |
+| `map_renderer.py` | 5종 정적 도면 렌더링 (위치도, 토지이용, 측정소, 소음등고선, 대기확산) |
 
 ### 커넥터 (9종)
 | 커넥터 키 | 대상 API | 상태 | 비고 |
@@ -116,6 +118,7 @@ src/                           # Next.js 프론트엔드
       [id]/qa/                 # QA 결과
       [id]/predictions/        # 영향 예측
       [id]/draft/              # 초안 미리보기
+      [id]/maps/               # GIS 도면 미리보기
   components/                  # UI 컴포넌트
     ui/                        # shadcn/ui 기본 컴포넌트
     evidence/                  # 증거 관련 컴포넌트
@@ -126,7 +129,7 @@ src/                           # Next.js 프론트엔드
   types/                       # TypeScript 타입 정의
 backend/                       # FastAPI 백엔드
   app/
-    api/v1/                    # REST API 엔드포인트 (14개 라우터)
+    api/v1/                    # REST API 엔드포인트 (15개 라우터)
     connectors/                # 공공데이터 커넥터 (9종 + base + registry)
     crud/                      # DB CRUD 함수
     data/                      # 참조 데이터
@@ -144,7 +147,7 @@ backend/                       # FastAPI 백엔드
     config.py                  # 환경 설정
     db.py                      # DB 세션 관리
   alembic/                     # DB 마이그레이션
-  tests/                       # 백엔드 테스트 (612개)
+  tests/                       # 백엔드 테스트 (644개)
 docs/
   claude/                      # Phase 계획, 아키텍처 결정
   progress/                    # 작업 브리프, 진행 로그
@@ -193,6 +196,10 @@ output/                        # 생성된 DOCX/PDF 산출물
 | | `/export/docx` | DOCX 생성 (스트리밍) |
 | | `/export/pdf` | PDF 생성 (스트리밍) |
 | 예측 | `/predict/{section_key}` | 환경 영향 예측 실행 |
+| 버퍼 분석 | `/spatial/buffer?radius=1000` | 버퍼 GeoJSON |
+| 중첩 분석 | `/spatial/overlay?radius=1000` | 버퍼 내 규제 항목 |
+| 도면 목록 | `/maps` | 사용 가능한 도면 유형 |
+| 도면 렌더링 | `/maps/{map_type}` | 도면 PNG 반환 |
 
 ### 기타
 | 엔드포인트 | 설명 |
@@ -233,7 +240,7 @@ uvicorn app.main:app --reload     # http://localhost:8000
 
 # 테스트
 cd backend
-pytest tests/ -v                  # 612개 테스트
+pytest tests/ -v                  # 644개 테스트
 
 # 커넥터 실제 API 검증
 python scripts/test_connectors_live.py
@@ -302,29 +309,10 @@ python scripts/demo_full_scenario.py
 
 ## 다음 작업 계획
 
-### Phase GIS-1: GIS 공간 분석 및 도면 생성
-- PostGIS 기반 버퍼 분석 (ST_Buffer 1km/5km)
-- 사업 경계 기준 규제 항목 중첩 분석 (ST_Intersection)
-- geopandas + matplotlib 기반 정적 도면 렌더링:
-  - 사업대상지 위치도
-  - 토지이용현황도 (용도지역 중첩)
-  - 생태자연도 중첩 분석도
-  - 대기질 측정소 위치도
-  - 문화재 분포도
-  - 소음 등고선도 (예측 결과 기반)
-- 도면을 DOCX/PDF에 자동 삽입
-- SHP/GeoJSON 파일 업로드 지원
-
 ### Phase GIS-2: 프론트엔드 지도 시각화
 - MapLibre GL JS 기반 대화형 지도
 - 레이어 토글 (용도지역, 측정소, 문화재, 버퍼 등)
 - 사업 경계 그리기/편집 도구
-
-### Phase LLM-Enhancement: 서술문 품질 최종 개선
-- 지표 한글명 매핑 적용
-- 기준 대비 백분율(%) 표시
-- LLM 시스템 프롬프트 고도화 (환경영향평가서 전문가 문체)
-- 적합 지표 묶어 서술, 종합 판단문, 구체적 저감방안
 
 ### Phase Deploy: 배포 환경 구성
 - Docker Compose 통합 (PostgreSQL+PostGIS, FastAPI, Next.js)
@@ -375,5 +363,8 @@ Phase 완료 조건:
 - Conn-1~Conn-2: 커넥터 확장 완료 ✅
 - Final-1~Final-2: 통합 검증 + 문서화 완료 ✅
 - Demo-1~Demo-2: 통합 데모 + QA 해결 + Export 성공 ✅
+- Doc-1: CLAUDE.md 전면 업데이트 ✅
+- LLM-Enhancement: 서술문 품질 최종 개선 ✅
+- GIS-1: GIS 공간 분석 및 도면 생성 ✅
 
 다음 작업 브리핑: `docs/progress/NEXT_CHAT_BRIEF.md` 참조

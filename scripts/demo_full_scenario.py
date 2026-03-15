@@ -1100,6 +1100,91 @@ async def step9_qa(client: httpx.AsyncClient, project_id: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════
+# 단계 9.5: GIS 도면 생성 (GIS-1)
+# ═══════════════════════════════════════════════════════════════
+
+async def step9_5_maps(client: httpx.AsyncClient, project_id: str) -> dict:
+    """5종 GIS 도면을 생성하고 output/maps/ 폴더에 저장한다."""
+    banner("단계 9.5: GIS 도면 생성 (GIS-1)")
+
+    maps_dir = OUTPUT_DIR / "maps"
+    maps_dir.mkdir(parents=True, exist_ok=True)
+
+    map_result = {"generated": [], "failed": [], "buffer": None, "overlay_count": 0}
+
+    # 버퍼 분석 (1km)
+    sub_banner("9.5-a. 공간 버퍼 분석")
+    buffer_resp = await api_call(
+        client, "GET",
+        f"/api/v1/projects/{project_id}/spatial/buffer?radius=1000",
+        label="1km 버퍼 분석",
+    )
+    if buffer_resp:
+        print(f"    버퍼 반경: {buffer_resp['radius_m']}m")
+        print(f"    버퍼 면적: {buffer_resp['area_km2']} km²")
+        print(f"    중심점: {buffer_resp['centroid']}")
+        map_result["buffer"] = buffer_resp
+
+    # 중첩 분석 (5km)
+    sub_banner("9.5-b. 규제 항목 중첩 분석")
+    overlay_resp = await api_call(
+        client, "GET",
+        f"/api/v1/projects/{project_id}/spatial/overlay?radius=5000",
+        label="5km 중첩 분석",
+    )
+    if overlay_resp:
+        print(f"    탐색 반경: {overlay_resp['radius_m']}m")
+        print(f"    탐지 항목: {overlay_resp['total_count']}건")
+        map_result["overlay_count"] = overlay_resp["total_count"]
+        for item in overlay_resp.get("items", [])[:10]:
+            print(f"      {item['item_type']:<10s} {item['name']:<20s} 거리: {item['distance_m']:,.0f}m")
+
+    # 도면 목록 조회
+    sub_banner("9.5-c. 도면 목록")
+    map_list = await api_call(
+        client, "GET",
+        f"/api/v1/projects/{project_id}/maps",
+        label="도면 목록",
+    )
+    if map_list:
+        for m in map_list.get("maps", []):
+            print(f"    {m['map_type']:<25s} {m['title']}")
+
+    # 5종 도면 생성 + PNG 저장
+    map_types = ["location", "land_use", "monitoring_stations", "noise_contour", "air_dispersion"]
+    for map_type in map_types:
+        sub_banner(f"9.5-d. 도면 생성: {map_type}")
+        content = await api_call(
+            client, "GET",
+            f"/api/v1/projects/{project_id}/maps/{map_type}?save=true",
+            label=f"도면: {map_type}",
+        )
+        if content and isinstance(content, bytes):
+            png_path = maps_dir / f"{project_id}_{map_type}.png"
+            with open(png_path, "wb") as f:
+                f.write(content)
+            map_result["generated"].append(map_type)
+            print(f"    PNG 저장: {png_path}")
+            print(f"    파일 크기: {len(content):,} bytes ({len(content)/1024:.1f} KB)")
+
+            # PNG 매직 바이트 확인
+            if content[:8] == b"\x89PNG\r\n\x1a\n":
+                print("    PNG 매직 바이트 확인: 유효")
+            else:
+                print("    [경고] PNG 매직 바이트 불일치")
+        else:
+            map_result["failed"].append(map_type)
+            print(f"    [실패] {map_type} 도면 생성 실패")
+
+    print()
+    print(f"    도면 생성 완료: {len(map_result['generated'])}종 / {len(map_types)}종")
+    if map_result["failed"]:
+        print(f"    실패: {', '.join(map_result['failed'])}")
+
+    return map_result
+
+
+# ═══════════════════════════════════════════════════════════════
 # 단계 10: Export (DOCX + PDF, 부록 포함)
 # ═══════════════════════════════════════════════════════════════
 
@@ -1199,6 +1284,7 @@ def step11_summary(
     llm_summary: dict,
     qa_summary: dict,
     export_result: dict,
+    map_result: dict | None = None,
 ):
     """전체 데모 결과 요약 및 기능 비교."""
     banner("단계 11: 최종 결과 요약 — 프로젝트 전체 현황 보고")
@@ -1336,9 +1422,30 @@ def step11_summary(
     print()
 
     # ══════════════════════════════════════════════════
-    # 8. 최종 문서 구조
+    # 8. GIS 도면 현황
     # ══════════════════════════════════════════════════
-    print("  ┌─ 8. 최종 문서 구조 ─────────────────────────────")
+    print("  ┌─ 8. GIS 도면 현황 (GIS-1) ────────────────────")
+    map_generated = map_result.get("generated", []) if map_result else []
+    map_failed = map_result.get("failed", []) if map_result else []
+    print(f"  │ 도면 생성: {len(map_generated)}/5종")
+    map_titles = {
+        "location": "사업대상지 위치도",
+        "land_use": "토지이용현황도",
+        "monitoring_stations": "환경측정소 분포도",
+        "noise_contour": "소음 예측 등고선도",
+        "air_dispersion": "대기확산 예측도",
+    }
+    for mt, title in map_titles.items():
+        status = "생성" if mt in map_generated else "실패"
+        print(f"  │ [{status}] {title}")
+    if map_result:
+        print(f"  │ 중첩 분석 항목: {map_result.get('overlay_count', 0)}건")
+    print()
+
+    # ══════════════════════════════════════════════════
+    # 9. 최종 문서 구조
+    # ══════════════════════════════════════════════════
+    print("  ┌─ 9. 최종 문서 구조 ─────────────────────────────")
     print("  │ 표지")
     print("  │ 목차")
     print("  │ 제1부 사업 개요")
@@ -1454,6 +1561,9 @@ async def main():
         # ── 단계 9: QA 실행 ──
         qa_summary = await step9_qa(client, project_id)
 
+        # ── 단계 9.5: GIS 도면 생성 ──
+        map_result = await step9_5_maps(client, project_id)
+
         # ── 단계 10: Export ──
         if not qa_summary.get("export_ready"):
             print()
@@ -1476,6 +1586,7 @@ async def main():
         llm_summary=llm_summary,
         qa_summary=qa_summary,
         export_result=export_result,
+        map_result=map_result,
     )
 
 

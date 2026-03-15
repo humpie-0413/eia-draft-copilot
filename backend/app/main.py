@@ -14,6 +14,7 @@ from app.api.v1.sections import router as sections_router
 from app.api.v1.similar_cases import router as similar_cases_router
 from app.api.v1.snapshots import router as snapshots_router
 from app.api.v1.standards import router as standards_router
+from app.api.v1.spatial import router as spatial_router
 from app.api.v1.statistics import router as statistics_router
 from app.config import settings
 
@@ -48,6 +49,7 @@ app.include_router(standards_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 app.include_router(llm_router, prefix="/api/v1")
 app.include_router(predictions_router, prefix="/api/v1")
+app.include_router(spatial_router, prefix="/api/v1")
 
 
 @app.get("/health")

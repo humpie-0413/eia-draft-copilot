@@ -100,6 +100,7 @@ class ExportOptions:
     include_appendix_b: bool = True   # 부록 B: 유사사례 매칭 결과
     include_appendix_c: bool = True   # 부록 C: QA 검사 결과
     include_detail_data: bool = True  # 본문 내 상세 데이터 포함
+    include_maps: bool = True         # GIS 도면 삽입 여부
 
 
 @dataclass
@@ -130,6 +131,7 @@ class ExportContext:
     options: ExportOptions
     generated_at: str                        # ISO 문자열
     required_section_keys: set[str] = field(default_factory=set)  # Reg-4: 법적 필수 섹션 키
+    map_images: dict[str, bytes] = field(default_factory=dict)    # GIS-1: 도면 PNG {map_type: bytes}
 
 
 # ── 공통 유틸 ──
@@ -230,6 +232,11 @@ async def _build_export_context(
     if project.project_type:
         required_keys = set(get_required_sections(project.project_type))
 
+    # GIS-1: 도면 생성
+    map_images: dict[str, bytes] = {}
+    if opts.include_maps and project.geometry is not None:
+        map_images = await _generate_map_images(db, project, scaffold)
+
     return ExportContext(
         scaffold=scaffold,
         project_name=project.name,
@@ -241,7 +248,96 @@ async def _build_export_context(
         options=opts,
         generated_at=scaffold.generated_at,
         required_section_keys=required_keys,
+        map_images=map_images,
     )
+
+
+async def _generate_map_images(
+    db: AsyncSession,
+    project: Project,
+    scaffold: DraftScaffold,
+) -> dict[str, bytes]:
+    """도면 PNG 이미지를 생성한다."""
+    images: dict[str, bytes] = {}
+    try:
+        from app.services.map_renderer import MapRenderContext, render_map
+        from app.services.spatial_analysis import get_overlay_items
+
+        overlay = await get_overlay_items(db, project.id, radius_m=5000.0)
+
+        # 예측 결과 추출
+        noise_pred = None
+        air_pred = None
+        for section in scaffold.sections:
+            if section.section_key == "noise_vibration" and section.prediction_result:
+                noise_pred = section.prediction_result
+            if section.section_key == "air_quality" and section.prediction_result:
+                air_pred = section.prediction_result
+
+        base_ctx = MapRenderContext(
+            project_id=str(project.id),
+            project_name=project.name,
+            geometry_wkb=project.geometry,
+            overlay_items=overlay.items,
+        )
+
+        # 위치도
+        loc_data = render_map("location", base_ctx)
+        if loc_data:
+            images["location"] = loc_data
+
+        # 토지이용현황도
+        land_use_data = []
+        for section in scaffold.sections:
+            if section.section_key == "land_use":
+                for entry in section.evidence_entries:
+                    land_use_data.append({
+                        "zone_name": entry.value,
+                        "indicator": entry.indicator,
+                    })
+        land_ctx = MapRenderContext(
+            project_id=str(project.id),
+            project_name=project.name,
+            geometry_wkb=project.geometry,
+            land_use_data=land_use_data,
+        )
+        lu_data = render_map("land_use", land_ctx)
+        if lu_data:
+            images["land_use"] = lu_data
+
+        # 환경측정소 분포도
+        stations_data = render_map("monitoring_stations", base_ctx)
+        if stations_data:
+            images["monitoring_stations"] = stations_data
+
+        # 소음 등고선도
+        if noise_pred:
+            noise_ctx = MapRenderContext(
+                project_id=str(project.id),
+                project_name=project.name,
+                geometry_wkb=project.geometry,
+                prediction_result=noise_pred,
+            )
+            noise_data = render_map("noise_contour", noise_ctx)
+            if noise_data:
+                images["noise_contour"] = noise_data
+
+        # 대기확산 예측도
+        if air_pred:
+            air_ctx = MapRenderContext(
+                project_id=str(project.id),
+                project_name=project.name,
+                geometry_wkb=project.geometry,
+                prediction_result=air_pred,
+            )
+            air_data = render_map("air_dispersion", air_ctx)
+            if air_data:
+                images["air_dispersion"] = air_data
+
+    except Exception:
+        pass  # 도면 생성 실패해도 export 진행
+
+    return images
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -315,15 +411,23 @@ def _build_docx(ctx: ExportContext) -> Document:
     # ── 섹션 구분: 표지 이후부터 머리말/꼬리말 적용 ──
     _docx_setup_body_section(doc, ctx.project_name)
 
+    # ── 표지 뒤 사업대상지 위치도 ──
+    if ctx.map_images.get("location"):
+        _docx_add_map_image(doc, ctx.map_images["location"], "그림 0-1. 사업대상지 위치도")
+
     # ── 목차 ──
     _docx_add_toc(doc, ctx)
 
     # ── 섹션별 본문 ──
+    _figure_counter = [0]  # 그림 번호 카운터 (mutable)
     for section in ctx.scaffold.sections:
         stats, check = ctx.section_data.get(
             section.section_key, (None, None)
         )
         _docx_add_section(doc, section, stats, check, ctx=ctx)
+
+        # 섹션별 관련 도면 삽입
+        _docx_add_section_maps(doc, section, ctx, _figure_counter)
 
     # ── 부록 ──
     if ctx.options.include_appendix_a:
@@ -1041,6 +1145,70 @@ def _docx_add_prediction_table(doc: Document, pr: "PredictionResult") -> None:
                 row.cells[i].width = width
 
 
+# ── DOCX 도면 삽입 ──
+
+# 섹션별 관련 도면 매핑
+_SECTION_MAP_TYPES: dict[str, list[tuple[str, str]]] = {
+    "air_quality": [
+        ("monitoring_stations", "환경측정소 분포도"),
+        ("air_dispersion", "대기오염물질 확산 예측도"),
+    ],
+    "noise_vibration": [
+        ("noise_contour", "소음 예측 등고선도"),
+    ],
+    "land_use": [
+        ("land_use", "토지이용현황도"),
+    ],
+}
+
+
+def _docx_add_map_image(
+    doc: Document,
+    png_bytes: bytes,
+    caption: str,
+) -> None:
+    """DOCX에 도면 이미지를 삽입한다."""
+    img_stream = io.BytesIO(png_bytes)
+
+    # 이미지 삽입 (문서 너비에 맞춤 — 약 15cm)
+    doc.add_picture(img_stream, width=Cm(15))
+
+    # 마지막 단락을 중앙 정렬
+    last_para = doc.paragraphs[-1]
+    last_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # 캡션
+    cap_para = doc.add_paragraph()
+    cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = cap_para.add_run(caption)
+    run.font.size = Pt(9)
+    run.font.color.rgb = RGBColor(80, 80, 80)
+    run.italic = True
+
+    doc.add_paragraph("")
+
+
+def _docx_add_section_maps(
+    doc: Document,
+    section: ScaffoldSection,
+    ctx: ExportContext,
+    figure_counter: list[int],
+) -> None:
+    """섹션 끝에 관련 도면을 삽입한다."""
+    map_pairs = _SECTION_MAP_TYPES.get(section.section_key, [])
+    if not map_pairs:
+        return
+
+    for map_type, title in map_pairs:
+        png_bytes = ctx.map_images.get(map_type)
+        if not png_bytes:
+            continue
+
+        figure_counter[0] += 1
+        caption = f"그림 {section.order}-{figure_counter[0]}. {title}"
+        _docx_add_map_image(doc, png_bytes, caption)
+
+
 # ── DOCX 부록 ──
 
 def _docx_add_appendix_a(doc: Document, ctx: ExportContext) -> None:
@@ -1427,15 +1595,29 @@ def _build_pdf(ctx: ExportContext) -> io.BytesIO:
     # 표지
     _pdf_add_cover(story, styles, ctx)
 
+    # 표지 뒤 위치도
+    if ctx.map_images.get("location"):
+        _pdf_add_map_image(story, styles, ctx.map_images["location"], "그림 0-1. 사업대상지 위치도")
+
     # 목차
     _pdf_add_toc(story, styles, font_name, ctx)
 
     # 본문 섹션
+    pdf_fig_counter = [0]
     for section in ctx.scaffold.sections:
         stats, check = ctx.section_data.get(
             section.section_key, (None, None)
         )
         _pdf_add_section(story, styles, font_name, section, stats, check, ctx=ctx)
+
+        # 섹션별 도면 삽입
+        map_pairs = _SECTION_MAP_TYPES.get(section.section_key, [])
+        for map_type, title in map_pairs:
+            png_bytes = ctx.map_images.get(map_type)
+            if png_bytes:
+                pdf_fig_counter[0] += 1
+                caption = f"그림 {section.order}-{pdf_fig_counter[0]}. {title}"
+                _pdf_add_map_image(story, styles, png_bytes, caption)
 
     # 부록
     if ctx.options.include_appendix_a:
@@ -1454,6 +1636,19 @@ def _build_pdf(ctx: ExportContext) -> io.BytesIO:
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
     buffer.seek(0)
     return buffer
+
+
+def _pdf_add_map_image(story, styles, png_bytes: bytes, caption: str):
+    """PDF에 도면 이미지를 삽입한다."""
+    from reportlab.platypus import Image as RLImage
+
+    img_stream = io.BytesIO(png_bytes)
+    # A4 너비에 맞춤 (약 15cm = 약 425pt, 유지 비율)
+    img = RLImage(img_stream, width=15 * cm, height=10 * cm, kind="proportional")
+    story.append(img)
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(caption, styles.get("center_gray", styles["body"])))
+    story.append(Spacer(1, 12))
 
 
 def _pdf_add_cover(story, styles, ctx: ExportContext):
