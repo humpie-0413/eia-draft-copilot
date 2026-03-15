@@ -118,9 +118,11 @@ src/                           # Next.js 프론트엔드
       [id]/qa/                 # QA 결과
       [id]/predictions/        # 영향 예측
       [id]/draft/              # 초안 미리보기
+      [id]/map/                # 대화형 지도
       [id]/maps/               # GIS 도면 미리보기
   components/                  # UI 컴포넌트
     ui/                        # shadcn/ui 기본 컴포넌트
+    map/                       # 지도 컴포넌트 (MapLibre GL JS)
     evidence/                  # 증거 관련 컴포넌트
     section/                   # 섹션 관련 컴포넌트
     similar-case/              # 유사사례 컴포넌트
@@ -309,10 +311,7 @@ python scripts/demo_full_scenario.py
 
 ## 다음 작업 계획
 
-### Phase GIS-2: 프론트엔드 지도 시각화
-- MapLibre GL JS 기반 대화형 지도
-- 레이어 토글 (용도지역, 측정소, 문화재, 버퍼 등)
-- 사업 경계 그리기/편집 도구
+### ~~Phase GIS-2: 프론트엔드 지도 시각화~~ ✅ 완료
 
 ### Phase Deploy: 배포 환경 구성
 - Docker Compose 통합 (PostgreSQL+PostGIS, FastAPI, Next.js)
@@ -366,5 +365,6 @@ Phase 완료 조건:
 - Doc-1: CLAUDE.md 전면 업데이트 ✅
 - LLM-Enhancement: 서술문 품질 최종 개선 ✅
 - GIS-1: GIS 공간 분석 및 도면 생성 ✅
+- GIS-2: 프론트엔드 지도 시각화 ✅
 
 다음 작업 브리핑: `docs/progress/NEXT_CHAT_BRIEF.md` 참조

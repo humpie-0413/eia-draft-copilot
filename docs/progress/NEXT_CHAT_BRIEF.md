@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**GIS-1: GIS 공간 분석 및 도면 생성** ✅
+**GIS-2: 프론트엔드 지도 시각화** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -14,68 +14,74 @@
 - Doc-1: CLAUDE.md 전면 업데이트 ✅
 - LLM-Enhancement: 서술문 품질 최종 개선 ✅
 - GIS-1: GIS 공간 분석 및 도면 생성 ✅
+- GIS-2: 프론트엔드 지도 시각화 ✅
 
-## 완료된 작업 (GIS-1: 2026-03-15)
+## 완료된 작업 (GIS-2: 2026-03-15)
 
-### 공간 분석 서비스 (`backend/app/services/spatial_analysis.py`)
-- PostGIS → shapely + pyproj 기반 버퍼 생성 (EPSG:4326 → 5179 → buffer → 4326)
-- 1km/5km 버퍼 GeoJSON 생성 + 면적(km²) 계산
-- evidence 좌표 기반 중첩 분석 (측정소, 문화재, 생태조사지점 거리 계산)
-- Haversine 거리 계산 함수
+### 의존성
+- maplibre-gl 5.20.1 설치 (OpenFreeMap 무료 타일 — API 키 불필요)
 
-### 도면 렌더링 서비스 (`backend/app/services/map_renderer.py`)
-- matplotlib + shapely 기반 5종 정적 도면 생성 (A4 가로, 150 DPI)
-- 사업대상지 위치도: 사업 경계 + 1km/5km 버퍼 + 측정소/문화재 마커
-- 토지이용현황도: 용도지역별 색상 구분 (주거/상업/공업/녹지)
-- 환경측정소 분포도: 대기(빨간 △), 수질(파란 ○), 소음(노란 □) 분류
-- 소음 예측 등고선도: 주간/야간 기준선 + 농도 등고면 + 음원 표시
-- 대기확산 예측도: 가우시안 플룸 등고면 + 기준 초과 영역 + 풍향 화살표
-- 한글 폰트 자동 감지 (맑은 고딕 / 나눔고딕)
-- 방위표, 축척, 범례 자동 삽입
+### 기본 지도 컴포넌트 (`src/components/map/base-map.tsx`)
+- MapLibre GL JS 래퍼 컴포넌트
+- 프로젝트 geometry centroid 자동 계산 + bounds 맞춤
+- 한국 중심 기본값: [127.0, 37.5], zoom 10
+- 지도 컨트롤: 줌, 방위, 축척
+- minimal 모드 (미니맵용)
 
-### API 엔드포인트 (`backend/app/api/v1/spatial.py`)
-- `GET /projects/{id}/spatial/buffer?radius=1000` — 버퍼 GeoJSON
-- `GET /projects/{id}/spatial/overlay?radius=1000` — 버퍼 내 규제 항목
-- `GET /projects/{id}/maps` — 사용 가능한 도면 목록
-- `GET /projects/{id}/maps/{map_type}` — 도면 PNG 반환
-  - map_type: location, land_use, monitoring_stations, noise_contour, air_dispersion
+### 레이어 시스템 (`src/components/map/use-map-layers.ts`)
+- 사업 경계: 초록색 반투명 폴리곤 + 실선 (항상 표시)
+- 1km 버퍼: 파란 점선 (토글)
+- 5km 버퍼: 보라 점선 (토글)
+- 대기측정소: 빨간 원 마커 + 이름 라벨 + 클릭 팝업 (토글)
+- 수질측정소: 파란 원 마커 + 클릭 팝업 (토글)
+- 소음측정소: 노란 원 마커 + 클릭 팝업 (토글)
+- 문화재: 빨간 마커 + 문화재명 + 클릭 팝업 (토글)
+- 용도지역: 용도별 색상 구분 (주거=노랑, 상업=빨강, 공업=보라, 녹지=초록, 토글)
+- 클릭 팝업: 항목명, 유형, 이격거리, 메타데이터
 
-### DOCX/PDF 도면 자동 삽입
-- 표지 다음: 사업대상지 위치도 (그림 0-1)
-- 제1장 대기질: 환경측정소 분포도 + 대기확산 예측도
-- 제4장 소음·진동: 소음 예측 등고선도
-- 제6장 토지이용: 토지이용현황도
-- python-docx `add_picture()` + reportlab `Image` 삽입
-- 이미지 크기: 15cm, 캡션 자동 부여 (그림 X-Y. 제목)
+### 레이어 컨트롤 (`src/components/map/layer-control.tsx`)
+- 체크박스 토글 + 범례 색상 + 접기/펼치기
 
-### 프론트엔드 (`src/app/projects/[id]/maps/page.tsx`)
-- 5종 도면 그리드 표시
-- 전체 화면 모달 + PNG 다운로드
-- 초안 뼈대 페이지에 "GIS 도면" 버튼 추가
+### 사업 경계 편집 도구 (`src/components/map/draw-tools.tsx`)
+- 클릭으로 꼭짓점 추가, 더블클릭으로 완성
+- 꼭짓점 드래그 편집 + 초기화/삭제
+- 면적(㎡/km²) + 중심점 좌표 자동 계산
+- GeoJSON Polygon → 프로젝트 geometry 저장
 
-### 의존성 추가
-- matplotlib>=3.9.0, geopandas>=1.0.0, pyproj>=3.6.0
+### 미니 지도 (`src/components/map/mini-map.tsx`)
+- 소형 지도 (상호작용 비활성화)
+- 사업 경계 + 포인트 마커
 
-### 데모 스크립트 업데이트
-- 단계 9.5: 버퍼 분석 → 중첩 분석 → 5종 도면 생성 → output/maps/ 저장
-- 단계 11 요약에 GIS 도면 현황 추가
+### 프로젝트 지도 페이지 (`/projects/[id]/map`)
+- 전체 화면 지도 + 사이드 패널
+- 사이드 패널: 프로젝트 정보, 경계 편집, 레이어 컨트롤
+- 버퍼 내 규제 항목 목록 (이격거리)
+- 정적 도면 다운로드 (5종)
+- 네비게이션 링크
 
-### 테스트
-- 644개 전체 통과 (기존 616 + 신규 28)
-- test_spatial_maps.py: Haversine(4) + Buffer(4) + Overlay(4) + MapRenderer(7) + Interpolation(5) + Model(4)
+### API 클라이언트 (`src/lib/project-api.ts`)
+- getProject() / updateProjectGeometry()
+
+### 기존 페이지 연동
+- 프로젝트 목록: "지도" 버튼 추가
+- 초안 뼈대: "대화형 지도" 버튼 추가
+
+### 빌드 결과
+- TypeScript 타입 체크 통과
+- Next.js 빌드 성공
+- 백엔드 644개 테스트 전체 통과
 
 ## 다음 작업 후보
 
-### Phase GIS-2: 프론트엔드 지도 시각화
-- MapLibre GL JS 기반 대화형 지도
-- 레이어 토글 (용도지역, 측정소, 문화재, 버퍼 등)
-- 사업 경계 그리기/편집 도구
-
 ### Phase Deploy: 배포 환경 구성
-- Docker Compose 통합, CI/CD, 환경 분리
+- Docker Compose 통합 (PostgreSQL+PostGIS, FastAPI, Next.js)
+- CI/CD 파이프라인
+- 환경 분리 (dev/staging/prod)
 
 ### Phase Portfolio: 포트폴리오 문서 정리
-- GIS 도면 산출물, 아키텍처 다이어그램, Before/After 비교
+- GIS 도면 산출물 포함
+- 데이터 파이프라인 아키텍처 다이어그램
+- Before/After 서술문 비교
 
 ## 시스템 전체 현황
 
@@ -90,35 +96,28 @@
 | narrative_generator.py | 섹션별 서술문 템플릿 + 한글 지표명 + 법적 근거 + 기준 대비 % + 저감방안 |
 | similarity.py | 유사사례 가중 유사도 계산 |
 | qa_engine.py | 8개 QA 규칙 (R001~R008) + 사업유형 기반 동적 판단 + 부분충족 WARNING |
-| export_service.py | DOCX/PDF 생성 + 한글 지표명 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 + **GIS 도면 삽입** |
+| export_service.py | DOCX/PDF 생성 + 한글 지표명 + 법적 근거 열 + 필수 섹션 표시 + 영향 예측 + GIS 도면 삽입 |
 | prediction/ | 예측 모듈 (대기 확산 + 소음 전파 + 수질 혼합) |
 | llm/ | LLM 어댑터 (none / openai_paid / gemini_free) + 10규칙 전문가 프롬프트 |
-| **spatial_analysis.py** | 버퍼 분석 + 규제 항목 중첩 탐색 (신규) |
-| **map_renderer.py** | 5종 정적 도면 렌더링 (신규) |
+| spatial_analysis.py | 버퍼 분석 + 규제 항목 중첩 탐색 |
+| map_renderer.py | 5종 정적 도면 렌더링 |
+
+### 프론트엔드 지도 컴포넌트 (6개)
+| 컴포넌트 | 역할 |
+|----------|------|
+| base-map.tsx | MapLibre GL JS 래퍼 |
+| use-map-layers.ts | 8개 레이어 관리 훅 |
+| layer-control.tsx | 레이어 토글 패널 |
+| draw-tools.tsx | 폴리곤 그리기/편집 |
+| mini-map.tsx | 미니 지도 |
+| /map/page.tsx | 전체 화면 지도 페이지 |
 
 ### API 엔드포인트 (18개 라우터)
-- 기존 14개 + spatial (버퍼/중첩/도면) 1개 = 15개 라우터
-
-### 커넥터 (9종 — 6종 가동, 3종 일시 비활성)
-| 커넥터 키 | 대상 API | 상태 | 비고 |
-|-----------|----------|------|------|
-| `keco_air` | 에어코리아 대기오염정보 | 가동 | PM10_연평균 등 6개 지표 |
-| `water_info` | 국립환경과학원 수질 DB | 가동 | BOD, COD 등 실측 |
-| `soil_info` | 국립환경과학원 토양측정망 | 비활성 | 서버 장애 (HTTP 500) |
-| `kma_weather` | 기상청 ASOS 일자료 | 비활성 | 서버 장애 (HTTP 500) |
-| `vworld_land_use` | V-world 2D데이터 | 가동 | LT_C_UQ111 용도지역 |
-| `land_use_regulation` | 국토교통부 토지이용규제정보서비스 | 가동 | 행위제한 정보 |
-| `cultural_heritage` | 국가유산청 Open API | 비활성 | 네트워크 오류 (일시적) |
-| `traffic_volume` | 한국건설기술연구원 교통량 | 가동 | vt_yearly 엔드포인트 |
-| `waste_stats` | 행정안전부 생활쓰레기배출정보 | 가동 | 배출일정/관리 데이터 |
+- 기존 15개 라우터 (변경 없음)
 
 ### 테스트 (644개)
-- test_connectors.py (102), test_pred3_integration.py (27), test_prediction_narrative.py (26)
-- test_prediction_noise_water.py (82), test_prediction.py (74), test_regulations.py (95)
-- test_export_format.py (40+), test_narrative_generator.py (55)
-- test_llm_adapter.py (29), test_standard_checker.py (27), test_spec_alignment.py (23)
-- test_statistics.py (16), test_projects.py (9), test_export_pdf.py (4), test_e2e.py (1)
-- **test_spatial_maps.py (28)** (신규)
+- 백엔드 전체 통과
+- 프론트엔드 TypeScript + Next.js 빌드 통과
 
 ## 주의사항
 - PostgreSQL + PostGIS 로컬 설치 필요
@@ -129,6 +128,7 @@
 - 마이그레이션 실행: `cd backend && alembic upgrade head`
 - 프론트엔드 환경변수: `NEXT_PUBLIC_API_URL` (기본값 http://localhost:3000)
 - **GIS 도면 생성**: matplotlib + geopandas + pyproj 설치 필요
+- **대화형 지도**: maplibre-gl (프론트엔드, npm에 포함)
 
 ## 실행 방법
 ```bash

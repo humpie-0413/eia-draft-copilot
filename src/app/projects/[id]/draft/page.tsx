@@ -13,7 +13,7 @@ import { QaSummaryBar } from "@/components/qa/qa-summary-bar";
 import { ExportButton } from "@/components/qa/export-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Activity, ArrowLeft, ListChecks, Map, ShieldCheck } from "lucide-react";
+import { Activity, ArrowLeft, Globe, ListChecks, Map, ShieldCheck } from "lucide-react";
 
 export default function DraftScaffoldPage() {
   const params = useParams();
@@ -134,6 +134,12 @@ export default function DraftScaffoldPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link href={`/projects/${projectId}/map`}>
+              <Button variant="outline">
+                <Globe className="mr-2 h-4 w-4" />
+                대화형 지도
+              </Button>
+            </Link>
             <Link href={`/projects/${projectId}/maps`}>
               <Button variant="outline">
                 <Map className="mr-2 h-4 w-4" />

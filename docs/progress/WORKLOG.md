@@ -2021,3 +2021,79 @@
 - `backend/requirements.txt` (수정 — 3개 의존성 추가)
 - `scripts/demo_full_scenario.py` (수정 — 도면 생성 단계 추가)
 - `src/app/projects/[id]/draft/page.tsx` (수정 — GIS 도면 버튼)
+
+---
+
+## Phase GIS-2: 프론트엔드 지도 시각화 ✅
+
+### 완료 항목
+
+#### 의존성
+- maplibre-gl 5.20.1 설치 (OpenFreeMap 무료 타일 — API 키 불필요)
+
+#### 기본 지도 컴포넌트 (`src/components/map/base-map.tsx`)
+- MapLibre GL JS 래퍼 컴포넌트
+- 프로젝트 geometry centroid 자동 계산 + bounds 맞춤
+- 한국 중심 기본값: [127.0, 37.5], zoom 10
+- 지도 컨트롤: 줌, 방위, 축척
+- minimal 모드 (미니맵용 — 상호작용 비활성화)
+
+#### 레이어 시스템 (`src/components/map/use-map-layers.ts`)
+- 사업 경계 레이어: 초록색 반투명 폴리곤 + 실선 테두리 (항상 표시)
+- 1km 버퍼: 파란 점선 (토글)
+- 5km 버퍼: 보라 점선 (토글)
+- 대기측정소: 빨간 원 마커 + 라벨 + 클릭 팝업 (토글)
+- 수질측정소: 파란 원 마커 + 라벨 + 클릭 팝업 (토글)
+- 소음측정소: 노란 원 마커 + 라벨 + 클릭 팝업 (토글)
+- 문화재: 빨간 원 마커 + 라벨 + 클릭 팝업 (토글)
+- 용도지역: 용도별 색상 구분 (주거=노랑, 상업=빨강, 공업=보라, 녹지=초록) (토글)
+- 클릭 팝업: 항목명, 유형, 이격거리, 메타데이터 표시
+
+#### 레이어 컨트롤 패널 (`src/components/map/layer-control.tsx`)
+- 체크박스 형태의 레이어 토글
+- 범례 색상 표시
+- 접기/펼치기
+
+#### 사업 경계 편집 도구 (`src/components/map/draw-tools.tsx`)
+- 클릭으로 꼭짓점 추가, 더블클릭으로 폴리곤 완성
+- 꼭짓점 드래그 편집
+- 초기화/삭제 기능
+- 면적(㎡/km²) + 중심점 좌표 자동 계산
+- GeoJSON Polygon으로 변환 → 프로젝트 geometry 저장
+
+#### 미니 지도 (`src/components/map/mini-map.tsx`)
+- 프로젝트 상세 페이지용 소형 지도
+- 사업 경계 + 추가 포인트 마커
+- 상호작용 비활성화 (스크롤/드래그/줌 차단)
+
+#### 프로젝트 지도 페이지 (`src/app/projects/[id]/map/page.tsx`)
+- 전체 화면 지도 + 사이드 패널
+- 사이드 패널: 프로젝트 정보, 사업 경계 편집, 레이어 컨트롤
+- 버퍼 내 규제 항목 목록 (이격거리 표시)
+- 정적 도면 다운로드 버튼 (5종)
+- 네비게이션: 정적 도면, 증거 작업대, 초안 뼈대
+
+#### API 클라이언트 (`src/lib/project-api.ts`)
+- `getProject()`: 프로젝트 단건 조회
+- `updateProjectGeometry()`: geometry 업데이트
+
+#### 기존 페이지 연동
+- 프로젝트 목록 페이지: "지도" 버튼 추가
+- 초안 뼈대 페이지: "대화형 지도" 버튼 추가
+
+### 빌드 결과
+- TypeScript 타입 체크 통과
+- Next.js 빌드 성공 (프로덕션)
+- 백엔드 644개 테스트 전체 통과
+
+### 주요 파일
+- `src/components/map/base-map.tsx` (신규)
+- `src/components/map/use-map-layers.ts` (신규)
+- `src/components/map/layer-control.tsx` (신규)
+- `src/components/map/draw-tools.tsx` (신규)
+- `src/components/map/mini-map.tsx` (신규)
+- `src/app/projects/[id]/map/page.tsx` (신규)
+- `src/lib/project-api.ts` (신규)
+- `src/app/projects/page.tsx` (수정 — 지도 버튼 추가)
+- `src/app/projects/[id]/draft/page.tsx` (수정 — 대화형 지도 버튼 추가)
+- `package.json` (수정 — maplibre-gl 추가)
