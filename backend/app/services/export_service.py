@@ -751,12 +751,70 @@ def _docx_add_section(
             intro.runs[0].bold = True
             intro.runs[0].font.size = Pt(10)
 
-    if not section.evidence_entries:
+    if not section.evidence_entries and section.prediction_result is None:
         para = doc.add_paragraph(
             section.narrative or "데이터가 수집되지 않았습니다."
         )
         if para.runs:
             para.runs[0].font.color.rgb = RGBColor(180, 0, 0)
+        doc.add_paragraph("")
+        return
+
+    if not section.evidence_entries and section.prediction_result is not None:
+        # 현황 데이터 없지만 예측 결과가 있는 경우
+        doc.add_heading(f"{chapter}.1 현황 및 영향 분석", level=2)
+        doc.add_paragraph(
+            "본 분야에 대한 현황 데이터는 수집되지 않았으나, "
+            "사업 시행에 따른 영향을 예측하였다."
+        )
+        # 영향 예측 섹션 렌더링
+        pr = section.prediction_result
+        model_info_obj = None
+        try:
+            from app.services.prediction.registry import get_model
+            m = get_model(pr.model_name)
+            if m:
+                model_info_obj = m.get_model_info()
+        except Exception:
+            pass
+
+        display_name = model_info_obj.display_name if model_info_obj else pr.model_name
+
+        doc.add_heading(f"{chapter}.2 영향 예측", level=2)
+        model_para = doc.add_paragraph(f"적용 모델: {display_name}")
+        if model_para.runs:
+            model_para.runs[0].font.size = Pt(10)
+
+        if section.prediction_narrative:
+            for line in section.prediction_narrative.split("\n"):
+                if line.strip():
+                    doc.add_paragraph(line)
+
+        if pr.predictions:
+            _docx_add_prediction_table(doc, pr)
+
+        if pr.assumptions:
+            assume_para = doc.add_paragraph("※ 전제 조건")
+            if assume_para.runs:
+                assume_para.runs[0].bold = True
+                assume_para.runs[0].font.size = Pt(9)
+            for assumption in pr.assumptions:
+                item_para = doc.add_paragraph(f"  · {assumption}")
+                if item_para.runs:
+                    item_para.runs[0].font.size = Pt(9)
+
+        if pr.limitations:
+            limit_para = doc.add_paragraph("※ 참고: 모델 한계")
+            if limit_para.runs:
+                limit_para.runs[0].bold = True
+                limit_para.runs[0].font.size = Pt(9)
+                limit_para.runs[0].font.color.rgb = RGBColor(120, 120, 120)
+            for limitation in pr.limitations:
+                lim_item = doc.add_paragraph(f"  · {limitation}")
+                if lim_item.runs:
+                    lim_item.runs[0].font.size = Pt(9)
+                    lim_item.runs[0].font.color.rgb = RGBColor(120, 120, 120)
+
         doc.add_paragraph("")
         return
 
@@ -1780,11 +1838,55 @@ def _pdf_add_section(story, styles, font_name, section, stats, check, *, ctx=Non
         )
         story.append(Paragraph(intro_text, styles["body"]))
 
-    if not section.evidence_entries:
+    if not section.evidence_entries and section.prediction_result is None:
         story.append(Paragraph(
             section.narrative or "데이터가 수집되지 않았습니다.",
             styles["no_data"],
         ))
+        story.append(Spacer(1, 0.5 * cm))
+        return
+
+    if not section.evidence_entries and section.prediction_result is not None:
+        # 현황 데이터 없지만 예측 결과가 있는 경우
+        story.append(Paragraph(f"{chapter}.1 현황 및 영향 분석", styles["heading2"]))
+        story.append(Paragraph(
+            "본 분야에 대한 현황 데이터는 수집되지 않았으나, "
+            "사업 시행에 따른 영향을 예측하였다.",
+            styles["body"],
+        ))
+
+        pr = section.prediction_result
+        model_info_obj = None
+        try:
+            from app.services.prediction.registry import get_model
+            m = get_model(pr.model_name)
+            if m:
+                model_info_obj = m.get_model_info()
+        except Exception:
+            pass
+
+        display_name = model_info_obj.display_name if model_info_obj else pr.model_name
+        story.append(Paragraph(f"{chapter}.2 영향 예측", styles["heading2"]))
+        story.append(Paragraph(f"적용 모델: {display_name}", styles["body"]))
+
+        if section.prediction_narrative:
+            for line in section.prediction_narrative.split("\n"):
+                if line.strip():
+                    story.append(Paragraph(line, styles["body"]))
+
+        if pr.predictions:
+            _pdf_add_prediction_table(story, font_name, pr)
+
+        if pr.assumptions:
+            story.append(Paragraph("※ 전제 조건", styles["body"]))
+            for assumption in pr.assumptions:
+                story.append(Paragraph(f"  · {assumption}", styles["body"]))
+
+        if pr.limitations:
+            story.append(Paragraph("※ 참고: 모델 한계", styles["body"]))
+            for limitation in pr.limitations:
+                story.append(Paragraph(f"  · {limitation}", styles["body"]))
+
         story.append(Spacer(1, 0.5 * cm))
         return
 

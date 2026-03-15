@@ -672,3 +672,49 @@ def test_get_standard_for_unknown_indicator():
     from app.data.env_standards import get_standard_for_indicator
     std = get_standard_for_indicator("air_quality", "알수없는_지표")
     assert std is None
+
+
+def test_check_indicator_nan_returns_na():
+    """측정 평균이 NaN인 경우 NA로 판정해야 한다."""
+    import math
+    from app.data.env_standards import ComparisonOp, Standard
+    from app.services.standard_checker import CheckStatus, _check_indicator
+    from app.services.statistics import IndicatorStats
+
+    stats = IndicatorStats(
+        indicator="PM10_24시간",
+        count=5,
+        mean=float("nan"),
+        max_value=float("nan"),
+    )
+    standard = Standard(
+        indicator="PM10_24시간",
+        time_basis="24시간",
+        limit_value=100.0,
+        unit="ug/m3",
+        op=ComparisonOp.LEQ,
+    )
+    result = _check_indicator(stats, standard)
+    assert result.status == CheckStatus.NA
+
+
+def test_check_indicator_none_returns_na():
+    """측정 평균이 None인 경우 NA로 판정해야 한다."""
+    from app.data.env_standards import ComparisonOp, Standard
+    from app.services.standard_checker import CheckStatus, _check_indicator
+    from app.services.statistics import IndicatorStats
+
+    stats = IndicatorStats(
+        indicator="PM10_24시간",
+        count=0,
+        mean=None,
+    )
+    standard = Standard(
+        indicator="PM10_24시간",
+        time_basis="24시간",
+        limit_value=100.0,
+        unit="ug/m3",
+        op=ComparisonOp.LEQ,
+    )
+    result = _check_indicator(stats, standard)
+    assert result.status == CheckStatus.NA

@@ -699,6 +699,20 @@ def generate_traffic_narrative(
     return "\n\n".join(lines)
 
 
+def _most_frequent_value(section_stats: SectionStats, indicator: str) -> str:
+    """지표의 최빈값을 반환한다. 동률이면 첫 번째 값을 반환."""
+    for ti in section_stats.text_indicators:
+        if ti.indicator == indicator and ti.values:
+            freq: dict[str, int] = {}
+            for v in ti.values:
+                v_stripped = v.strip()
+                if v_stripped:
+                    freq[v_stripped] = freq.get(v_stripped, 0) + 1
+            if freq:
+                return max(freq, key=freq.get)  # type: ignore[arg-type]
+    return "-"
+
+
 # ────────────────────────────────────────────
 # 폐기물 서술문
 # ────────────────────────────────────────────
@@ -755,11 +769,46 @@ def generate_waste_narrative(
             "건설폐기물 예상 발생량은 사업 계획에 따라 별도 산정이 필요하다."
         )
 
-    # 기타 텍스트 지표
+    # 텍스트 지표: 중복 제거 후 대표값 요약
+    text_map = _text_indicator_map(section_stats)
+    waste_text_parts: list[str] = []
+
+    # 배출방법 (대표값)
+    emsn_method = text_map.get("폐기물_배출방법")
+    if emsn_method:
+        # 최빈값 추출
+        representative = _most_frequent_value(section_stats, "폐기물_배출방법")
+        waste_text_parts.append(f"배출 방식은 {representative}이다")
+
+    # 배출요일 (최빈값)
+    for dow_key, label in [
+        ("생활쓰레기_배출요일", "생활쓰레기"),
+        ("음식물쓰레기_배출요일", "음식물쓰레기"),
+        ("재활용_배출요일", "재활용"),
+    ]:
+        dow_val = text_map.get(dow_key)
+        if dow_val:
+            representative = _most_frequent_value(section_stats, dow_key)
+            waste_text_parts.append(f"{label} 배출은 {representative}에 실시되고 있다")
+
+    # 관리부서 (대표값)
+    mng_dept = text_map.get("폐기물_관리부서")
+    if mng_dept:
+        representative = _most_frequent_value(section_stats, "폐기물_관리부서")
+        waste_text_parts.append(f"폐기물 관리는 {representative}에서 담당하고 있다")
+
+    if waste_text_parts:
+        lines.append(". ".join(waste_text_parts) + ".")
+
+    # 기타 알려지지 않은 텍스트 지표만 나열
+    known_waste_text = {
+        "폐기물_배출방법", "생활쓰레기_배출요일", "음식물쓰레기_배출요일",
+        "재활용_배출요일", "폐기물_관리부서",
+    }
     for ti in section_stats.text_indicators:
-        if ti.values:
-            values_str = ", ".join(ti.values[:5])
-            lines.append(f"{ti.indicator}: {values_str}")
+        if ti.indicator not in known_waste_text and ti.values:
+            unique_vals = list(dict.fromkeys(ti.values))[:3]
+            lines.append(f"{ti.indicator}: {', '.join(unique_vals)}")
 
     # 종합 판단문
     lines.append(
@@ -847,17 +896,29 @@ def generate_generic_narrative(
             pass_parts.append(f"{kr_name} {avg}{unit_str}")
 
     # 적합 지표 묶음
+    # 실제 환경기준이 있는 지표가 하나라도 있어야 "환경기준 만족" 표현 사용
+    has_any_standard = any(
+        check_map.get(s.indicator) is not None
+        and check_map[s.indicator].standard_value is not None
+        for s in section_stats.indicator_stats
+        if s.count > 0
+    )
     if pass_parts:
-        lines.append(
-            ", ".join(pass_parts) + "로 조사되었으며, 환경기준을 만족하고 있다."
-        )
+        if has_any_standard:
+            lines.append(
+                ", ".join(pass_parts) + "로 조사되었으며, 환경기준을 만족하고 있다."
+            )
+        else:
+            lines.append(
+                ", ".join(pass_parts) + "로 조사되었다."
+            )
 
-    # 비수치형 지표 서술 (값 목록 형태)
+    # 비수치형 지표 서술 (값 목록 형태, 중복 제거)
     for ti in section_stats.text_indicators:
         if ti.values:
-            values_str = ", ".join(ti.values[:5])
+            unique_vals = list(dict.fromkeys(ti.values))[:5]
             suffix = f" 외 {len(ti.values) - 5}건" if len(ti.values) > 5 else ""
-            lines.append(f"{ti.indicator}: {values_str}{suffix}")
+            lines.append(f"{ti.indicator}: {', '.join(unique_vals)}{suffix}")
 
     # 종합 판단문
     if fail_indicators:
@@ -866,10 +927,15 @@ def generate_generic_narrative(
             f"전반적으로 {fail_names}이(가) 환경기준을 초과하고 있어 "
             f"관리 대책 수립이 필요한 것으로 판단된다."
         )
-    else:
+    elif has_any_standard:
         lines.append(
             f"전반적으로 본 사업지역의 {section_def.title} 환경은 "
             f"양호한 수준으로 판단된다."
+        )
+    else:
+        lines.append(
+            f"전반적으로 본 사업지역의 {section_def.title} 현황은 "
+            f"상기와 같으며, 사업 시행에 따른 영향을 검토하여야 한다."
         )
 
     return "\n\n".join(lines)

@@ -43,13 +43,22 @@ for _ptype in ("road", "railway", "housing", "airport", "port", "dam", "reclamat
         for k, v in DEFAULT_EMISSIONS["power_plant"].items()
     }
 
-# 기본 굴뚝 높이 (m)
+# 기본 유효 굴뚝 높이 (m) — 사업유형별 현실적 배출원 높이
+# road/railway: 차량 배기관 높이 (지면 배출원)
+# housing: 아파트 보일러 배기구
+# power_plant/industrial: 굴뚝
 DEFAULT_STACK_HEIGHT: dict[str, float] = {
     "power_plant": 50.0,
     "industrial": 30.0,
+    "road": 0.0,
+    "railway": 3.0,
+    "housing": 15.0,
+    "airport": 5.0,
+    "port": 10.0,
+    "dam": 0.0,
+    "reclamation": 5.0,
+    "other": 10.0,
 }
-for _ptype in ("road", "railway", "housing", "airport", "port", "dam", "reclamation", "other"):
-    DEFAULT_STACK_HEIGHT[_ptype] = 20.0
 
 # 기본 풍속 (m/s)
 DEFAULT_WIND_SPEED = 3.0

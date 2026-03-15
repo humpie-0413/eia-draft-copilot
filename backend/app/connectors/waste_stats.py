@@ -60,7 +60,7 @@ class WasteStatsConnector(BaseConnector):
             "serviceKey": api_key,
             "returnType": "json",
             "pageNo": str(params.get("page_no", 1)),
-            "numOfRows": str(params.get("num_of_rows", 100)),
+            "numOfRows": str(params.get("num_of_rows", 10)),
             "cond[SGG_NM::LIKE]": region,
         }
 

@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Phase 4: 3종 시나리오 실행 검증** ✅
+**Bugfix-6: 6건 버그 수정** ✅ (2026-03-16)
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -18,23 +18,23 @@
 - Demo-3: 3종 시나리오 데모 스크립트 ✅
 - Deploy: 배포 환경 구성 ✅
 - Phase 4: 3종 시나리오 실행 검증 ✅
+- Bugfix-6: 6건 버그 수정 ✅
 
-## 완료된 작업 (Phase 4: 2026-03-15)
+## 완료된 작업 (Bugfix-6: 2026-03-16)
 
-### 3종 시나리오 실행 결과
+### 수정 내역
 
-| 항목 | 양평 도로 | 세종 택지 | 보령 발전소 |
-|------|-----------|-----------|-------------|
-| 커넥터 성공 | 5/9 | 1/9 | 4/9 |
-| 증거 합계 | 1,214 | 608 | 718 |
-| 예측 모델 | 3종 (41건) | 3종 (41건) | 3종 (41건) |
-| GIS 도면 | 5/5 | 5/5 | 5/5 |
-| QA Critical | 1 | 3 | 2 |
-| Export | 차단 | 차단 | 차단 |
+| # | 문제 | 파일 | 수정 내용 |
+|---|------|------|-----------|
+| 1 | 환경기준 None/"초과" 판정 | standard_checker.py | NaN 방어 로직 추가 |
+| 2 | 폐기물 커넥터 과다 요청 | waste_stats.py | numOfRows 100→10 제한 |
+| 3 | 대기 확산 비정상 농도 증가 | air_dispersion.py | 사업유형별 굴뚝 높이 현실화 (도로 0m, 택지 15m 등) |
+| 4 | 폐기물 서술문 데이터 덤프 | narrative_generator.py | 최빈값/대표값 요약, 중복 제거 |
+| 5 | 수질 예측 DOCX 미반영 | export_service.py | evidence 없어도 예측 결과 있으면 섹션 렌더링 |
+| 6 | 경관 "환경기준 만족" 부적절 | narrative_generator.py | 법적 기준 없는 섹션은 중립 표현 사용 |
 
-- 15개 GIS 도면 PNG 생성 완료 (`output/maps/`)
-- 644개 테스트 전체 통과 (72s)
-- Export 차단은 설계 의도 (critical QA 이슈 존재 시 차단)
+- 649개 테스트 전체 통과 (54s)
+- 신규 테스트 3건 추가 (NaN 판정, None 판정, 지면 배출원 단조감소)
 
 ## 다음 작업 후보
 
@@ -56,7 +56,7 @@ cd backend && uvicorn app.main:app --reload
 npm run dev
 
 # 테스트
-cd backend && pytest tests/ -v    # 644개 테스트
+cd backend && pytest tests/ -v    # 649개 테스트
 
 # 3종 시나리오 데모 (백엔드 서버 실행 후)
 python scripts/demo_road_yangpyeong.py

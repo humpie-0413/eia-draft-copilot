@@ -6,6 +6,7 @@ Post-1의 통계 결과를 환경기준과 비교하여 적합/초과 판정을 
 
 from __future__ import annotations
 
+import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -96,7 +97,9 @@ def _check_indicator(
         legal_basis=standard.legal_basis,
     )
 
-    if stats.mean is None or stats.count == 0:
+    if stats.mean is None or stats.count == 0 or (
+        isinstance(stats.mean, float) and math.isnan(stats.mean)
+    ):
         result.status = CheckStatus.NA
         return result
 

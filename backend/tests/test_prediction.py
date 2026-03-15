@@ -206,6 +206,19 @@ class TestGaussianPlume:
         )
         assert c > 0
 
+    def test_ground_level_source_monotonic_decrease(self):
+        """지면 배출원(H=0)에서 농도가 거리에 따라 단조감소해야 한다."""
+        distances = [100, 200, 500, 1000, 2000, 5000]
+        concentrations = [
+            gaussian_plume_ground_concentration(Q=0.25, u=3, H=0, x_m=d)
+            for d in distances
+        ]
+        for i in range(len(concentrations) - 1):
+            assert concentrations[i] > concentrations[i + 1], (
+                f"H=0에서 {distances[i]}m({concentrations[i]:.4f}) > "
+                f"{distances[i+1]}m({concentrations[i+1]:.4f}) 위반"
+            )
+
 
 # ────────────────────────────────────────────
 # AirDispersionModel 통합 테스트
@@ -417,8 +430,12 @@ class TestDefaults:
         """기본 굴뚝 높이가 사업유형별로 올바르게 설정되는지 확인."""
         assert DEFAULT_STACK_HEIGHT["power_plant"] == 50.0
         assert DEFAULT_STACK_HEIGHT["industrial"] == 30.0
-        for ptype in ("road", "railway", "housing", "airport", "port"):
-            assert DEFAULT_STACK_HEIGHT[ptype] == 20.0
+        # 비산업 사업유형은 현실적 배출원 높이
+        assert DEFAULT_STACK_HEIGHT["road"] == 0.0       # 차량 배기관
+        assert DEFAULT_STACK_HEIGHT["railway"] == 3.0     # 기관차
+        assert DEFAULT_STACK_HEIGHT["housing"] == 15.0    # 보일러 배기구
+        assert DEFAULT_STACK_HEIGHT["airport"] == 5.0
+        assert DEFAULT_STACK_HEIGHT["port"] == 10.0
 
     def test_default_wind_speed(self):
         """기본 풍속이 3.0 m/s인지 확인."""
