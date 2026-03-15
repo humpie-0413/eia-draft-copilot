@@ -2143,3 +2143,74 @@
 - `scripts/demo_road_yangpyeong.py` (신규)
 - `scripts/demo_housing_sejong.py` (신규)
 - `scripts/demo_powerplant_boryeong.py` (신규)
+
+---
+
+## Deploy: 배포 환경 구성 ✅
+
+### 완료 항목
+
+#### 1. Docker Compose 통합
+- **docker-compose.yml**: 기본 구성 (PostgreSQL+PostGIS, FastAPI, Next.js)
+- **docker-compose.dev.yml**: 개발 환경 오버라이드 (소스 마운트, 핫 리로드)
+- **docker-compose.prod.yml**: 운영 환경 오버라이드 (Nginx 리버스 프록시, 리소스 제한, 재시작 정책)
+- **postgis/postgis:16-3.4** 이미지 사용, 헬스체크 설정
+- DB 연결 대기 + Alembic 자동 마이그레이션 엔트리포인트 스크립트
+
+#### 2. Docker 이미지
+- **backend/Dockerfile**: Python 3.12-slim 기반, GDAL/GEOS/PROJ 시스템 의존성, 멀티스테이지 아님(단일 스테이지로 충분)
+- **Dockerfile**: Next.js standalone 빌드, 3단계 멀티스테이지 (deps → builder → runner)
+- **Dockerfile.dev**: 프론트엔드 개발용 (핫 리로드 지원)
+- **.dockerignore**, **backend/.dockerignore**: 불필요 파일 제외
+
+#### 3. Nginx 리버스 프록시
+- **nginx/default.conf**: /api/ → 백엔드, / → 프론트엔드 라우팅
+- 스트리밍 응답 지원 (DOCX/PDF export), 웹소켓 지원 (HMR)
+- 정적 파일 캐싱 (/_next/static/)
+
+#### 4. CI/CD 파이프라인
+- **.github/workflows/ci.yml**: PR/push 시 자동 실행
+  - 백엔드 테스트 (Python 3.12 + PostGIS 서비스 컨테이너)
+  - 프론트엔드 빌드 + 린트
+  - Docker 이미지 빌드 검증
+- **.github/workflows/deploy.yml**: main push/태그 시 GHCR 이미지 빌드 및 푸시
+
+#### 5. 환경 분리
+- **.env.docker.example**: Docker Compose용 환경변수 템플릿
+- CORS 오리진 환경변수화 (CORS_ORIGINS)
+- 운영 환경: POSTGRES_PASSWORD 필수 강제
+- 포트 매핑 커스터마이즈 가능 (DB_PORT, BACKEND_PORT, FRONTEND_PORT, NGINX_PORT)
+
+#### 6. 기존 코드 수정
+- **backend/app/config.py**: CORS_ORIGINS 설정 추가, cors_origin_list 프로퍼티
+- **backend/app/main.py**: 하드코딩 CORS → 환경변수 기반 동적 CORS
+- **next.config.js**: output: "standalone" 추가 (Docker 빌드용)
+- **backend/requirements.txt**: psycopg2-binary 추가 (Alembic 동기 마이그레이션용)
+- **.gitignore**: Docker 볼륨, output 디렉토리 추가
+
+### 검증 결과
+- 백엔드 644개 테스트 전체 통과
+- Next.js standalone 빌드 성공
+- docker-compose.yml 설정 유효
+- docker-compose.dev.yml 오버라이드 유효
+- docker-compose.prod.yml 오버라이드 유효 (POSTGRES_PASSWORD 필수 강제 확인)
+
+### 주요 파일
+- `docker-compose.yml` (신규)
+- `docker-compose.dev.yml` (신규)
+- `docker-compose.prod.yml` (신규)
+- `Dockerfile` (신규 — 프론트엔드)
+- `Dockerfile.dev` (신규 — 프론트엔드 개발용)
+- `backend/Dockerfile` (신규)
+- `backend/scripts/docker-entrypoint.sh` (신규)
+- `backend/.dockerignore` (신규)
+- `.dockerignore` (신규)
+- `.env.docker.example` (신규)
+- `nginx/default.conf` (신규)
+- `.github/workflows/ci.yml` (신규)
+- `.github/workflows/deploy.yml` (신규)
+- `backend/app/config.py` (수정 — CORS_ORIGINS 추가)
+- `backend/app/main.py` (수정 — 동적 CORS)
+- `next.config.js` (수정 — standalone 출력)
+- `backend/requirements.txt` (수정 — psycopg2-binary 추가)
+- `.gitignore` (수정 — Docker, output 추가)

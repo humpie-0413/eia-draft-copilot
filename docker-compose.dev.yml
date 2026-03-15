@@ -1,0 +1,33 @@
+# ============================================================
+# EIA Draft Copilot — 개발 환경 오버라이드
+# 사용법: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ============================================================
+
+services:
+  db:
+    ports:
+      - "5432:5432"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # 소스 코드 마운트 + 핫 리로드
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      DEBUG: "true"
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+    command: ["npm", "run", "dev"]
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:8000"

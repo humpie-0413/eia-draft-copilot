@@ -1,0 +1,15 @@
+# ============================================================
+# EIA Draft Copilot — 프론트엔드 개발용 이미지
+# 핫 리로드 지원
+# ============================================================
+
+FROM node:18-alpine
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+EXPOSE 3000
+CMD ["npm", "run", "dev"]

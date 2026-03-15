@@ -25,10 +25,10 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS — 개발 시 Next.js 프론트엔드 허용
+# CORS — 환경변수로 허용 오리진 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

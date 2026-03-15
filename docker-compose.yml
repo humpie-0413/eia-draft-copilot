@@ -1,0 +1,78 @@
+# ============================================================
+# EIA Draft Copilot — Docker Compose 기본 구성
+# 사용법:
+#   개발: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   운영: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ============================================================
+
+services:
+  # PostgreSQL + PostGIS 데이터베이스
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: eia-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-eia_copilot}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-eia_copilot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - eia-network
+
+  # FastAPI 백엔드
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: eia-backend
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-eia_copilot}"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      DATA_GO_KR_API_KEY: ${DATA_GO_KR_API_KEY:-}
+      VWORLD_API_KEY: ${VWORLD_API_KEY:-}
+      LLM_ADAPTER: ${LLM_ADAPTER:-none}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      CONNECTOR_TIMEOUT: ${CONNECTOR_TIMEOUT:-60}
+      DEBUG: ${DEBUG:-false}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - eia-network
+
+  # Next.js 프론트엔드
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: eia-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - eia-network
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  eia-network:
+    driver: bridge

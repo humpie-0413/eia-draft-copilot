@@ -158,6 +158,17 @@ scripts/
   demo_full_scenario.py        # 통합 데모 스크립트
   test_connectors_live.py      # 커넥터 실제 API 검증
 output/                        # 생성된 DOCX/PDF 산출물
+docker-compose.yml             # Docker Compose 기본 구성
+docker-compose.dev.yml         # 개발 환경 오버라이드
+docker-compose.prod.yml        # 운영 환경 오버라이드 (Nginx 포함)
+Dockerfile                     # 프론트엔드 프로덕션 이미지
+Dockerfile.dev                 # 프론트엔드 개발 이미지
+nginx/
+  default.conf                 # Nginx 리버스 프록시 설정
+.github/
+  workflows/
+    ci.yml                     # CI 파이프라인 (테스트 + 빌드)
+    deploy.yml                 # 배포 파이프라인 (이미지 푸시)
 ```
 
 ## API 엔드포인트
@@ -251,7 +262,21 @@ python scripts/test_connectors_live.py
 python scripts/demo_full_scenario.py
 ```
 
-### 사전 요구사항
+### Docker 실행 (권장)
+
+```bash
+# .env 설정
+cp .env.docker.example .env
+# .env 파일에 API 키 등 설정
+
+# 개발 환경 (핫 리로드)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+# 운영 환경 (Nginx 리버스 프록시 포함)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+### 사전 요구사항 (로컬 실행 시)
 - PostgreSQL + PostGIS 로컬 설치
 - Python 3.12+
 - Node.js 18+
@@ -313,10 +338,7 @@ python scripts/demo_full_scenario.py
 
 ### ~~Phase GIS-2: 프론트엔드 지도 시각화~~ ✅ 완료
 
-### Phase Deploy: 배포 환경 구성
-- Docker Compose 통합 (PostgreSQL+PostGIS, FastAPI, Next.js)
-- CI/CD 파이프라인
-- 환경 분리 (dev/staging/prod)
+### ~~Phase Deploy: 배포 환경 구성~~ ✅ 완료
 
 ### Phase Portfolio: 포트폴리오 문서 정리
 - GIS 도면 산출물 포함
@@ -366,5 +388,7 @@ Phase 완료 조건:
 - LLM-Enhancement: 서술문 품질 최종 개선 ✅
 - GIS-1: GIS 공간 분석 및 도면 생성 ✅
 - GIS-2: 프론트엔드 지도 시각화 ✅
+- Demo-3: 3종 시나리오 데모 스크립트 ✅
+- Deploy: 배포 환경 구성 (Docker Compose + CI/CD + 환경 분리) ✅
 
 다음 작업 브리핑: `docs/progress/NEXT_CHAT_BRIEF.md` 참조
