@@ -191,7 +191,7 @@ async def _build_export_context(
         )
         section_data[section.section_key] = (stats, check)
 
-    # 유사사례 매칭 (부록 B)
+    # 유사사례 매칭 (부록 B) — 해당 프로젝트 유형과 관련된 사례만 포함
     similar_cases: list[SimilarCaseInfo] = []
     if opts.include_appendix_b:
         try:
@@ -205,9 +205,12 @@ async def _build_export_context(
                 evidence_categories=categories,
                 top_k=10,
             )
-            # 유사사례 중복 제거 (이름 기준, 점수 높은 것 우선)
+            # 유형 관련성 필터 + 중복 제거 (이름 기준, 점수 높은 것 우선)
+            # type_score > 0: 동일 유형(1.0) 또는 동일 그룹(0.5)인 사례만 포함
             seen_names: set[str] = set()
             for m in match_result.matches:
+                if m.type_score <= 0:
+                    continue
                 if m.similar_case.name in seen_names:
                     continue
                 seen_names.add(m.similar_case.name)
@@ -221,6 +224,8 @@ async def _build_export_context(
                     category_score=m.category_score,
                     summary=m.similar_case.summary,
                 ))
+            # 최대 5건으로 제한
+            similar_cases = similar_cases[:5]
         except Exception:
             pass  # 유사사례 데이터 없어도 export 진행
 
@@ -365,14 +370,13 @@ async def generate_docx(
     Raises:
         ValueError: critical QA 이슈가 있어 export가 차단된 경우
     """
-    qa_result = None
-    if not skip_qa_check:
-        qa_result = await run_qa(db, project.id)
-        if not qa_result.export_ready:
-            raise ValueError(
-                f"critical 이슈 {qa_result.summary.critical_count}건이 "
-                f"남아 있어 export가 차단되었습니다."
-            )
+    # QA는 항상 실행 (부록 C 생성에 필요), skip_qa_check 시 차단만 스킵
+    qa_result = await run_qa(db, project.id)
+    if not skip_qa_check and not qa_result.export_ready:
+        raise ValueError(
+            f"critical 이슈 {qa_result.summary.critical_count}건이 "
+            f"남아 있어 export가 차단되었습니다."
+        )
 
     ctx = await _build_export_context(
         db, project,
@@ -1514,14 +1518,13 @@ async def generate_pdf(
     skip_qa_check: bool = False,
 ) -> tuple[io.BytesIO, str]:
     """PDF 문서를 생성하여 BytesIO와 파일명을 반환한다."""
-    qa_result = None
-    if not skip_qa_check:
-        qa_result = await run_qa(db, project.id)
-        if not qa_result.export_ready:
-            raise ValueError(
-                f"critical 이슈 {qa_result.summary.critical_count}건이 "
-                f"남아 있어 export가 차단되었습니다."
-            )
+    # QA는 항상 실행 (부록 C 생성에 필요), skip_qa_check 시 차단만 스킵
+    qa_result = await run_qa(db, project.id)
+    if not skip_qa_check and not qa_result.export_ready:
+        raise ValueError(
+            f"critical 이슈 {qa_result.summary.critical_count}건이 "
+            f"남아 있어 export가 차단되었습니다."
+        )
 
     ctx = await _build_export_context(
         db, project,

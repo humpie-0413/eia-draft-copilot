@@ -216,7 +216,10 @@ class TestKecoAirConnector:
 
     @pytest.mark.asyncio
     async def test_fetch_API_오류_응답(self):
-        """API가 오류 코드를 반환할 때 RuntimeError가 발생하는지 확인."""
+        """API가 오류 코드를 반환할 때 빈 fallback 응답을 반환하는지 확인.
+
+        모든 측정소명 변형이 실패하면 RuntimeError 대신 빈 응답 구조를 반환한다.
+        """
         error_response = {
             "response": {
                 "header": {
@@ -243,8 +246,71 @@ class TestKecoAirConnector:
                 mock_client.__aexit__ = AsyncMock(return_value=None)
                 mock_client_cls.return_value = mock_client
 
-                with pytest.raises(RuntimeError, match="에어코리아 API 오류"):
-                    await self.connector.fetch({"station_name": "종로구"})
+                result = await self.connector.fetch({"station_name": "종로구"})
+                # 모든 변형 실패 시 빈 응답 반환
+                body = result["response"]["body"]
+                assert body["totalCount"] == 0
+                assert body["items"] == []
+
+    def test_측정소명_변형_생성(self):
+        """행정구역 접미사 제거 변형이 올바르게 생성되는지 확인."""
+        c = self.connector
+        assert c._generate_station_name_variants("양평군") == ["양평군", "양평"]
+        assert c._generate_station_name_variants("세종시") == ["세종시", "세종"]
+        assert c._generate_station_name_variants("보령시") == ["보령시", "보령"]
+        assert c._generate_station_name_variants("종로구") == ["종로구", "종로"]
+        # 접미사 없는 이름은 변형 없음
+        assert c._generate_station_name_variants("종로") == ["종로"]
+        # 접미사만 있는 경우 원본만 반환 (빈 문자열 방지)
+        assert c._generate_station_name_variants("시") == ["시"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_변형_이름_fallback(self):
+        """첫 번째 측정소명이 빈 결과일 때 변형 이름으로 재시도하는지 확인."""
+        # "양평군" → 0건, "양평" → 데이터 있음
+        empty_response = {
+            "response": {
+                "header": {"resultCode": "00", "resultMsg": "NORMAL_CODE"},
+                "body": {"totalCount": 0, "items": []},
+            }
+        }
+        success_response = self.SAMPLE_RESPONSE
+
+        call_count = 0
+
+        async def mock_get(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            station = kwargs.get("params", {}).get("stationName", "")
+            if station == "양평군":
+                return Response(
+                    status_code=200,
+                    json=empty_response,
+                    request=Request("GET", "http://test"),
+                )
+            return Response(
+                status_code=200,
+                json=success_response,
+                request=Request("GET", "http://test"),
+            )
+
+        with patch("app.connectors.keco_air.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = "test_key"
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.get = mock_get
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client_cls.return_value = mock_client
+
+                result = await self.connector.fetch(
+                    {"station_name": "양평군", "data_term": "DAILY"}
+                )
+
+                assert result == success_response
+                assert call_count == 2  # "양평군" 실패 → "양평" 성공
 
 
 # ──────────────────────────────────────────────────

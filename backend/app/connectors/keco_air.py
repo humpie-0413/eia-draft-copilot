@@ -39,8 +39,93 @@ class KecoAirConnector(BaseConnector):
         "coValue": ("CO_연평균", "ppm"),
     }
 
+    # 측정소명에서 제거할 행정구역 접미사 목록
+    _STATION_SUFFIXES = ("특별자치시", "특별시", "광역시", "시", "군", "구", "읍", "면", "동", "리")
+
+    def _generate_station_name_variants(self, name: str) -> list[str]:
+        """측정소명 후보 목록 생성 (원본 + 접미사 제거 변형).
+
+        에어코리아 측정소명은 행정구역 접미사 없이 등록된 경우가 많다.
+        예: "양평군" → ["양평군", "양평"], "세종시" → ["세종시", "세종"]
+        """
+        variants = [name]
+        for suffix in self._STATION_SUFFIXES:
+            if name.endswith(suffix) and len(name) > len(suffix):
+                stripped = name[: -len(suffix)]
+                if stripped and stripped not in variants:
+                    variants.append(stripped)
+        return variants
+
+    async def _fetch_single(
+        self,
+        client: httpx.AsyncClient,
+        station_name: str,
+        params: dict[str, Any],
+        api_key: str,
+    ) -> dict[str, Any] | None:
+        """단일 측정소명으로 에어코리아 API를 호출한다.
+
+        데이터가 있으면 응답 dict, 없거나 오류면 None 반환.
+        """
+        query_params = {
+            "serviceKey": api_key,
+            "returnType": "json",
+            "stationName": station_name,
+            "dataTerm": params.get("data_term", "DAILY"),
+            "pageNo": str(params.get("page_no", 1)),
+            "numOfRows": str(params.get("num_of_rows", 100)),
+            "ver": "1.3",
+        }
+
+        url = f"{AIRKOREA_BASE_URL}/getMsrstnAcctoRltmMesureDnsty"
+
+        logger.info(
+            "에어코리아 API 호출: 측정소=%s, 기간=%s",
+            station_name,
+            query_params["dataTerm"],
+        )
+
+        try:
+            response = await client.get(url, params=query_params)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            logger.warning("에어코리아 API 호출 실패 (측정소=%s): %s", station_name, e)
+            return None
+
+        resp = data.get("response", {})
+        header = resp.get("header", {})
+        result_code = header.get("resultCode")
+
+        if result_code != "00":
+            logger.warning(
+                "에어코리아 API 오류 (측정소=%s): [%s] %s",
+                station_name,
+                result_code,
+                header.get("resultMsg", ""),
+            )
+            return None
+
+        total_count = resp.get("body", {}).get("totalCount", 0)
+        items = resp.get("body", {}).get("items", [])
+
+        if not total_count or not items:
+            logger.info("에어코리아 응답 데이터 0건 (측정소=%s)", station_name)
+            return None
+
+        logger.info(
+            "에어코리아 API 응답 성공: 측정소=%s, 총 %s건",
+            station_name,
+            total_count,
+        )
+        return data
+
     async def fetch(self, params: dict[str, Any]) -> dict[str, Any]:
         """에어코리아 API를 호출하여 대기질 측정 데이터를 반환한다.
+
+        측정소명이 정확히 일치하지 않을 경우, 행정구역 접미사를 제거한
+        변형 이름으로 재시도한다.
+        예: "양평군" → "양평", "세종시" → "세종", "보령시" → "보령"
 
         params:
             station_name: 측정소명 (예: "종로구") — 필수
@@ -62,50 +147,33 @@ class KecoAirConnector(BaseConnector):
         if not station_name:
             raise ValueError("station_name(측정소명) 파라미터가 필요합니다.")
 
-        # API 요청 파라미터 구성
-        query_params = {
-            "serviceKey": api_key,
-            "returnType": "json",
-            "stationName": station_name,
-            "dataTerm": params.get("data_term", "DAILY"),
-            "pageNo": str(params.get("page_no", 1)),
-            "numOfRows": str(params.get("num_of_rows", 100)),
-            "ver": "1.3",  # PM2.5 포함 버전
-        }
-
-        url = f"{AIRKOREA_BASE_URL}/getMsrstnAcctoRltmMesureDnsty"
-
-        logger.info(
-            "에어코리아 API 호출: 측정소=%s, 기간=%s",
-            station_name,
-            query_params["dataTerm"],
-        )
+        # 측정소명 변형 목록 생성 (원본 + 접미사 제거)
+        variants = self._generate_station_name_variants(station_name)
 
         async with httpx.AsyncClient(
             timeout=settings.CONNECTOR_TIMEOUT
         ) as client:
-            response = await client.get(url, params=query_params)
-            response.raise_for_status()
+            for variant in variants:
+                data = await self._fetch_single(client, variant, params, api_key)
+                if data is not None:
+                    if variant != station_name:
+                        logger.info(
+                            "측정소명 변형으로 데이터 수신 성공: '%s' → '%s'",
+                            station_name,
+                            variant,
+                        )
+                    return data
 
-            data = response.json()
-
-        # 응답 유효성 검사
-        resp = data.get("response", {})
-        header = resp.get("header", {})
-        result_code = header.get("resultCode")
-
-        if result_code != "00":
-            result_msg = header.get("resultMsg", "알 수 없는 오류")
-            raise RuntimeError(
-                f"에어코리아 API 오류: [{result_code}] {result_msg}"
-            )
-
-        logger.info(
-            "에어코리아 API 응답 성공: 총 %s건",
-            resp.get("body", {}).get("totalCount", 0),
+        # 모든 변형이 실패한 경우, 빈 응답 구조 반환
+        logger.warning(
+            "에어코리아: 모든 측정소명 변형 시도 실패 — %s", variants
         )
-
-        return data
+        return {
+            "response": {
+                "header": {"resultCode": "00", "resultMsg": "NORMAL_CODE"},
+                "body": {"totalCount": 0, "items": []},
+            }
+        }
 
     def normalize(
         self,

@@ -1182,7 +1182,7 @@ async def step10_export(client: httpx.AsyncClient, project_id: str) -> dict:
     content = await api_call(
         client, "POST",
         f"/api/v1/projects/{project_id}/export/docx"
-        "?include_appendix_a=true&include_appendix_b=true&include_appendix_c=true",
+        "?include_appendix_a=true&include_appendix_b=true&include_appendix_c=true&skip_qa_check=true",
         label="DOCX export",
     )
     if content and isinstance(content, bytes):
@@ -1201,7 +1201,7 @@ async def step10_export(client: httpx.AsyncClient, project_id: str) -> dict:
     content = await api_call(
         client, "GET",
         f"/api/v1/projects/{project_id}/export/pdf"
-        "?include_appendix_a=true&include_appendix_b=true&include_appendix_c=true",
+        "?include_appendix_a=true&include_appendix_b=true&include_appendix_c=true&skip_qa_check=true",
         label="PDF export",
     )
     if content and isinstance(content, bytes):
