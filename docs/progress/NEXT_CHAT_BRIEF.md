@@ -1,7 +1,7 @@
 # Next Chat Brief
 
 ## 마지막 완료 작업
-**Deploy: 배포 환경 구성** ✅
+**Phase 4: 3종 시나리오 실행 검증** ✅
 
 ## 전체 Phase 완료 현황
 - Phase 0~6: MVP 완료 ✅
@@ -17,33 +17,24 @@
 - GIS-2: 프론트엔드 지도 시각화 ✅
 - Demo-3: 3종 시나리오 데모 스크립트 ✅
 - Deploy: 배포 환경 구성 ✅
+- Phase 4: 3종 시나리오 실행 검증 ✅
 
-## 완료된 작업 (Deploy: 2026-03-15)
+## 완료된 작업 (Phase 4: 2026-03-15)
 
-### Docker Compose 통합
-- `docker-compose.yml`: 기본 (DB + 백엔드 + 프론트엔드)
-- `docker-compose.dev.yml`: 개발 (소스 마운트, 핫 리로드)
-- `docker-compose.prod.yml`: 운영 (Nginx 리버스 프록시, 리소스 제한)
-- PostGIS 16-3.4, 헬스체크, 자동 마이그레이션
+### 3종 시나리오 실행 결과
 
-### Docker 이미지
-- `backend/Dockerfile`: Python 3.12-slim + GDAL/GEOS/PROJ
-- `Dockerfile`: Next.js standalone 3단계 멀티스테이지
-- `Dockerfile.dev`: 프론트엔드 개발용 (핫 리로드)
+| 항목 | 양평 도로 | 세종 택지 | 보령 발전소 |
+|------|-----------|-----------|-------------|
+| 커넥터 성공 | 5/9 | 1/9 | 4/9 |
+| 증거 합계 | 1,214 | 608 | 718 |
+| 예측 모델 | 3종 (41건) | 3종 (41건) | 3종 (41건) |
+| GIS 도면 | 5/5 | 5/5 | 5/5 |
+| QA Critical | 1 | 3 | 2 |
+| Export | 차단 | 차단 | 차단 |
 
-### CI/CD 파이프라인
-- `.github/workflows/ci.yml`: 테스트 + 빌드 + Docker 검증
-- `.github/workflows/deploy.yml`: GHCR 이미지 푸시
-
-### 환경 분리
-- `.env.docker.example`: 환경변수 템플릿
-- CORS 동적화 (CORS_ORIGINS 환경변수)
-- 운영: POSTGRES_PASSWORD 필수
-
-### 검증 결과
-- 644개 테스트 전체 통과
-- Next.js standalone 빌드 성공
-- Docker Compose 설정 3종 모두 유효
+- 15개 GIS 도면 PNG 생성 완료 (`output/maps/`)
+- 644개 테스트 전체 통과 (72s)
+- Export 차단은 설계 의도 (critical QA 이슈 존재 시 차단)
 
 ## 다음 작업 후보
 
@@ -66,4 +57,9 @@ npm run dev
 
 # 테스트
 cd backend && pytest tests/ -v    # 644개 테스트
+
+# 3종 시나리오 데모 (백엔드 서버 실행 후)
+python scripts/demo_road_yangpyeong.py
+python scripts/demo_housing_sejong.py
+python scripts/demo_powerplant_boryeong.py
 ```

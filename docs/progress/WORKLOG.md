@@ -2214,3 +2214,43 @@
 - `next.config.js` (수정 — standalone 출력)
 - `backend/requirements.txt` (수정 — psycopg2-binary 추가)
 - `.gitignore` (수정 — Docker, output 추가)
+
+---
+
+## Phase 4: 3종 시나리오 실행 검증 ✅
+
+### 개요
+Demo-3에서 작성한 3종 데모 스크립트를 실제 백엔드 서버에서 실행하여 전체 파이프라인 검증.
+커넥터 → 증거 수집 → 수동 입력 → 예측 → QA → GIS 도면 전 과정 동작 확인.
+
+### 실행 결과 비교표
+
+| 항목 | 양평 도로 | 세종 택지 | 보령 발전소 |
+|------|-----------|-----------|-------------|
+| 사업유형 | road | housing | power_plant |
+| 커넥터 성공 | 5/9 | 1/9 | 4/9 |
+| 증거 (API) | 1,203 | 600 | 707 |
+| 증거 (수동) | 11 | 8 | 11 |
+| 증거 합계 | 1,214 | 608 | 718 |
+| 예측 모델 | 3종 (41건) | 3종 (41건) | 3종 (41건) |
+| GIS 도면 | 5/5 | 5/5 | 5/5 |
+| QA Critical | 1 | 3 | 2 |
+| QA Warning | 12 | 7 | 11 |
+| QA Info | 11 | 7 | 8 |
+| Export | 차단 | 차단 | 차단 |
+
+### 커넥터 상세 결과
+- **시나리오 1 (양평)**: keco_air(0건), water_info ✅, vworld_land_use ✅, land_use_regulation ✅, traffic_volume ✅, waste_stats ✅
+- **시나리오 2 (세종)**: 네트워크 장애로 8/9 실패, waste_stats ✅ (600건)
+- **시나리오 3 (보령)**: water_info ✅, land_use_regulation ✅, traffic_volume ✅, waste_stats ✅
+
+### Export 차단 원인
+- R007 법적 필수 섹션 누락 — 에어코리아 API 0건 반환 등 외부 데이터 미수집 시 정상 차단
+- 설계 의도대로 critical QA 이슈 존재 시 export 차단 동작 확인
+
+### GIS 도면 생성
+- 3개 시나리오 × 5종 도면 = **15개 PNG 파일** 생성 (`output/maps/`)
+- 도면 유형: location, land_use, monitoring_stations, noise_contour, air_dispersion
+
+### 테스트
+- 644개 테스트 전체 통과 (72.23초)
