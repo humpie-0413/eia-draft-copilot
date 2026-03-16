@@ -165,21 +165,33 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         "manual": {},
     }
 
-    # ── 커넥터 공통 수집 함수 ──
+    # ── 커넥터 공통 수집 함수 (60초 타임아웃) ──
+    CONNECTOR_TIMEOUT = 60  # 각 커넥터 수집 최대 시간 (초)
+
     async def collect_connector(
         key: str, label: str, params: dict, *,
         failure_reason_hint: str = "",
     ) -> int:
         sub_banner(f"{label}")
-        result = await api_call(
-            client, "POST", f"/api/v1/connectors/{key}/collect",
-            json={
-                "project_id": project_id,
-                "params": params,
-                "screening_only": False,
-            },
-            expected=200, label=f"{key} 수집",
-        )
+        try:
+            result = await asyncio.wait_for(
+                api_call(
+                    client, "POST", f"/api/v1/connectors/{key}/collect",
+                    json={
+                        "project_id": project_id,
+                        "params": params,
+                        "screening_only": False,
+                    },
+                    expected=200, label=f"{key} 수집",
+                ),
+                timeout=CONNECTOR_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            reason = f"{key} 수집 타임아웃 ({CONNECTOR_TIMEOUT}초 초과) — 건너뜀"
+            stats["connector_failed"][key] = reason
+            print(f"    [타임아웃] {reason}")
+            return 0
+
         if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
             count = result["evidence_count"]
             print(f"    [실제 API] 상태: 성공, 수집 건수: {count}")
@@ -206,8 +218,8 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
     # 2-a. 에어코리아 대기질 커넥터
     await collect_connector(
         "keco_air",
-        "2-a. 에어코리아 대기질 커넥터 — 측정소: 양평군",
-        {"station_name": "양평군", "data_term": "DAILY"},
+        "2-a. 에어코리아 대기질 커넥터 — 측정소: 양평읍",
+        {"station_name": "양평읍", "data_term": "DAILY"},
     )
 
     # 2-b. 수질 커넥터
@@ -1429,7 +1441,7 @@ async def main():
     print(f"  백엔드 URL: {BASE_URL}")
     print(f"  실행 시각: {datetime.now(tz=timezone.utc).isoformat()}")
 
-    async with httpx.AsyncClient(timeout=600) as client:
+    async with httpx.AsyncClient(timeout=300) as client:
         try:
             resp = await client.get(f"{BASE_URL}/health")
             if resp.status_code != 200:

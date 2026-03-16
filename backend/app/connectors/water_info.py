@@ -63,13 +63,15 @@ class WaterInfoConnector(BaseConnector):
         if not year:
             raise ValueError("year(조회 연도) 파라미터가 필요합니다.")
 
-        # API 요청 파라미터 구성
+        # API 요청 파라미터 구성 — 최대 100건 제한 (성능 보호)
+        MAX_ROWS = 100
+        requested_rows = min(int(params.get("num_of_rows", MAX_ROWS)), MAX_ROWS)
         query_params: dict[str, str] = {
             "serviceKey": api_key,
             "resultType": "json",
             "year": str(year),
             "pageNo": str(params.get("page_no", 1)),
-            "numOfRows": str(params.get("num_of_rows", 100)),
+            "numOfRows": str(requested_rows),
         }
 
         # 측정지점 코드 필터 (선택)
@@ -85,8 +87,10 @@ class WaterInfoConnector(BaseConnector):
             pt_no or "전체",
         )
 
+        # 개별 API 호출 타임아웃: 30초 (전체 커넥터 타임아웃 60초의 절반)
+        api_timeout = min(30, settings.CONNECTOR_TIMEOUT)
         async with httpx.AsyncClient(
-            timeout=settings.CONNECTOR_TIMEOUT
+            timeout=api_timeout
         ) as client:
             response = await client.get(url, params=query_params)
             response.raise_for_status()

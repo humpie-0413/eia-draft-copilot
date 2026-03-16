@@ -164,20 +164,33 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         "manual": {},
     }
 
+    # ── 커넥터 공통 수집 함수 (60초 타임아웃) ──
+    CONNECTOR_TIMEOUT = 60  # 각 커넥터 수집 최대 시간 (초)
+
     async def collect_connector(
         key: str, label: str, params: dict, *,
         failure_reason_hint: str = "",
     ) -> int:
         sub_banner(f"{label}")
-        result = await api_call(
-            client, "POST", f"/api/v1/connectors/{key}/collect",
-            json={
-                "project_id": project_id,
-                "params": params,
-                "screening_only": False,
-            },
-            expected=200, label=f"{key} 수집",
-        )
+        try:
+            result = await asyncio.wait_for(
+                api_call(
+                    client, "POST", f"/api/v1/connectors/{key}/collect",
+                    json={
+                        "project_id": project_id,
+                        "params": params,
+                        "screening_only": False,
+                    },
+                    expected=200, label=f"{key} 수집",
+                ),
+                timeout=CONNECTOR_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            reason = f"{key} 수집 타임아웃 ({CONNECTOR_TIMEOUT}초 초과) — 건너뜀"
+            stats["connector_failed"][key] = reason
+            print(f"    [타임아웃] {reason}")
+            return 0
+
         if result and result.get("status") == "success" and result.get("evidence_count", 0) > 0:
             count = result["evidence_count"]
             print(f"    [실제 API] 상태: 성공, 수집 건수: {count}")
@@ -204,8 +217,8 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
     # 2-a. 에어코리아 대기질
     await collect_connector(
         "keco_air",
-        "2-a. 에어코리아 대기질 커넥터 — 측정소: 보령시",
-        {"station_name": "보령시", "data_term": "DAILY"},
+        "2-a. 에어코리아 대기질 커넥터 — 측정소: 대천2동",
+        {"station_name": "대천2동", "data_term": "DAILY"},
     )
 
     # 2-b. 수질 커넥터 — 금강 수계 하류
@@ -234,7 +247,7 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
     await collect_connector(
         "vworld_land_use",
         "2-e. V-world 토지이용 커넥터 — 보령시 중심점",
-        {"lng": "126.5", "lat": "36.3"},
+        {"lng": "126.6126", "lat": "36.3335"},
     )
 
     # 2-f. 토지이용규제정보
@@ -248,7 +261,7 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
     await collect_connector(
         "cultural_heritage",
         "2-g. 국가유산청 문화재 커넥터 — 보령 인근",
-        {"lng": "126.5", "lat": "36.3"},
+        {"lng": "126.6126", "lat": "36.3335"},
     )
 
     # 2-h. 교통량 통계
@@ -1271,7 +1284,7 @@ async def main():
     print(f"  백엔드 URL: {BASE_URL}")
     print(f"  실행 시각: {datetime.now(tz=timezone.utc).isoformat()}")
 
-    async with httpx.AsyncClient(timeout=600) as client:
+    async with httpx.AsyncClient(timeout=300) as client:
         try:
             resp = await client.get(f"{BASE_URL}/health")
             if resp.status_code != 200:

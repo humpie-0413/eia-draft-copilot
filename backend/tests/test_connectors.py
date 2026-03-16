@@ -987,6 +987,38 @@ class TestKmaWeatherConnector:
                 mock_client.get.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_fetch_numOfRows_최대100_제한(self):
+        """numOfRows=999 요청 시 100으로 제한되는지 확인."""
+        mock_response = Response(
+            status_code=200,
+            json=self.SAMPLE_RESPONSE,
+            request=Request("GET", "http://test"),
+        )
+
+        with patch("app.connectors.kma_weather.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = "test_key"
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.get.return_value = mock_response
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client_cls.return_value = mock_client
+
+                await self.connector.fetch({
+                    "stn_id": "108",
+                    "start_dt": "20240101",
+                    "end_dt": "20241231",
+                    "num_of_rows": 999,
+                })
+
+                # 실제 요청 파라미터에서 numOfRows가 100으로 제한되는지 확인
+                call_args = mock_client.get.call_args
+                sent_params = call_args.kwargs.get("params", call_args[1].get("params", {}))
+                assert sent_params["numOfRows"] == "100"
+
+    @pytest.mark.asyncio
     async def test_fetch_API_오류_응답(self):
         """API가 오류 코드를 반환할 때 RuntimeError가 발생하는지 확인."""
         error_response = {
@@ -1775,6 +1807,81 @@ class TestWasteStatsConnector:
                 result = await self.connector.fetch({"region": "강남구"})
                 assert result == self.SAMPLE_RESPONSE
                 mock_client.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fetch_CTPV_NM_fallback(self):
+        """SGG_NM 검색 결과 0건 시 CTPV_NM fallback이 동작하는지 확인."""
+        # 첫 번째 응답: SGG_NM 검색 0건 (세종시처럼 기초자치단체 없음)
+        empty_response = Response(
+            status_code=200,
+            json={
+                "response": {
+                    "body": {
+                        "dataType": "JSON",
+                        "items": {"item": []},
+                        "numOfRows": 10,
+                        "pageNo": 1,
+                        "totalCount": 0,
+                    },
+                    "header": {"resultCode": "0", "resultMsg": "정상"},
+                }
+            },
+            request=Request("GET", "http://test"),
+        )
+
+        # 두 번째 응답: CTPV_NM fallback 성공
+        fallback_response = Response(
+            status_code=200,
+            json={
+                "response": {
+                    "body": {
+                        "dataType": "JSON",
+                        "items": {
+                            "item": [
+                                {
+                                    "SGG_NM": "없음",
+                                    "CTPV_NM": "세종특별자치시",
+                                    "MNG_DEPT_NM": "세종시청 환경과",
+                                    "DAT_CRTR_YMD": "2024-01-15",
+                                },
+                            ]
+                        },
+                        "numOfRows": 10,
+                        "pageNo": 1,
+                        "totalCount": 6,
+                    },
+                    "header": {"resultCode": "0", "resultMsg": "정상"},
+                }
+            },
+            request=Request("GET", "http://test"),
+        )
+
+        with patch("app.connectors.waste_stats.settings") as mock_settings:
+            mock_settings.DATA_GO_KR_API_KEY = "test_key"
+            mock_settings.CONNECTOR_TIMEOUT = 30
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.get.side_effect = [empty_response, fallback_response]
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client_cls.return_value = mock_client
+
+                result = await self.connector.fetch({"region": "세종특별자치시"})
+
+                # 2번 호출 확인 (SGG_NM → CTPV_NM fallback)
+                assert mock_client.get.call_count == 2
+
+                # 두 번째 호출은 CTPV_NM 검색
+                second_call = mock_client.get.call_args_list[1]
+                sent_params = second_call.kwargs.get("params", second_call[1].get("params", {}))
+                assert "cond[CTPV_NM::LIKE]" in sent_params
+                assert sent_params["cond[CTPV_NM::LIKE]"] == "세종특별자치시"
+                assert "cond[SGG_NM::LIKE]" not in sent_params
+
+                # fallback 응답이 반환됨
+                body = result.get("response", {}).get("body", {})
+                assert body.get("totalCount") == 6
 
 
 # ──────────────────────────────────────────────────

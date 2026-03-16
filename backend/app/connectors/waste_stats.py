@@ -87,6 +87,21 @@ class WasteStatsConnector(BaseConnector):
 
             data = response.json()
 
+            # SGG_NM 검색 결과가 0건이면 CTPV_NM으로 fallback 검색
+            # (세종특별자치시처럼 기초자치단체가 없는 경우 SGG_NM="없음")
+            body = data.get("response", {}).get("body", {})
+            if "totalCount" in body and body["totalCount"] == 0:
+                logger.info(
+                    "SGG_NM 검색 결과 0건 — CTPV_NM fallback 시도: %s",
+                    region,
+                )
+                fallback_params = dict(query_params)
+                del fallback_params["cond[SGG_NM::LIKE]"]
+                fallback_params["cond[CTPV_NM::LIKE]"] = region
+                response = await client.get(url, params=fallback_params)
+                response.raise_for_status()
+                data = response.json()
+
         # 응답 유효성 검사
         header = data.get("header", data.get("response", {}).get("header", {}))
         result_code = header.get("resultCode", header.get("code"))

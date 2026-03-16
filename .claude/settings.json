@@ -15,15 +15,15 @@
       "Bash(ruff *)",
       "Bash(mypy *)",
       "Bash(alembic *)",
-      "Bash(docker compose *)"
+      "Bash(docker compose *)",
+	"Bash(curl*)"
     ],
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)",
       "Read(./secrets/**)",
       "Read(./**/*.pem)",
-      "Read(./**/*.key)",
-      "Bash(curl *)"
+      "Read(./**/*.key)"
     ]
   },
   "env": {

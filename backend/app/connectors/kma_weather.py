@@ -78,7 +78,9 @@ class KmaWeatherConnector(BaseConnector):
                 "형식: YYYYMMDD"
             )
 
-        # API 요청 파라미터 구성
+        # API 요청 파라미터 구성 — 최대 100건 제한 (성능 보호)
+        MAX_ROWS = 100
+        requested_rows = min(int(params.get("num_of_rows", MAX_ROWS)), MAX_ROWS)
         query_params: dict[str, str] = {
             "serviceKey": api_key,
             "dataType": "JSON",
@@ -88,7 +90,7 @@ class KmaWeatherConnector(BaseConnector):
             "endDt": str(end_dt),
             "stnIds": str(stn_id),
             "pageNo": str(params.get("page_no", 1)),
-            "numOfRows": str(params.get("num_of_rows", 999)),
+            "numOfRows": str(requested_rows),
         }
 
         url = f"{KMA_ASOS_BASE_URL}/getWthrDataList"
