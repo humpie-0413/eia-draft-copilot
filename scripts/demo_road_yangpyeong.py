@@ -165,8 +165,8 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         "manual": {},
     }
 
-    # ── 커넥터 공통 수집 함수 (60초 타임아웃) ──
-    CONNECTOR_TIMEOUT = 60  # 각 커넥터 수집 최대 시간 (초)
+    # ── 커넥터 공통 수집 함수 (120초 타임아웃) ──
+    CONNECTOR_TIMEOUT = 120  # 각 커넥터 수집 최대 시간 (초)
 
     async def collect_connector(
         key: str, label: str, params: dict, *,

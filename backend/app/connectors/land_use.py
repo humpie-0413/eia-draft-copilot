@@ -113,8 +113,12 @@ class LandUseConnector(BaseConnector):
 
         total = sum(len(v) for v in all_features.values())
         if total == 0:
-            raise RuntimeError(
-                "V-world API 응답에 토지이용 데이터가 없습니다."
+            # 해당 좌표에 토지이용 데이터가 없는 경우 — 비도시지역, 미등록 필지 등
+            # RuntimeError 대신 빈 결과를 반환하여 다른 커넥터에 영향을 주지 않음
+            logger.warning(
+                "V-world API 응답에 토지이용 데이터가 없습니다: 좌표=(%s, %s). "
+                "비도시지역이거나 좌표가 필지 경계 밖일 수 있습니다.",
+                lat, lng,
             )
 
         logger.info("V-world API 총 %d건 수집", total)

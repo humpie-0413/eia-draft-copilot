@@ -87,10 +87,8 @@ class WaterInfoConnector(BaseConnector):
             pt_no or "전체",
         )
 
-        # 개별 API 호출 타임아웃: 30초 (전체 커넥터 타임아웃 60초의 절반)
-        api_timeout = min(30, settings.CONNECTOR_TIMEOUT)
         async with httpx.AsyncClient(
-            timeout=api_timeout
+            timeout=settings.CONNECTOR_TIMEOUT
         ) as client:
             response = await client.get(url, params=query_params)
             response.raise_for_status()

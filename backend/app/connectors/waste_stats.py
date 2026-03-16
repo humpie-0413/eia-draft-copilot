@@ -352,6 +352,70 @@ class WasteStatsConnector(BaseConnector):
                     )
                 )
 
+        # ── 폐기물 종류 파생: 배출 일정에서 폐기물 종류를 추출한다 ──
+        # 생활쓰레기, 음식물쓰레기, 재활용이 존재하면 폐기물_종류 증거를 생성
+        if items and not any(e.indicator == "폐기물_종류" for e in evidences):
+            waste_types: list[str] = []
+            first_item = items[0]
+            first_observed = None
+            first_region = ""
+            first_date_str = ""
+
+            # 첫 번째 항목에서 기준 메타데이터 추출
+            d = (
+                first_item.get("DAT_CRTR_YMD")
+                or first_item.get("dat_crtr_ymd")
+                or ""
+            )
+            first_date_str = str(d) if d else ""
+            first_region = (
+                first_item.get("SGG_NM")
+                or first_item.get("sgg_nm")
+                or first_item.get("CTPV_NM")
+                or first_item.get("ctpv_nm")
+                or ""
+            )
+            if first_date_str:
+                try:
+                    cd = first_date_str.replace("-", "").strip()
+                    if len(cd) == 8:
+                        first_observed = datetime.strptime(cd, "%Y%m%d")
+                except ValueError:
+                    pass
+
+            # 배출 항목 존재 여부로 종류 판정
+            for item in items:
+                lf = item.get("LF_WST_EMSN_DOW") or item.get("lf_wst_emsn_dow")
+                if lf and "생활폐기물" not in waste_types:
+                    waste_types.append("생활폐기물")
+                fod = item.get("FOD_WST_EMSN_DOW") or item.get("fod_wst_emsn_dow")
+                if fod and "음식물쓰레기" not in waste_types:
+                    waste_types.append("음식물쓰레기")
+                rcycl = item.get("RCYCL_EMSN_DOW") or item.get("rcycl_emsn_dow")
+                if rcycl and "재활용" not in waste_types:
+                    waste_types.append("재활용")
+
+            if waste_types:
+                evidences.append(
+                    EvidenceCreate(
+                        project_id=project_id,
+                        snapshot_id=snapshot_id,
+                        data_source_id=data_source_id,
+                        category=EvidenceCategory.WASTE,
+                        indicator="폐기물_종류",
+                        value=", ".join(waste_types),
+                        numeric_value=None,
+                        unit="",
+                        observed_at=first_observed,
+                        screening_only=screening_only,
+                        metadata_json={
+                            "region": first_region,
+                            "date": first_date_str,
+                            "source": "생활쓰레기배출정보 배출항목 파생",
+                        },
+                    )
+                )
+
         logger.info(
             "생활쓰레기배출정보 정규화 완료: %d건 증거 생성", len(evidences)
         )

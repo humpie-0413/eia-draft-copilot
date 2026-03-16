@@ -1719,7 +1719,8 @@ class TestWasteStatsConnector:
 
         # 강남구 항목: 관리부서 + 배출방법 + 음식물요일 + 재활용요일 + 생활쓰레기요일 = 5
         # 서초구 항목: 관리부서 + 배출방법 + 음식물요일 + 재활용요일 (LF_WST_EMSN_DOW="" → 건너뜀) = 4
-        assert len(evidences) == 9
+        # + 폐기물_종류 파생 1건 = 10
+        assert len(evidences) == 10
 
         # 지표명 목록 확인
         indicators = [e.indicator for e in evidences]
@@ -1728,6 +1729,7 @@ class TestWasteStatsConnector:
         assert indicators.count("음식물쓰레기_배출요일") == 2
         assert indicators.count("재활용_배출요일") == 2
         assert indicators.count("생활쓰레기_배출요일") == 1  # 서초구는 빈 값
+        assert indicators.count("폐기물_종류") == 1  # 파생 증거
 
         # 강남구 관리부서 값 검증
         gangnam_dept = next(

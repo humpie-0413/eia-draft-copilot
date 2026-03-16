@@ -108,16 +108,16 @@ async def api_call(
 # 단계 1: 프로젝트 생성
 # ═══════════════════════════════════════════════════════════════
 
-# 세종시 조치원읍 일대 ~1km x 1km 사각형 폴리곤
+# 세종시 나성동 일대 ~1km x 1km 사각형 폴리곤 (행정중심복합도시 내)
 SEJONG_POLYGON = {
     "type": "Polygon",
     "coordinates": [
         [
-            [126.995, 36.595],
-            [127.005, 36.595],
-            [127.005, 36.605],
-            [126.995, 36.605],
-            [126.995, 36.595],
+            [127.2444, 36.5051],
+            [127.2544, 36.5051],
+            [127.2544, 36.5151],
+            [127.2444, 36.5151],
+            [127.2444, 36.5051],
         ]
     ],
 }
@@ -155,8 +155,8 @@ async def step1_create_project(client: httpx.AsyncClient) -> str | None:
 # ═══════════════════════════════════════════════════════════════
 
 async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict:
-    """커넥터 9종 실제 API 호출 + 수동 2종(소음·진동, 생태)으로 데이터 수집."""
-    banner("단계 2: 데이터 수집 (커넥터 9종 실제 API + 수동 2종)")
+    """커넥터 9종 실제 API 호출 + 수동 3종(소음·진동, 생태, 폐기물 통계)으로 데이터 수집."""
+    banner("단계 2: 데이터 수집 (커넥터 9종 실제 API + 수동 3종)")
 
     stats = {
         "connectors": {},
@@ -164,8 +164,8 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         "manual": {},
     }
 
-    # ── 커넥터 공통 수집 함수 (60초 타임아웃) ──
-    CONNECTOR_TIMEOUT = 60  # 각 커넥터 수집 최대 시간 (초)
+    # ── 커넥터 공통 수집 함수 (120초 타임아웃) ──
+    CONNECTOR_TIMEOUT = 120  # 각 커넥터 수집 최대 시간 (초)
 
     async def collect_connector(
         key: str, label: str, params: dict, *,
@@ -278,8 +278,35 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
         {"region": "세종특별자치시"},
     )
 
-    # 2-j. 수동 증거 — 소음·진동 3건
-    sub_banner("2-j. 수동 증거 — 소음·진동 3건 (현장 측정)")
+    # 2-j. 수동 증거 — 폐기물 발생량 (환경부 전국폐기물통계조사 2023년 공표치)
+    sub_banner("2-j. 수동 증거 — 폐기물 발생량 (전국폐기물통계조사)")
+    waste_manual = [
+        {
+            "category": "waste",
+            "indicator": "폐기물_발생량",
+            "value": "267.3",
+            "numeric_value": 267.3,
+            "unit": "톤/일",
+            "observed_at": "2023-12-31T00:00:00",
+            "metadata_json": {
+                "source": "환경부 전국폐기물통계조사 2023년",
+                "region": "세종특별자치시",
+                "note": "세종시 생활폐기물 1일 발생량 (2023년 기준)",
+            },
+        },
+    ]
+    for ev in waste_manual:
+        result = await api_call(
+            client, "POST", "/api/v1/evidences",
+            json={"project_id": project_id, "screening_only": False, **ev},
+            expected=201, label=f"폐기물: {ev['indicator']}",
+        )
+        if result:
+            print(f"    [수동-통계] {ev['indicator']}: {ev['value']} {ev['unit']} — 등록 완료")
+    stats["manual"]["waste"] = len(waste_manual)
+
+    # 2-k. 수동 증거 — 소음·진동 3건
+    sub_banner("2-k. 수동 증거 — 소음·진동 3건 (현장 측정)")
     noise_evidences = [
         {"category": "noise_vibration", "indicator": "소음_Leq_주간", "value": "55.0", "numeric_value": 55.0, "unit": "dB(A)", "observed_at": "2025-11-05T10:00:00"},
         {"category": "noise_vibration", "indicator": "소음_Leq_야간", "value": "42.5", "numeric_value": 42.5, "unit": "dB(A)", "observed_at": "2025-11-05T22:00:00"},
@@ -295,8 +322,8 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
             print(f"    [수동] {ev['indicator']}: {ev['value']} {ev['unit']} — 등록 완료")
     stats["manual"]["noise_vibration"] = len(noise_evidences)
 
-    # 2-k. 수동 증거 — 생태 5건
-    sub_banner("2-k. 수동 증거 — 생태 조사 데이터 5건 (현장 조사)")
+    # 2-l. 수동 증거 — 생태 5건
+    sub_banner("2-l. 수동 증거 — 생태 조사 데이터 5건 (현장 조사)")
     ecology_evidences = [
         {"category": "ecology", "indicator": "식물상_종수", "value": "178", "numeric_value": 178.0, "unit": "종", "observed_at": "2025-10-10T00:00:00"},
         {"category": "ecology", "indicator": "동물상_종수", "value": "35", "numeric_value": 35.0, "unit": "종", "observed_at": "2025-10-10T00:00:00"},
