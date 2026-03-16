@@ -987,8 +987,8 @@ class TestKmaWeatherConnector:
                 mock_client.get.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_fetch_numOfRows_최대100_제한(self):
-        """numOfRows=999 요청 시 100으로 제한되는지 확인."""
+    async def test_fetch_numOfRows_최대50_제한(self):
+        """numOfRows=999 요청 시 50으로 제한되는지 확인."""
         mock_response = Response(
             status_code=200,
             json=self.SAMPLE_RESPONSE,
@@ -1013,10 +1013,10 @@ class TestKmaWeatherConnector:
                     "num_of_rows": 999,
                 })
 
-                # 실제 요청 파라미터에서 numOfRows가 100으로 제한되는지 확인
+                # 실제 요청 파라미터에서 numOfRows가 50으로 제한되는지 확인
                 call_args = mock_client.get.call_args
                 sent_params = call_args.kwargs.get("params", call_args[1].get("params", {}))
-                assert sent_params["numOfRows"] == "100"
+                assert sent_params["numOfRows"] == "50"
 
     @pytest.mark.asyncio
     async def test_fetch_API_오류_응답(self):
@@ -2160,3 +2160,91 @@ class TestLandUseRegulationConnector:
             mock_settings.CONNECTOR_TIMEOUT = 30
             with pytest.raises(ValueError, match="area_cd"):
                 await self.connector.fetch({})
+
+
+# ──────────────────────────────────────────────────
+# BaseConnector 재시도 로직 테스트
+# ──────────────────────────────────────────────────
+
+class TestBaseConnectorRetry:
+    """BaseConnector._fetch_with_retry 재시도 로직 테스트."""
+
+    def setup_method(self):
+        self.project_id = uuid.uuid4()
+        self.data_source_id = uuid.uuid4()
+        self.snapshot_id = uuid.uuid4()
+
+    @pytest.mark.asyncio
+    async def test_타임아웃_재시도_성공(self):
+        """첫 번째 호출 타임아웃 후 재시도에서 성공하는지 확인."""
+        import httpx as _httpx
+        from app.connectors.base import BaseConnector
+
+        class _TestConnector(BaseConnector):
+            connector_key = "test_retry"
+            display_name = "테스트 재시도"
+            call_count = 0
+
+            async def fetch(self, params):
+                self.call_count += 1
+                if self.call_count == 1:
+                    raise _httpx.ReadTimeout("read timeout")
+                return {"success": True}
+
+            def normalize(self, raw_payload, project_id, data_source_id,
+                          snapshot_id, screening_only=False):
+                return []
+
+        connector = _TestConnector()
+        with patch("app.connectors.base.RETRY_DELAY_SEC", 0.01):
+            result = await connector._fetch_with_retry({})
+        assert result == {"success": True}
+        assert connector.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_비즈니스_오류_재시도_안함(self):
+        """ValueError 등 비즈니스 오류는 재시도하지 않는지 확인."""
+        from app.connectors.base import BaseConnector
+
+        class _TestConnector(BaseConnector):
+            connector_key = "test_no_retry"
+            display_name = "테스트 재시도 안함"
+            call_count = 0
+
+            async def fetch(self, params):
+                self.call_count += 1
+                raise ValueError("필수 파라미터 누락")
+
+            def normalize(self, raw_payload, project_id, data_source_id,
+                          snapshot_id, screening_only=False):
+                return []
+
+        connector = _TestConnector()
+        with pytest.raises(ValueError, match="필수 파라미터 누락"):
+            await connector._fetch_with_retry({})
+        assert connector.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_최대_재시도_초과(self):
+        """모든 재시도 실패 시 마지막 예외가 발생하는지 확인."""
+        import httpx as _httpx
+        from app.connectors.base import BaseConnector, MAX_RETRIES
+
+        class _TestConnector(BaseConnector):
+            connector_key = "test_all_fail"
+            display_name = "테스트 전부 실패"
+            call_count = 0
+
+            async def fetch(self, params):
+                self.call_count += 1
+                raise _httpx.ConnectError("connection refused")
+
+            def normalize(self, raw_payload, project_id, data_source_id,
+                          snapshot_id, screening_only=False):
+                return []
+
+        connector = _TestConnector()
+        with patch("app.connectors.base.RETRY_DELAY_SEC", 0.01):
+            with pytest.raises(_httpx.ConnectError):
+                await connector._fetch_with_retry({})
+        assert connector.call_count == 1 + MAX_RETRIES

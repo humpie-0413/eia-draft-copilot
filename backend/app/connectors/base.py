@@ -5,6 +5,8 @@ fetch()는 외부 API를 호출하여 원시 응답을 반환하고,
 normalize()는 원시 응답을 EvidenceCreate 목록으로 변환한다.
 """
 
+import asyncio
+import logging
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any
@@ -17,6 +19,30 @@ from app.models.evidence import Evidence
 from app.models.source_snapshot import SourceSnapshot
 from app.schemas.evidence import EvidenceCreate
 from app.schemas.source_snapshot import SnapshotStatus, SourceSnapshotCreate
+
+logger = logging.getLogger(__name__)
+
+# 재시도 설정
+MAX_RETRIES = 2          # 최대 재시도 횟수 (총 3회 시도)
+RETRY_DELAY_SEC = 3.0    # 재시도 간 대기 시간 (초)
+
+# 재시도 대상 예외 (타임아웃, 연결 오류)
+_RETRYABLE_EXCEPTIONS = (
+    TimeoutError,
+    ConnectionError,
+    OSError,
+)
+
+# httpx 예외는 런타임에 확인 (httpx가 없을 수도 있는 테스트 환경 대응)
+try:
+    import httpx
+    _RETRYABLE_EXCEPTIONS = (
+        *_RETRYABLE_EXCEPTIONS,
+        httpx.TimeoutException,
+        httpx.ConnectError,
+    )
+except ImportError:
+    pass
 
 
 class BaseConnector(ABC):
@@ -61,6 +87,44 @@ class BaseConnector(ABC):
         """
         ...
 
+    async def _fetch_with_retry(self, params: dict[str, Any]) -> dict[str, Any]:
+        """재시도 로직이 포함된 fetch 호출.
+
+        타임아웃/연결 오류 시 최대 MAX_RETRIES회 재시도한다.
+        ValueError, RuntimeError 등 비즈니스 오류는 즉시 전파한다.
+        """
+        last_exc: Exception | None = None
+
+        for attempt in range(1 + MAX_RETRIES):
+            try:
+                return await self.fetch(params)
+            except _RETRYABLE_EXCEPTIONS as exc:
+                last_exc = exc
+                if attempt < MAX_RETRIES:
+                    delay = RETRY_DELAY_SEC * (attempt + 1)
+                    logger.warning(
+                        "[%s] API 호출 실패 (시도 %d/%d): %s — %.1f초 후 재시도",
+                        self.connector_key,
+                        attempt + 1,
+                        1 + MAX_RETRIES,
+                        exc,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        "[%s] API 호출 최종 실패 (%d회 시도 모두 실패): %s",
+                        self.connector_key,
+                        1 + MAX_RETRIES,
+                        exc,
+                    )
+            except Exception:
+                # 비즈니스 오류 (ValueError 등)는 재시도하지 않음
+                raise
+
+        # 마지막 예외를 다시 발생
+        raise last_exc  # type: ignore[misc]
+
     async def collect(
         self,
         db: AsyncSession,
@@ -81,9 +145,9 @@ class BaseConnector(ABC):
         Returns:
             (생성된 스냅샷, 생성된 증거 목록) 튜플
         """
-        # 1) 외부 API 호출
+        # 1) 외부 API 호출 (재시도 포함)
         try:
-            raw_payload = await self.fetch(params)
+            raw_payload = await self._fetch_with_retry(params)
             status = SnapshotStatus.SUCCESS
             error_message = None
         except Exception as exc:

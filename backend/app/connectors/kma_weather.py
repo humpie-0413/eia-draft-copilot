@@ -78,8 +78,8 @@ class KmaWeatherConnector(BaseConnector):
                 "형식: YYYYMMDD"
             )
 
-        # API 요청 파라미터 구성 — 최대 100건 제한 (성능 보호)
-        MAX_ROWS = 100
+        # API 요청 파라미터 구성 — 최대 50건 제한 (응답 속도 개선)
+        MAX_ROWS = 50
         requested_rows = min(int(params.get("num_of_rows", MAX_ROWS)), MAX_ROWS)
         query_params: dict[str, str] = {
             "serviceKey": api_key,
@@ -102,9 +102,14 @@ class KmaWeatherConnector(BaseConnector):
             end_dt,
         )
 
-        async with httpx.AsyncClient(
-            timeout=settings.CONNECTOR_TIMEOUT
-        ) as client:
+        # connect/read 타임아웃 분리: 연결 10초, 읽기는 전체 타임아웃
+        timeout = httpx.Timeout(
+            connect=10.0,
+            read=float(settings.CONNECTOR_TIMEOUT),
+            write=10.0,
+            pool=10.0,
+        )
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, params=query_params)
             response.raise_for_status()
 

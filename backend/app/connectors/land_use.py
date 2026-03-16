@@ -62,67 +62,109 @@ class LandUseConnector(BaseConnector):
             lat, lng,
         )
 
+        # 좌표 그리드: 중심점 실패 시 주변 4지점(±0.002° ≈ 200m) 추가 시도
+        OFFSET = 0.002
+        coordinate_candidates = [
+            (float(lng), float(lat)),                    # 중심점
+            (float(lng) + OFFSET, float(lat)),           # 동쪽
+            (float(lng) - OFFSET, float(lat)),           # 서쪽
+            (float(lng), float(lat) + OFFSET),           # 북쪽
+            (float(lng), float(lat) - OFFSET),           # 남쪽
+        ]
+
         all_features: dict[str, list[dict]] = {}
+        used_lng, used_lat = float(lng), float(lat)
 
-        async with httpx.AsyncClient(
-            timeout=settings.CONNECTOR_TIMEOUT
-        ) as client:
-            for data_type, desc in DATA_TYPES.items():
-                query_params: dict[str, str] = {
-                    "service": "data",
-                    "request": "GetFeature",
-                    "data": data_type,
-                    "key": api_key,
-                    "domain": "",
-                    "geomFilter": f"POINT({lng} {lat})",
-                    "crs": "EPSG:4326",
-                    "format": "json",
-                    "size": "100",
-                }
+        timeout = httpx.Timeout(
+            connect=10.0,
+            read=float(settings.CONNECTOR_TIMEOUT),
+            write=10.0,
+            pool=10.0,
+        )
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for coord_idx, (try_lng, try_lat) in enumerate(coordinate_candidates):
+                coord_features: dict[str, list[dict]] = {}
 
-                try:
-                    response = await client.get(
-                        VWORLD_DATA_URL, params=query_params,
+                for data_type, desc in DATA_TYPES.items():
+                    query_params: dict[str, str] = {
+                        "service": "data",
+                        "request": "GetFeature",
+                        "data": data_type,
+                        "key": api_key,
+                        "domain": "",
+                        "geomFilter": f"POINT({try_lng} {try_lat})",
+                        "crs": "EPSG:4326",
+                        "format": "json",
+                        "size": "100",
+                    }
+
+                    try:
+                        response = await client.get(
+                            VWORLD_DATA_URL, params=query_params,
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+
+                        resp = data.get("response", {})
+                        status = resp.get("status", "")
+
+                        if status == "OK":
+                            features = (
+                                resp.get("result", {})
+                                .get("featureCollection", {})
+                                .get("features", [])
+                            )
+                            coord_features[data_type] = features
+                            logger.info(
+                                "V-world %s 응답 성공: %d건 (좌표 %d번)",
+                                desc, len(features), coord_idx,
+                            )
+                        else:
+                            logger.info(
+                                "V-world %s: status=%s (데이터 없음, 좌표 %d번)",
+                                desc, status, coord_idx,
+                            )
+                            coord_features[data_type] = []
+                    except Exception as e:
+                        logger.warning(
+                            "V-world %s 조회 실패 (좌표 %d번): %s",
+                            desc, coord_idx, e,
+                        )
+                        coord_features[data_type] = []
+
+                coord_total = sum(len(v) for v in coord_features.values())
+                if coord_total > 0:
+                    all_features = coord_features
+                    used_lng, used_lat = try_lng, try_lat
+                    if coord_idx > 0:
+                        logger.info(
+                            "V-world 중심점 대신 오프셋 좌표 사용: "
+                            "(%.6f, %.6f) → (%.6f, %.6f)",
+                            float(lng), float(lat), try_lng, try_lat,
+                        )
+                    break
+
+                if coord_idx == 0:
+                    logger.info(
+                        "V-world 중심점에서 데이터 없음, 주변 좌표 탐색 시작"
                     )
-                    response.raise_for_status()
-                    data = response.json()
-
-                    resp = data.get("response", {})
-                    status = resp.get("status", "")
-
-                    if status == "OK":
-                        features = (
-                            resp.get("result", {})
-                            .get("featureCollection", {})
-                            .get("features", [])
-                        )
-                        all_features[data_type] = features
-                        logger.info(
-                            "V-world %s 응답 성공: %d건",
-                            desc, len(features),
-                        )
-                    else:
-                        logger.info(
-                            "V-world %s: status=%s (데이터 없음)",
-                            desc, status,
-                        )
-                        all_features[data_type] = []
-                except Exception as e:
-                    logger.warning("V-world %s 조회 실패: %s", desc, e)
-                    all_features[data_type] = []
 
         total = sum(len(v) for v in all_features.values())
         if total == 0:
-            # 해당 좌표에 토지이용 데이터가 없는 경우 — 비도시지역, 미등록 필지 등
-            # RuntimeError 대신 빈 결과를 반환하여 다른 커넥터에 영향을 주지 않음
+            # 모든 좌표에서 토지이용 데이터가 없는 경우
             logger.warning(
                 "V-world API 응답에 토지이용 데이터가 없습니다: 좌표=(%s, %s). "
-                "비도시지역이거나 좌표가 필지 경계 밖일 수 있습니다.",
-                lat, lng,
+                "비도시지역이거나 좌표가 필지 경계 밖일 수 있습니다. "
+                "(주변 %d지점 탐색 완료)",
+                lat, lng, len(coordinate_candidates),
             )
 
         logger.info("V-world API 총 %d건 수집", total)
-        return {"features_by_type": all_features, "lng": lng, "lat": lat}
+        return {
+            "features_by_type": all_features,
+            "lng": str(used_lng),
+            "lat": str(used_lat),
+        }
 
     def normalize(
         self,
