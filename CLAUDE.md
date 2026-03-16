@@ -1,11 +1,12 @@
 # EIA Draft Copilot — 프로젝트 지침
 
-환경영향평가 현황조사서 자동 생성 + 입지 환경 리스크 스크리닝 내부 도구.
-등록된 EIA 업체를 위한 내부 B2B 소프트웨어이며, 자율 보고서 작성기가 **아닌**
-실무자의 현황조사 및 초안 작성 효율을 높이는 보조 도구.
+환경영향평가 문헌조사 및 공간 데이터 전처리 자동화 도구 + 입지 환경 리스크 스크리닝.
+등록된 EIA 업체를 위한 내부 B2B 소프트웨어이며, B2B SaaS 전환 가능한 구조.
+자율 보고서 작성기가 **아닌** 실무자의 현황조사 및 초안 작성 효율을 높이는 보조 도구.
 
 > **면책사항**: 본 시스템의 산출물은 법적 효력이 없으며, 실무자의 최종 검토가 필수입니다.
-> 전문 3D 모델링(AERMOD, CALPUFF 등)을 대체하지 않습니다.
+> 산출물의 오류로 인한 평가서 반려 시 사용자(대행업체) 책임입니다.
+> 전문 3D 모델링(AERMOD, CALPUFF 등)을 대체하지 않으나, **AERMOD 입력 파일 생성을 지원**합니다.
 > 영향 예측은 기초 스크리닝 수준이며, 정밀 모사에는 전문 소프트웨어가 필요합니다.
 
 참조:
@@ -27,6 +28,8 @@
 4. 환경 영향 예측 (대기 확산, 소음 전파, 수질 혼합)
 5. 8개 QA 규칙으로 누락 항목, 근거 없는 주장, export 차단 이슈 감지
 6. DOCX/PDF 산출물 생성
+7. GIS 공간 분석 (버퍼/중첩) 및 5종 정적 도면 렌더링
+8. 풍배도 생성 + AERMOD 기상 입력 파일 변환 (예정)
 
 ## 기술 스택
 
@@ -35,6 +38,7 @@
 - **Styling**: Tailwind CSS
 - **UI**: shadcn/ui (Radix UI 기반)
 - **State**: React Context + useReducer
+- **Map**: MapLibre GL JS (대화형 지도)
 - **Testing**: Vitest + React Testing Library
 
 ### 백엔드
@@ -44,11 +48,18 @@
 - **Migration**: Alembic
 - **Validation**: Pydantic v2 + geojson-pydantic
 - **Export**: python-docx + WeasyPrint (DOCX/PDF)
-- **Testing**: pytest + httpx (612개 테스트)
+- **GIS**: matplotlib + contextily (도면), Shapely/pyproj (공간 연산)
+- **Testing**: pytest + httpx (649개 테스트)
 
 ### AI/LLM
 - LLM 어댑터 3종: `none` (기본) / `openai_paid` / `gemini_free`
 - MVP는 `LLM_MODE=none`으로 완전 동작
+
+### 공간 분석 확장 (예정)
+- rasterio (DEM 표고/경사도 분석)
+- windrose (풍배도 생성)
+- pyhwpx (HWP 출력, Windows 전용)
+- AERMOD 기상 입력 파일 변환
 
 ## 시스템 구성 현황
 
@@ -69,18 +80,31 @@
 | `spatial_analysis.py` | 버퍼 분석 (EPSG:5179 변환) + 규제 항목 중첩 탐색 |
 | `map_renderer.py` | 5종 정적 도면 렌더링 (위치도, 토지이용, 측정소, 소음등고선, 대기확산) |
 
-### 커넥터 (9종)
-| 커넥터 키 | 대상 API | 상태 | 비고 |
-|-----------|----------|------|------|
-| `keco_air` | 에어코리아 대기오염정보 | 가동 | PM10_연평균 등 6개 지표 |
-| `water_info` | 국립환경과학원 수질 DB | 가동 | BOD, COD 등 실측 |
-| `soil_info` | 국립환경과학원 토양측정망 | 비활성 | 공공데이터포털 서버 장애 |
-| `kma_weather` | 기상청 ASOS 일자료 | 비활성 | 공공데이터포털 서버 장애 |
-| `vworld_land_use` | V-world 2D데이터 | 가동 | LT_C_UQ111 용도지역 |
-| `land_use_regulation` | 국토교통부 토지이용규제정보서비스 | 가동 | 행위제한 정보 |
-| `cultural_heritage` | 국가유산청 Open API | 비활성 | 일시적 네트워크 오류 |
-| `traffic_volume` | 한국건설기술연구원 교통량 | 가동 | vt_yearly 엔드포인트 |
-| `waste_stats` | 행정안전부 생활쓰레기배출정보 | 가동 | 배출일정/관리 데이터 |
+### 커넥터 (9종) — 실측 기반 현황 (2026-03-16)
+| 커넥터 | API | API 키 | 실측 상태 | 비고 |
+|--------|-----|--------|-----------|------|
+| 에어코리아 대기질 | data.go.kr | `DATA_GO_KR_API_KEY` | **안정 가동** | 138건/회 |
+| 국립환경과학원 수질DB | data.go.kr | `DATA_GO_KR_API_KEY` | 타임아웃 빈발 | API 응답 느림, 디버깅 필요 |
+| 토양측정망 | data.go.kr | `DATA_GO_KR_API_KEY` | 외부 장애 | HTTP 500 지속 |
+| 기상청 ASOS | data.go.kr | `DATA_GO_KR_API_KEY` | 타임아웃 빈발 | API 응답 느림, 디버깅 필요 |
+| V-world 토지이용 | vworld.kr | `VWORLD_API_KEY` | 지역 의존 | 양평 성공, 세종/보령 실패 |
+| 토지이용규제정보 | data.go.kr | `DATA_GO_KR_API_KEY` | **안정 가동** | 2건/회 |
+| 국가유산청 문화재 | khs.go.kr | 불필요 | 불안정 | 지역에 따라 0건 |
+| 교통량 통계 | data.go.kr | `DATA_GO_KR_API_KEY` | 불안정 | 지역별 차이 |
+| 폐기물 통계 | data.go.kr | `DATA_GO_KR_API_KEY` | 불안정 | 지역별 차이 |
+
+> **실측 가동률**: 안정 2/9, 불안정 4/9, 장애 3/9
+
+### 데모 검증 결과 (2026-03-16)
+| 항목 | 양평 도로 (road) | 세종 택지 (housing) | 보령 발전소 (power_plant) |
+|------|:----:|:----:|:----:|
+| 커넥터 가동 | 5/9 | 3/9 | 2/9 |
+| 총 증거 | 1,352건 | 248건 | 251건 |
+| 예측 모델 | 3/3 | 3/3 | 3/3 |
+| QA critical | 0 | 2 | 2 |
+| Export 가능 | 예 | 아니오 | 아니오 |
+| DOCX | 443KB | 486KB | 479KB |
+| GIS 도면 | 5/5 | 5/5 | 5/5 |
 
 ### QA 규칙 (8개)
 R001~R008: 법령 기반 동적 판단, 사업유형별 필수 지표 확인, 부분충족 WARNING 처리
@@ -105,6 +129,20 @@ R001~R008: 법령 기반 동적 판단, 사업유형별 필수 지표 확인, �
 | `not_applicable` | 해당 없음 |
 | `partial` | 일부 지표 충족 |
 | `empty` | 증거 0건 |
+
+## 수정 완료 이력
+
+| # | 문제 | 수정 내용 |
+|---|------|-----------|
+| 1 | 측정소명 접미사 자동 제거 | 양평군→양평 매칭 개선 |
+| 2 | 부록 C QA 결과 누락 | export에 QA 부록 정상 포함 |
+| 3 | 유사사례 유형별 필터링 | type_score > 0 조건 추가 |
+| 4 | 환경기준 None 값 판정 | NaN/None 방어 로직, "N/A" 판정 |
+| 5 | 대기확산 거리-농도 역전 | 사업유형별 굴뚝 높이 현실화 (도로 H=0m) |
+| 6 | 폐기물 서술문 데이터 덤프 | 최빈값/대표값 요약형 개선, 중복 제거 |
+| 7 | 수질 예측 결과 DOCX 미반영 | evidence 없어도 예측 결과 있으면 렌더링 |
+| 8 | 경관 "환경기준 만족" 부적절 | 법적 기준 없는 섹션은 중립 표현 사용 |
+| 9 | 폐기물 커넥터 과다 요청 | numOfRows=10 제한 |
 
 ## 디렉토리 구조
 
@@ -149,13 +187,16 @@ backend/                       # FastAPI 백엔드
     config.py                  # 환경 설정
     db.py                      # DB 세션 관리
   alembic/                     # DB 마이그레이션
-  tests/                       # 백엔드 테스트 (644개)
+  tests/                       # 백엔드 테스트 (649개)
 docs/
   claude/                      # Phase 계획, 아키텍처 결정
   progress/                    # 작업 브리프, 진행 로그
   references/                  # EIA 참조 자료
 scripts/
   demo_full_scenario.py        # 통합 데모 스크립트
+  demo_road_yangpyeong.py      # 양평 도로 시나리오
+  demo_housing_sejong.py       # 세종 택지 시나리오
+  demo_powerplant_boryeong.py  # 보령 발전소 시나리오
   test_connectors_live.py      # 커넥터 실제 API 검증
 output/                        # 생성된 DOCX/PDF 산출물
 docker-compose.yml             # Docker Compose 기본 구성
@@ -253,13 +294,15 @@ uvicorn app.main:app --reload     # http://localhost:8000
 
 # 테스트
 cd backend
-pytest tests/ -v                  # 644개 테스트
+pytest tests/ -v                  # 649개 테스트
 
 # 커넥터 실제 API 검증
 python scripts/test_connectors_live.py
 
-# 통합 데모 (백엔드 서버 실행 후)
-python scripts/demo_full_scenario.py
+# 3종 시나리오 데모 (백엔드 서버 실행 후)
+python scripts/demo_road_yangpyeong.py
+python scripts/demo_housing_sejong.py
+python scripts/demo_powerplant_boryeong.py
 ```
 
 ### Docker 실행 (권장)
@@ -321,31 +364,93 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ## 알려진 제한사항
 
-- **커넥터 3종 외부 장애 가능**: 토양측정망, 기상청 ASOS, 문화재 — 공공데이터포털 서버 상태 의존
+- **공공 API 서버 장애/속도 문제**: 커넥터 가동률 변동 (실측 안정 가동 2/9)
+- **API 데이터 지역 대표성**: 대상지 지역적 특수성을 대표하지 못할 수 있음 (평가자 정성적 판단 필수)
 - **영향 예측은 기초 스크리닝 수준**: 전문 3D 모델링(AERMOD, CALPUFF 등) 대체 불가
+- **AERMOD 입력 파일**: 생성만 지원, 실제 모델링은 전문 소프트웨어 필요
 - **해양 분야 미커버**: MEIS OpenAPI 존재 여부 PoC 필요
 - **소음·진동, 경관**: 현장조사 필수로 자동화 불가
 - **생태자연도 속성 데이터**: API 쿼리 한계 (SHP/WMS 방식 필요)
 - **산출물에 법적 효력 없음**: 실무자 최종 검토 필수
+- **법적 책임**: 산출물의 오류로 인한 평가서 반려 시 사용자(대행업체) 책임
 - **폐기물 커넥터**: 배출량이 아닌 배출일정 데이터 제공 (환경부 폐기물발생 API 별도 연동 필요)
 - **V-world 지목 데이터**: 좌표에 따라 미반환 가능 (R002 WARNING으로 처리)
+- **HWP 출력**: Windows 환경에서만 가능 (pyhwpx/win32com 제약)
+- **DEM, 토지피복도 등 대용량 공간 데이터**: 로컬 저장소 필요
 - **프론트엔드 프로젝트 생성 폼 미구현**: API를 통해서만 생성 가능
 - **PROCEDURE_PENDING 상태 미구현**: 외부 절차 연동 필요
 - **Draft claim contract 미구현**: LLM 연동 심화 시 구현 예정
 - **실시간 협업, 테넌트 인증, 빌링 미지원**: MVP 비목표
 
-## 다음 작업 계획
+## 미해결 이슈
 
-### ~~Phase GIS-2: 프론트엔드 지도 시각화~~ ✅ 완료
+- 수질 커넥터 타임아웃 근본 해결 (API 응답 시간 디버깅)
+- 기상청 ASOS 타임아웃 근본 해결
+- V-world 세종/보령 좌표 문제
+- 폐기물/교통 지역별 안정성
+- 토양측정망 외부 서버 장애 (수정 불가)
+- "연평균의 연평균" 중복 표현 확인
 
-### ~~Phase Deploy: 배포 환경 구성~~ ✅ 완료
+## 다음 작업 계획 (통합 로드맵)
+
+### Phase Connector-Fix: 커넥터 안정화 (최우선)
+- 수질/기상청 API 응답 시간 디버깅 (python 직접 호출 테스트)
+- numOfRows 제한 적용 확인
+- V-world 좌표 문제 디버깅
+- 3개 시나리오 모두 Export 가능 달성 목표
+
+### Phase Wind-AERMOD: 풍배도 + AERMOD 입력 생성
+- 기상청 ASOS 풍향/풍속 데이터 기반 Wind Rose 자동 생성
+  - windrose 라이브러리 또는 matplotlib 극좌표 차트
+  - 16방위 풍향빈도, 풍속구간별 빈도 시각화
+  - PNG 도면으로 DOCX/PDF에 삽입
+- AERMOD 기상 입력 파일 자동 변환
+  - 지표기상 파일(.sfc): ASOS 데이터 → AERMOD 포맷
+  - 상층기상 파일(.ua): 필요 시 라디오존데 연동 또는 기본값
+  - 사용자가 다운로드하여 AERMOD 전문 소프트웨어에 입력
+- 이 기능만으로 실무자에게 즉시 높은 가치 제공
+
+### Phase Spatial-Advanced: 공간 분석 고도화
+- SHP/GeoJSON 파일 업로드 지원 (현재 GeoJSON만)
+- DEM 기반 표고/경사도 분석
+  - rasterio + SRTM 30m 해상도 DEM
+  - 사업 경계 내 최고/최저 표고, 평균 경사도 산출
+  - 표고 단면도 생성
+- 정밀 토지피복도 클리핑
+  - 환경부 정밀 토지피복도(SHP) 활용
+  - 사업 경계로 클리핑 → 피복 유형별 면적/비율 자동 산출
+  - 표 + 원형 차트 자동 생성
+- 연속지적도 중첩 분석
+  - 사업 경계 내 지목별 편입 면적 자동 산출
+  - "대 12,340㎡(45.2%), 전 8,760㎡(32.1%), 답 6,200㎡(22.7%)" 형식
+  - DOCX에 지목별 면적 테이블 자동 삽입
+
+### Phase HWP-Export: HWP 출력 (한국 실무 필수)
+- pyhwpx 또는 win32com 기반 HWP 자동 생성
+- 현재 DOCX export 구조를 HWP로 확장
+- 환경영향평가서 표준 양식 적용
+- 표지, 목차, 섹션별 서술문+테이블, 부록 구조 동일
+- 산출물 3종: DOCX + PDF + HWP
+
+### Phase Map-Enhancement: GIS 도면 사용자 친화성 개선
+- contextily 배경지도 추가 (OpenStreetMap 타일)
+- 도면 스타일 전문화 (반투명 도형, 윤곽선 라벨, 축척바, 방위표)
+- 풍배도를 기후 섹션 도면으로 포함
+- 해상도 200 DPI
+
+### Phase Deploy: 배포 환경 구성 (보류 중, 지시 대기)
+- Docker Compose (PostgreSQL+PostGIS, FastAPI, Next.js)
+- CI/CD 파이프라인
+- 환경 분리 (dev/staging/prod)
 
 ### Phase Portfolio: 포트폴리오 문서 정리
-- GIS 도면 산출물 포함
+- GIS 도면 산출물 (배경지도 포함)
+- 풍배도 + AERMOD 입력 파일 예시
+- DEM 표고 분석 + 토지피복도 + 지적도 산출물
 - 데이터 파이프라인 아키텍처 다이어그램
 - Before/After 서술문 비교
 - 법령 매핑 + QA 규칙 설계 설명
-- 시스템 한계 및 범위 명시
+- 시스템 한계 명시
 
 ## 작업 규칙 (Working Rules)
 
@@ -357,6 +462,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 - **사용자에게 허가를 묻지 말고 프롬프트 범위 내 끝까지 완료**
 - **더미 데이터 절대 사용 금지**
 - **커밋 메시지, 주석, 문서는 한글로 작성**
+- **curl 사용 금지 (python urllib 사용)**
 
 ## Claude Workflow
 
@@ -390,5 +496,7 @@ Phase 완료 조건:
 - GIS-2: 프론트엔드 지도 시각화 ✅
 - Demo-3: 3종 시나리오 데모 스크립트 ✅
 - Deploy: 배포 환경 구성 (Docker Compose + CI/CD + 환경 분리) ✅
+- Phase 4: 3종 시나리오 실행 검증 ✅
+- Bugfix-6: 6건 버그 수정 (649개 테스트 통과) ✅
 
 다음 작업 브리핑: `docs/progress/NEXT_CHAT_BRIEF.md` 참조

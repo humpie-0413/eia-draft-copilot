@@ -2254,3 +2254,38 @@ Demo-3에서 작성한 3종 데모 스크립트를 실제 백엔드 서버에서
 
 ### 테스트
 - 644개 테스트 전체 통과 (72.23초)
+
+---
+
+## Bugfix-6: 6건 버그 수정 ✅
+
+### 수정 내역
+
+| # | 문제 | 파일 | 수정 내용 |
+|---|------|------|-----------|
+| 1 | 환경기준 None/"초과" 판정 | standard_checker.py | NaN 방어 로직 추가 |
+| 2 | 폐기물 커넥터 과다 요청 | waste_stats.py | numOfRows 100→10 제한 |
+| 3 | 대기 확산 비정상 농도 증가 | air_dispersion.py | 사업유형별 굴뚝 높이 현실화 (도로 0m, 택지 15m 등) |
+| 4 | 폐기물 서술문 데이터 덤프 | narrative_generator.py | 최빈값/대표값 요약, 중복 제거 |
+| 5 | 수질 예측 DOCX 미반영 | export_service.py | evidence 없어도 예측 결과 있으면 섹션 렌더링 |
+| 6 | 경관 "환경기준 만족" 부적절 | narrative_generator.py | 법적 기준 없는 섹션은 중립 표현 사용 |
+
+### 테스트
+- 649개 테스트 전체 통과 (54s)
+- 신규 테스트 3건 추가 (NaN 판정, None 판정, 지면 배출원 단조감소)
+
+---
+
+## CLAUDE.md 통합 로드맵 반영 ✅ (2026-03-16)
+
+### 완료 항목
+- CLAUDE.md 제품 정체성 업데이트 (문헌조사 + 공간 데이터 전처리 자동화, B2B SaaS 전환 가능, AERMOD 입력 지원 명시)
+- 커넥터 현황 테이블 실측 기반으로 교체 (안정 2/9, 불안정 4/9, 장애 3/9)
+- 3종 시나리오 데모 검증 결과 테이블 추가
+- 수정 완료 이력 (9건) 섹션 추가
+- 미해결 이슈 섹션 추가 (타임아웃, 좌표 문제 등)
+- 통합 로드맵 전면 교체: Connector-Fix → Wind-AERMOD → Spatial-Advanced → HWP-Export → Map-Enhancement → Portfolio
+- 기술 스택에 공간 분석 확장 추가 (rasterio, windrose, pyhwpx, AERMOD)
+- 알려진 제한사항 확장 (API 가동률, 지역 대표성, AERMOD, HWP, DEM, 법적 책임)
+- NEXT_CHAT_BRIEF.md 현재 상태 및 다음 작업 순서 반영
+- WORKLOG.md 최근 작업 이력 추가
