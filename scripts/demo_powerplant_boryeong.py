@@ -35,6 +35,7 @@
 """
 
 import asyncio
+import gc
 import os
 import sys
 from datetime import datetime, timezone
@@ -165,7 +166,7 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
     }
 
     # ── 커넥터 공통 수집 함수 (120초 타임아웃) ──
-    CONNECTOR_TIMEOUT = 120  # 각 커넥터 수집 최대 시간 (초)
+    CONNECTOR_TIMEOUT = 180  # 각 커넥터 수집 최대 시간 (초, 재시도 포함)
 
     async def collect_connector(
         key: str, label: str, params: dict, *,
@@ -240,7 +241,7 @@ async def step2_collect_data(client: httpx.AsyncClient, project_id: str) -> dict
     kma_count = await collect_connector(
         "kma_weather",
         "2-d. 기상청 ASOS 기후 커넥터 — 보령(235)",
-        {"stn_id": "235", "start_dt": "20240101", "end_dt": "20241231"},
+        {"stn_id": "235", "start_dt": "20240701", "end_dt": "20241231"},
     )
 
     # 2-e. V-world 토지이용
@@ -1302,16 +1303,19 @@ async def main():
             sys.exit(1)
 
         collect_stats = await step2_collect_data(client, project_id)
+        gc.collect()  # 커넥터 수집 후 메모리 해제
         await step3_similar_cases(client, project_id)
         section_summary = await step4_section_planner(client, project_id)
         reg_summary = await step4_5_regulation_check(client, project_id)
         stats_summary = await step5_statistics(client, project_id)
         check_summary = await step6_standards_check(client, project_id)
         scaffold_summary = await step7_scaffold(client, project_id)
+        gc.collect()  # 스캐폴드 후 메모리 해제
         pred_summary = await step7_5_prediction(client, project_id)
         llm_summary = await step8_llm_enhance(client, project_id)
         qa_summary = await step9_qa(client, project_id)
         map_result = await step9_5_maps(client, project_id)
+        gc.collect()  # 도면 생성 후 메모리 해제
 
         if not qa_summary.get("export_ready"):
             print()

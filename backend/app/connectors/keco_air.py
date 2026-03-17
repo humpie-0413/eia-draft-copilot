@@ -67,13 +67,16 @@ class KecoAirConnector(BaseConnector):
 
         데이터가 있으면 응답 dict, 없거나 오류면 None 반환.
         """
+        # 최대 100건 제한
+        MAX_ROWS = 100
+        requested_rows = min(int(params.get("num_of_rows", MAX_ROWS)), MAX_ROWS)
         query_params = {
             "serviceKey": api_key,
             "returnType": "json",
             "stationName": station_name,
             "dataTerm": params.get("data_term", "DAILY"),
             "pageNo": str(params.get("page_no", 1)),
-            "numOfRows": str(params.get("num_of_rows", 100)),
+            "numOfRows": str(requested_rows),
             "ver": "1.3",
         }
 

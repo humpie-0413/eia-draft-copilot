@@ -6,6 +6,7 @@ normalize()는 원시 응답을 EvidenceCreate 목록으로 변환한다.
 """
 
 import asyncio
+import gc
 import logging
 import uuid
 from abc import ABC, abstractmethod
@@ -168,6 +169,13 @@ class BaseConnector(ABC):
             ),
         )
 
+        # 스냅샷 ORM 객체에서 raw_payload 참조 제거 (DB에 이미 저장됨)
+        # collect() 단계에서는 snapshot.id만 필요하므로 메모리 절감
+        try:
+            snapshot.raw_payload = None
+        except Exception:
+            pass
+
         # 3) 오류 시 빈 증거 목록 반환
         if status == SnapshotStatus.ERROR:
             return snapshot, []
@@ -181,8 +189,16 @@ class BaseConnector(ABC):
             screening_only=screening_only,
         )
 
-        evidences = []
+        # 원시 페이로드 메모리 해제 (스냅샷에 이미 저장됨)
+        del raw_payload
+        gc.collect()
+
+        evidences: list[Evidence] = []
         if evidence_items:
             evidences = await create_evidences_bulk(db, evidence_items)
+
+        # 정규화 결과 메모리 해제 (DB에 이미 저장됨)
+        del evidence_items
+        gc.collect()
 
         return snapshot, evidences

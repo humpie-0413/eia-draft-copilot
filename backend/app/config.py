@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     # LLM adapter 설정 (none | openai_paid | gemini_free)
     LLM_ADAPTER: str = "none"
 
-    # API 호출 타임아웃 (초)
-    CONNECTOR_TIMEOUT: int = 60
+    # API 호출 타임아웃 (초) — 공공데이터 API 응답 지연 대비
+    CONNECTOR_TIMEOUT: int = 90
 
     @property
     def cors_origin_list(self) -> list[str]:

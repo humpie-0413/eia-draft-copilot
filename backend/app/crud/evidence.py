@@ -49,9 +49,15 @@ async def create_evidence(db: AsyncSession, data: EvidenceCreate) -> Evidence:
 async def create_evidences_bulk(
     db: AsyncSession, items: list[EvidenceCreate]
 ) -> list[Evidence]:
-    """여러 증거를 한 번에 저장한다 (커넥터 정규화 결과 일괄 저장용)."""
-    evidences = []
-    for data in items:
+    """여러 증거를 한 번에 저장한다 (커넥터 정규화 결과 일괄 저장용).
+
+    메모리 최적화: 배치 단위(BATCH_SIZE)로 flush하여
+    대량 데이터 저장 시 메모리 폭증을 방지한다.
+    """
+    BATCH_SIZE = 50
+    evidences: list[Evidence] = []
+
+    for i, data in enumerate(items):
         ev = Evidence(
             project_id=data.project_id,
             snapshot_id=data.snapshot_id,
@@ -69,9 +75,13 @@ async def create_evidences_bulk(
         db.add(ev)
         evidences.append(ev)
 
+        # 배치 단위로 flush하여 DB에 즉시 전송 (메모리 해제 유도)
+        if (i + 1) % BATCH_SIZE == 0:
+            await db.flush()
+
     await db.commit()
-    for ev in evidences:
-        await db.refresh(ev)
+
+    # ID만 확보하면 충분 — 전체 refresh 대신 flush 시점에 이미 ID 할당됨
     return evidences
 
 

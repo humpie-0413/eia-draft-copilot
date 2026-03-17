@@ -313,6 +313,9 @@ async def generate_section_scaffold(
 
     entries = [_evidence_to_entry(ev) for ev in evidences]
 
+    # ORM Evidence 객체 참조 해제 — entry 변환 완료 후 불필요
+    del evidences
+
     # 통계 계산 (기본 필터 적용)
     section_stats = await calculate_section_statistics(
         db, project_id, section_key
@@ -421,6 +424,9 @@ async def generate_draft_scaffold(
         if scaffold is not None:
             sections.append(scaffold)
             total_count += len(scaffold.evidence_entries)
+
+        # 주의: db.expire_all()은 다른 ORM 객체까지 만료시켜
+        # greenlet 오류를 유발하므로 사용하지 않는다.
 
     return DraftScaffold(
         project_id=str(project_id),

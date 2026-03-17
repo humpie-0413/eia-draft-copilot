@@ -174,22 +174,35 @@ async def _build_export_context(
     options: ExportOptions | None = None,
     qa_result: QaResult | None = None,
 ) -> ExportContext:
-    """Export에 필요한 모든 데이터를 수집하여 ExportContext를 구성한다."""
+    """Export에 필요한 모든 데이터를 수집하여 ExportContext를 구성한다.
+
+    메모리 최적화: 섹션별 통계를 순차 계산하며 중간 쿼리 결과를 즉시 해제한다.
+    """
+    import gc
+
     opts = options or ExportOptions()
 
-    # 초안 뼈대 생성
-    scaffold = await generate_draft_scaffold(db, project.id)
+    # ORM lazy-load 방지: 필요한 속성을 미리 로컬 변수로 추출
+    _project_id = project.id
+    _project_name = project.name
+    _project_type = project.project_type
+    _project_geometry = project.geometry
 
-    # 섹션별 통계/기준비교 데이터
+    # 초안 뼈대 생성
+    scaffold = await generate_draft_scaffold(db, _project_id)
+    gc.collect()
+
+    # 섹션별 통계/기준비교 데이터 — 순차 계산
     section_data = {}
     for section in scaffold.sections:
         stats = await calculate_section_statistics(
-            db, project.id, section.section_key
+            db, _project_id, section.section_key
         )
         check = await check_section_standards(
-            db, project.id, section.section_key
+            db, _project_id, section.section_key
         )
         section_data[section.section_key] = (stats, check)
+    gc.collect()
 
     # 유사사례 매칭 (부록 B) — 해당 프로젝트 유형과 관련된 사례만 포함
     similar_cases: list[SimilarCaseInfo] = []
@@ -201,7 +214,7 @@ async def _build_export_context(
                 if s.evidence_entries
             }
             match_result = await find_similar_cases(
-                db, project.id,
+                db, _project_id,
                 evidence_categories=categories,
                 top_k=10,
             )
@@ -230,22 +243,22 @@ async def _build_export_context(
             pass  # 유사사례 데이터 없어도 export 진행
 
     # geometry centroid
-    centroid = _get_centroid_coords(project.geometry)
+    centroid = _get_centroid_coords(_project_geometry)
 
     # Reg-4: 필수 섹션 키 계산
     required_keys: set[str] = set()
-    if project.project_type:
-        required_keys = set(get_required_sections(project.project_type))
+    if _project_type:
+        required_keys = set(get_required_sections(_project_type))
 
     # GIS-1: 도면 생성
     map_images: dict[str, bytes] = {}
-    if opts.include_maps and project.geometry is not None:
+    if opts.include_maps and _project_geometry is not None:
         map_images = await _generate_map_images(db, project, scaffold)
 
     return ExportContext(
         scaffold=scaffold,
-        project_name=project.name,
-        project_type=project.project_type,
+        project_name=_project_name,
+        project_type=_project_type,
         centroid=centroid,
         section_data=section_data,
         similar_cases=similar_cases,
@@ -262,7 +275,13 @@ async def _generate_map_images(
     project: Project,
     scaffold: DraftScaffold,
 ) -> dict[str, bytes]:
-    """도면 PNG 이미지를 생성한다."""
+    """도면 PNG 이미지를 생성한다.
+
+    메모리 최적화: 도면을 하나씩 렌더링하고 중간 컨텍스트를 즉시 해제한다.
+    """
+    import gc
+    import matplotlib.pyplot as plt
+
     images: dict[str, bytes] = {}
     try:
         from app.services.map_renderer import MapRenderContext, render_map
@@ -290,6 +309,7 @@ async def _generate_map_images(
         loc_data = render_map("location", base_ctx)
         if loc_data:
             images["location"] = loc_data
+        plt.close("all")
 
         # 토지이용현황도
         land_use_data = []
@@ -309,11 +329,18 @@ async def _generate_map_images(
         lu_data = render_map("land_use", land_ctx)
         if lu_data:
             images["land_use"] = lu_data
+        del land_ctx, land_use_data
+        plt.close("all")
 
         # 환경측정소 분포도
         stations_data = render_map("monitoring_stations", base_ctx)
         if stations_data:
             images["monitoring_stations"] = stations_data
+        plt.close("all")
+
+        # overlay 데이터 더 이상 불필요 — 메모리 해제
+        del base_ctx, overlay
+        gc.collect()
 
         # 소음 등고선도
         if noise_pred:
@@ -326,6 +353,8 @@ async def _generate_map_images(
             noise_data = render_map("noise_contour", noise_ctx)
             if noise_data:
                 images["noise_contour"] = noise_data
+            del noise_ctx
+            plt.close("all")
 
         # 대기확산 예측도
         if air_pred:
@@ -338,9 +367,14 @@ async def _generate_map_images(
             air_data = render_map("air_dispersion", air_ctx)
             if air_data:
                 images["air_dispersion"] = air_data
+            del air_ctx
+            plt.close("all")
+
+        gc.collect()
 
     except Exception:
-        pass  # 도면 생성 실패해도 export 진행
+        plt.close("all")  # 예외 시에도 열린 figure 정리
+        gc.collect()
 
     return images
 
@@ -378,6 +412,8 @@ async def generate_docx(
             f"남아 있어 export가 차단되었습니다."
         )
 
+    import gc
+
     ctx = await _build_export_context(
         db, project,
         options=options,
@@ -386,8 +422,14 @@ async def generate_docx(
 
     doc = _build_docx(ctx)
 
+    # ExportContext 메모리 해제 (도면 PNG bytes 포함)
+    del ctx
+    gc.collect()
+
     buffer = io.BytesIO()
     doc.save(buffer)
+    del doc
+    gc.collect()
     buffer.seek(0)
 
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -1584,6 +1626,8 @@ async def generate_pdf(
             f"남아 있어 export가 차단되었습니다."
         )
 
+    import gc
+
     ctx = await _build_export_context(
         db, project,
         options=options,
@@ -1591,6 +1635,10 @@ async def generate_pdf(
     )
 
     buffer = _build_pdf(ctx)
+
+    # ExportContext 메모리 해제
+    del ctx
+    gc.collect()
 
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
     safe_name = "".join(

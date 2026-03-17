@@ -74,13 +74,16 @@ class TrafficVolumeConnector(BaseConnector):
 
         dtype = int(params.get("dtype", 2))
 
+        # 최대 50건 제한 (메모리 최적화)
+        MAX_ROWS = 50
+        requested_rows = min(int(params.get("num_of_rows", MAX_ROWS)), MAX_ROWS)
         query_params = {
             "serviceKey": api_key,
             "output": "json",
             "year": str(year),
             "dtype": str(dtype),
             "spot_id": str(params.get("spot_id", "all")),
-            "numOfRows": str(params.get("num_of_rows", 100)),
+            "numOfRows": str(requested_rows),
             "pageNo": str(params.get("page_no", 0)),
         }
 

@@ -66,13 +66,15 @@ class SoilInfoConnector(BaseConnector):
         if not year:
             raise ValueError("year(조회 연도) 파라미터가 필요합니다.")
 
-        # API 요청 파라미터 구성
+        # API 요청 파라미터 구성 — 최대 50건 제한 (메모리 최적화)
+        MAX_ROWS = 50
+        requested_rows = min(int(params.get("num_of_rows", MAX_ROWS)), MAX_ROWS)
         query_params: dict[str, str] = {
             "serviceKey": api_key,
             "resultType": "json",
             "year": str(year),
             "pageNo": str(params.get("page_no", 1)),
-            "numOfRows": str(params.get("num_of_rows", 100)),
+            "numOfRows": str(requested_rows),
         }
 
         # 측정지점 코드 필터 (선택)

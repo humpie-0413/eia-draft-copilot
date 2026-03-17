@@ -6,6 +6,7 @@ POST /api/v1/connectors/{connector_key}/collect
 - 데이터 소스가 DB에 없으면 자동 등록한다.
 """
 
+import gc
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -89,10 +90,20 @@ async def collect_data(
             detail=f"외부 API 호출 실패: {exc}",
         ) from exc
 
+    evidence_count = len(evidences)
+    error_message = snapshot.error_message
+    snapshot_id = snapshot.id
+    snapshot_status = snapshot.status
+
+    # 수집 완료 후 ORM 객체와 Evidence 리스트 메모리 해제
+    del evidences, snapshot
+    db.expire_all()
+    gc.collect()
+
     return CollectResult(
         connector_key=connector_key,
-        snapshot_id=snapshot.id,
-        status=snapshot.status,
-        evidence_count=len(evidences),
-        error_message=snapshot.error_message,
+        snapshot_id=snapshot_id,
+        status=snapshot_status,
+        evidence_count=evidence_count,
+        error_message=error_message,
     )

@@ -114,10 +114,13 @@ class CulturalHeritageConnector(BaseConnector):
         # 시도코드 결정
         ccba_ctcd = params.get("ccba_ctcd") or _coord_to_sido(lat, lng)
 
+        # 최대 50건 제한 (메모리 최적화)
+        MAX_PAGE_UNIT = 50
+        requested_unit = min(int(params.get("page_unit", MAX_PAGE_UNIT)), MAX_PAGE_UNIT)
         query_params = {
             "ccbaCtcd": ccba_ctcd,
             "pageIndex": str(params.get("page_index", 1)),
-            "pageUnit": str(params.get("page_unit", 100)),
+            "pageUnit": str(requested_unit),
         }
 
         logger.info(
@@ -132,8 +135,9 @@ class CulturalHeritageConnector(BaseConnector):
             response.raise_for_status()
             xml_text = response.text
 
-        # XML 파싱
+        # XML 파싱 후 원본 텍스트 즉시 해제
         items = self._parse_list_xml(xml_text)
+        del xml_text
 
         # 좌표 기반 거리 필터링
         filtered_items = []

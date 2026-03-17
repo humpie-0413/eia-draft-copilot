@@ -841,7 +841,12 @@ def render_map(map_type: str, ctx: MapRenderContext) -> bytes | None:
     if renderer is None:
         return None
 
-    return renderer(ctx)
+    try:
+        return renderer(ctx)
+    except Exception:
+        # 예외 시에도 열린 figure를 반드시 정리하여 메모리 누수 방지
+        plt.close("all")
+        return None
 
 
 def save_map(map_type: str, ctx: MapRenderContext) -> str | None:

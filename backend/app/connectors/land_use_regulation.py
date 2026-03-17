@@ -110,9 +110,11 @@ class LandUseRegulationConnector(BaseConnector):
                     response = await client.get(url, params=query_params)
                     response.raise_for_status()
 
+                    xml_content = response.content
                     items = self._parse_xml_response(
-                        response.content, ucode,
+                        xml_content, ucode,
                     )
+                    del xml_content
                     results.extend(items)
                 except Exception as e:
                     logger.warning(

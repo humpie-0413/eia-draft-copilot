@@ -62,14 +62,20 @@ class LandUseConnector(BaseConnector):
             lat, lng,
         )
 
-        # 좌표 그리드: 중심점 실패 시 주변 4지점(±0.002° ≈ 200m) 추가 시도
-        OFFSET = 0.002
+        # 좌표 그리드: 중심점 실패 시 주변 8지점(±0.005° ≈ 500m) 추가 시도
+        # 보령 등 비도시지역에서 0.002° 그리드로 불충분한 사례 대응
+        OFFSET = 0.005
+        _lng, _lat = float(lng), float(lat)
         coordinate_candidates = [
-            (float(lng), float(lat)),                    # 중심점
-            (float(lng) + OFFSET, float(lat)),           # 동쪽
-            (float(lng) - OFFSET, float(lat)),           # 서쪽
-            (float(lng), float(lat) + OFFSET),           # 북쪽
-            (float(lng), float(lat) - OFFSET),           # 남쪽
+            (_lng, _lat),                                # 중심점
+            (_lng + OFFSET, _lat),                       # 동
+            (_lng - OFFSET, _lat),                       # 서
+            (_lng, _lat + OFFSET),                       # 북
+            (_lng, _lat - OFFSET),                       # 남
+            (_lng + OFFSET, _lat + OFFSET),              # 북동
+            (_lng - OFFSET, _lat + OFFSET),              # 북서
+            (_lng + OFFSET, _lat - OFFSET),              # 남동
+            (_lng - OFFSET, _lat - OFFSET),              # 남서
         ]
 
         all_features: dict[str, list[dict]] = {}
